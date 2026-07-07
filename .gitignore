@@ -1,0 +1,31 @@
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Node and frontend build output
+node_modules/
+dist/
+
+# Local editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.db
+*.sqlite
+*.sqlite3
+build/
+*.egg-info/
