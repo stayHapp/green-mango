@@ -20,6 +20,12 @@ venv/
 node_modules/
 dist/
 
+# TypeScript 构建缓存
+*.tsbuildinfo
+
+# 前端 TypeScript 编译旁路产物
+frontend/src/**/*.js
+
 # Local editor and OS files
 .DS_Store
 .idea/

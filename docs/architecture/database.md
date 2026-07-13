@@ -1,10 +1,10 @@
 # 数据库设计
 
-本文档记录第一版数据库设计。数据库结构变化必须同步更新本文档。
+本文档记录数据库设计状态和下一步调整方向。数据库结构变化必须同步更新本文档。
 
-## 当前数据库状态
+## 当前状态
 
-当前已建立数据库连接、ORM 模型和首个业务迁移：
+当前代码中已存在一版早期数据模型和首个 Alembic 迁移：
 
 - Python：3.12
 - ORM：SQLAlchemy 2.x
@@ -14,7 +14,7 @@
 - 配置管理：`pydantic-settings`
 - 当前迁移版本：`20260707_0001_create_core_tables`
 
-已实现核心表：
+已实现表：
 
 - `users`
 - `meetings`
@@ -23,141 +23,145 @@
 - `registrations`
 - `registration_values`
 
-当前尚未实现业务 API、认证权限和数据写入流程。
+## 产品方向调整
 
-## 设计约定
+产品方向已从“会议报名字段配置与报名提交”调整为“三端客户端 + 嘉宾信息管理 + 扫码签到”：
 
-- 主键使用整数自增主键。
-- 时间字段使用 timezone-aware `DateTime`。
-- JSON 配置字段使用 SQLAlchemy `JSON` 类型。
-- `meeting_settings.meeting_id` 唯一，表示一个会议只有一条设置记录。
-- `registration_fields` 中 `(meeting_id, key)` 唯一，表示同一会议内字段标识不可重复。
-- `registration_values.field_key` 保存提交时字段标识快照，便于字段配置变化后仍能阅读历史数据。
+- 管理员端：创建会议、配置嘉宾信息字段、录入嘉宾、创建工作人员、查看签到情况。
+- 嘉宾端：登录、查看会议信息和个人信息、展示二维码。
+- 工作人员端：登录、扫码完成签到。
 
-## users
+因此，当前已实现的 `registration_fields`、`registrations`、`registration_values` 仍可作为历史基线，但不再完全匹配新的 MVP 主流程。后续继续开发前，需要制定新的数据库调整计划。
 
-用途：保存管理员或后续登录用户信息。
+## 新方向下的概念实体
 
-主要字段：
+后续数据库应重新评估以下实体。
 
-- `id`：主键
-- `username`：用户名，唯一索引
-- `password_hash`：密码哈希
-- `display_name`：显示名称
-- `created_at`：创建时间
-- `updated_at`：更新时间
+### users
 
-关系：
+用途：保存管理员和工作人员等需要账号登录的用户。
 
-- 一个用户可以创建多个会议。
+需要考虑：
 
-说明：
+- 用户类型或角色。
+- 用户是否可管理多个会议。
+- 工作人员是否可负责多个会议。
 
-- 当前仅创建字段，不代表认证功能已完成。
-- 密码不得明文存储，后续认证任务必须写入哈希值。
-
-## meetings
+### meetings
 
 用途：保存会议基础信息。
 
-主要字段：
+会议结束时间影响嘉宾二维码有效期。
 
-- `id`：主键
-- `title`：会议标题
-- `description`：会议说明
-- `location`：会议地点
-- `start_time`：开始时间
-- `end_time`：结束时间
-- `status`：会议状态
-- `created_by`：创建人，外键关联 `users.id`
-- `created_at`：创建时间
-- `updated_at`：更新时间
+### meeting_admins
 
-关系：
+用途：表达一个会议可以有多个管理员。
 
-- 一个会议属于一个创建用户。
-- 一个会议有一条会议设置。
-- 一个会议有多个报名字段。
-- 一个会议有多条报名记录。
+建议关系：
 
-## meeting_settings
+- 一个会议有多个管理员。
+- 一个管理员可以管理多个会议。
 
-用途：保存会议级配置，支持后续扩展页面配置和报名规则。
+当前模型尚未实现该表，仍使用 `meetings.created_by` 表达创建人。
 
-主要字段：
+### guest_fields
 
-- `id`：主键
-- `meeting_id`：外键关联 `meetings.id`，唯一
-- `registration_enabled`：是否开放报名
-- `settings_json`：扩展配置 JSON
-- `created_at`：创建时间
-- `updated_at`：更新时间
+用途：保存会议级嘉宾信息字段配置。
 
-关系：
+它应替代或重命名早期的 `registration_fields` 概念。
 
-- 一条会议设置属于一个会议。
+字段可能包括：
 
-## registration_fields
+- 字段名称。
+- 字段标识。
+- 字段类型。
+- 是否必填。
+- 是否展示给嘉宾。
+- 是否可用于嘉宾登录。
+- 排序。
+- 选项配置。
 
-用途：保存某个会议的动态报名字段配置。
+### guests
 
-主要字段：
+用途：保存某个会议下的嘉宾。
 
-- `id`：主键
-- `meeting_id`：外键关联 `meetings.id`
-- `label`：字段名称
-- `key`：字段标识
-- `field_type`：字段类型，第一版支持 `text`、`number`、`select`
-- `required`：是否必填
-- `sort_order`：排序
-- `options_json`：选项配置 JSON，主要用于 `select`
-- `created_at`：创建时间
-- `updated_at`：更新时间
+嘉宾默认由管理员提前录入，也可以通过保留的嘉宾报名接口进入待处理流程。
+
+需要考虑：
+
+- 嘉宾所属会议。
+- 嘉宾基础身份。
+- 嘉宾标签。
+- 嘉宾二维码 token 或二维码标识。
+- 嘉宾是否启用。
+
+### guest_values
+
+用途：保存嘉宾动态字段值。
+
+如果嘉宾字段可配置，则嘉宾值可能需要独立明细表保存。
+
+### staff_meetings
+
+用途：表达工作人员和会议之间的授权关系。
+
+一个会议可以有多个工作人员，一个工作人员也可能负责多个会议。
+
+### check_ins
+
+用途：保存签到记录。
+
+至少需要保存：
+
+- 会议。
+- 嘉宾。
+- 签到时间。
+- 执行签到的工作人员。
+- 签到方式。
 
 约束：
 
-- `(meeting_id, key)` 唯一。
+- 一个嘉宾在一个会议中只签到一次。
 
-关系：
+### guest_login_rules
 
-- 一个报名字段属于一个会议。
-- 报名字段的值保存在 `registration_values`。
+用途：保存某个会议使用哪些嘉宾字段进行登录验证。
 
-## registrations
+例如：姓名 + 手机号。
 
-用途：保存报名记录主表。
+也可以作为 `meeting_settings` 的一部分实现，但需要在设计时明确。
 
-主要字段：
+## 当前已实现表的保留说明
 
-- `id`：主键
-- `meeting_id`：外键关联 `meetings.id`
-- `submitted_at`：提交时间
-- `created_at`：创建时间
-- `updated_at`：更新时间
+### users
 
-关系：
+当前用于保存管理员或后续登录用户信息。新方向下需要扩展到管理员和工作人员账号。
 
-- 一条报名记录属于一个会议。
-- 一条报名记录有多个字段值。
+### meetings
 
-## registration_values
+当前保存会议基础信息。仍然有效，但多管理员关系需要补充。
 
-用途：保存报名记录中每个动态字段的提交值。
+### meeting_settings
 
-主要字段：
+当前保存会议级配置。仍然有效，可承载部分登录规则或签到规则，但复杂后应拆表。
 
-- `id`：主键
-- `registration_id`：外键关联 `registrations.id`
-- `field_id`：外键关联 `registration_fields.id`
-- `field_key`：提交时的字段标识快照
-- `value_text`：字段值文本
-- `created_at`：创建时间
+### registration_fields
 
-关系：
+当前表示报名字段配置。新方向下应重评估为 `guest_fields` 或迁移到嘉宾字段配置模型。
 
-- 一条字段值属于一条报名记录。
-- 一条字段值对应一个报名字段。
+### registrations
 
-## 设计说明
+当前表示报名记录主表。新方向下主流程是管理员提前录入嘉宾，因此该表可能不再作为核心主表。
 
-动态报名数据采用 `registrations` 主表加 `registration_values` 明细表的方式保存，便于支持不同会议的不同字段配置，也便于后续做字段级查询、导出和统计。
+### registration_values
+
+当前表示报名动态字段值。新方向下可能由 `guest_values` 替代。
+
+## 下一步建议
+
+在继续后端开发前，应先创建新的执行计划，专门处理数据库模型调整：
+
+1. 明确是否保留当前迁移作为历史基线。
+2. 决定是新增迁移调整表，还是在早期阶段重置迁移。
+3. 设计 `guests`、`guest_fields`、`guest_values`、`check_ins`、`meeting_admins`、`staff_meetings` 等表。
+4. 同步更新 ORM 模型、迁移和 API 文档。

@@ -1,5 +1,5 @@
 [project]
-name = "zhihui-meet-backend"
+name = "green-mango-backend"
 version = "0.1.0"
 description = "FastAPI backend for Zhihui meeting and seminar management platform."
 requires-python = ">=3.12"
