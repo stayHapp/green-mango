@@ -21,6 +21,11 @@ a {
   text-decoration: none;
 }
 
+.phone-link {
+  color: #0f766e;
+  font-weight: 700;
+}
+
 .app-shell {
   min-height: 100vh;
 }

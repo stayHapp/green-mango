@@ -69,7 +69,7 @@ export interface CheckInRecord {
   guestId: string
   staffId: string
   checkedInAt: string
-  method: 'scan'
+  method: 'scan' | 'manual'
 }
 
 export interface MockData {

@@ -340,3 +340,47 @@ export function scanGuest(meetingId: string, staffId: string, qrToken: string): 
   checkIns = [checkIn, ...checkIns]
   return delay({ status: 'success', message: '签到成功。', guest, checkIn })
 }
+
+
+/**
+ * 手动标记嘉宾签到。
+ *
+ * 入参：
+ *   meetingId：会议 ID，必填。
+ *   staffId：工作人员 ID，必填。
+ *   guestId：嘉宾 ID，必填。
+ *
+ * 返回值：
+ *   Promise<ScanResult>：手动签到结果，成功时包含嘉宾和签到记录。
+ *
+ * 异常：
+ *   当前 mock 实现不主动抛出异常；真实 API 应校验工作人员会议权限。
+ */
+export function markGuestCheckedIn(meetingId: string, staffId: string, guestId: string): Promise<ScanResult> {
+  const meeting = data.meetings.find((item) => item.id === meetingId)
+  const guest = data.guests.find((item) => item.id === guestId)
+
+  if (!meeting || !guest) {
+    return delay({ status: 'invalid', message: '未找到会议或嘉宾。' })
+  }
+
+  if (guest.meetingId !== meetingId) {
+    return delay({ status: 'wrong_meeting', message: '该嘉宾不属于当前会议。', guest })
+  }
+
+  const existed = checkIns.find((record) => record.meetingId === meetingId && record.guestId === guest.id)
+  if (existed) {
+    return delay({ status: 'already_checked_in', message: '该嘉宾已签到，不能重复签到。', guest, checkIn: existed })
+  }
+
+  const checkIn: CheckInRecord = {
+    id: `ci-${Date.now()}`,
+    meetingId,
+    guestId: guest.id,
+    staffId,
+    checkedInAt: new Date().toISOString(),
+    method: 'manual',
+  }
+  checkIns = [checkIn, ...checkIns]
+  return delay({ status: 'success', message: '已手动标记签到。', guest, checkIn })
+}
