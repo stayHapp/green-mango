@@ -21,6 +21,8 @@ export interface Meeting {
 
 export type MeetingUpdateInput = Pick<Meeting, 'title' | 'description' | 'location' | 'startTime' | 'endTime' | 'status'>
 
+export type MeetingCreateInput = MeetingUpdateInput
+
 export interface AdminUser {
   id: string
   name: string
@@ -50,12 +52,37 @@ export interface Guest {
   qrToken: string
 }
 
+export interface GuestImportInput {
+  name: string
+  phone: string
+  organization?: string
+  title?: string
+  tag?: string
+  seat?: string
+}
+
+export interface GuestImportResult {
+  importedCount: number
+  invalidRows: number[]
+}
+
+export interface GuestQrGenerationResult {
+  generatedCount: number
+  existingCount: number
+}
+
 export interface StaffUser {
   id: string
   name: string
   phone: string
   account: string
   meetingIds: string[]
+}
+
+export interface StaffCreateInput {
+  name: string
+  phone: string
+  account: string
 }
 
 export type IdentityLoginResult =

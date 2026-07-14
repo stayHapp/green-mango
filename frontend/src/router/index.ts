@@ -19,6 +19,7 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: HomeView },
     { path: '/login', name: 'login', component: LoginView },
+    { path: '/meetings/:id', name: 'meeting-entry', redirect: (to) => ({ path: '/login', query: { meetingId: to.params.id } }) },
     { path: '/admin/login', redirect: (to) => ({ path: '/login', query: to.query }) },
     { path: '/admin/meetings', name: 'admin-meetings', component: AdminMeetingsView },
     { path: '/admin/meetings/:id', name: 'admin-meeting-detail', component: AdminMeetingDetailView },

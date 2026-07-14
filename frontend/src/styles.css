@@ -236,6 +236,24 @@ h1 {
   margin-bottom: 16px;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.meeting-entry-qr {
+  display: block;
+  width: 220px;
+  height: 220px;
+  margin: 16px auto 0;
+  background: #ffffff;
+  padding: 8px;
+}
+
 .staff-mobile-list {
   display: none;
 }

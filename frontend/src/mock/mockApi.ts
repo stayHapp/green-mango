@@ -8,11 +8,16 @@ import type {
   AdminUser,
   CheckInRecord,
   Guest,
+  GuestImportInput,
+  GuestImportResult,
+  GuestQrGenerationResult,
   IdentityLoginResult,
   Meeting,
+  MeetingCreateInput,
   MeetingUpdateInput,
   MockData,
   ScanResult,
+  StaffCreateInput,
   StaffUser,
 } from '../types'
 
@@ -108,6 +113,19 @@ export function updateMeeting(meetingId: string, input: MeetingUpdateInput): Pro
 }
 
 /**
+ * 创建会议并将当前管理员设为会议管理员。
+ *
+ * 入参：adminId 为管理员 ID；input 为必填的会议基础信息。
+ * 返回值：Promise<Meeting>：新建的会议。
+ * 异常：当前 mock 不主动抛出异常；真实 API 应校验管理员身份与时间字段。
+ */
+export function createMeeting(adminId: string, input: MeetingCreateInput): Promise<Meeting> {
+  const meeting: Meeting = { id: `m-${Date.now()}`, ...input, adminIds: [adminId], staffIds: [] }
+  data.meetings.push(meeting)
+  return delay(meeting)
+}
+
+/**
  * 获取指定会议的嘉宾字段配置。
  *
  * 入参：
@@ -144,6 +162,69 @@ export function listGuests(meetingId: string): Promise<Guest[]> {
 }
 
 /**
+ * 将已校验的嘉宾名单写入指定会议的 mock 数据。
+ *
+ * 入参：
+ *   meetingId：会议 ID，必填。
+ *   rows：待导入嘉宾行，必填；姓名和手机号为空的行会被拒绝。
+ *
+ * 返回值：
+ *   Promise<GuestImportResult>：返回成功导入数量和按 Excel 行号标记的无效行。
+ *
+ * 异常：
+ *   当前 mock 实现不主动抛出异常；真实 API 还应校验管理员权限与手机号重复情况。
+ */
+export function importGuests(meetingId: string, rows: GuestImportInput[]): Promise<GuestImportResult> {
+  const invalidRows: number[] = []
+  let importedCount = 0
+
+  // 逐行校验固定登录所需的姓名和手机号，仅将合格数据加入当前会议。
+  for (const [index, row] of rows.entries()) {
+    if (!row.name.trim() || !row.phone.trim()) {
+      invalidRows.push(index + 2)
+      continue
+    }
+
+    const suffix = `${Date.now()}-${index}`
+    data.guests.push({
+      id: `g-import-${suffix}`,
+      meetingId,
+      name: row.name.trim(),
+      phone: row.phone.trim(),
+      organization: row.organization?.trim() ?? '',
+      title: row.title?.trim() ?? '',
+      tag: row.tag?.trim() ?? '参会嘉宾',
+      seat: row.seat?.trim() ?? '',
+      qrToken: `QR-IMPORT-${suffix}`,
+    })
+    importedCount += 1
+  }
+
+  return delay({ importedCount, invalidRows })
+}
+
+/**
+ * 为会议嘉宾补齐个人二维码凭证，不覆盖已有凭证。
+ *
+ * 入参：meetingId 为会议 ID，必填。
+ * 返回值：Promise<GuestQrGenerationResult>：返回新生成与已存在的二维码数量。
+ * 异常：当前 mock 不主动抛出异常；真实 API 应校验会议管理员权限。
+ */
+export function generateGuestQrTokens(meetingId: string): Promise<GuestQrGenerationResult> {
+  let generatedCount = 0
+  let existingCount = 0
+  for (const [index, guest] of data.guests.filter((item) => item.meetingId === meetingId).entries()) {
+    if (guest.qrToken) {
+      existingCount += 1
+      continue
+    }
+    guest.qrToken = `QR-${meetingId}-${Date.now()}-${index}`
+    generatedCount += 1
+  }
+  return delay({ generatedCount, existingCount })
+}
+
+/**
  * 获取指定会议的工作人员列表。
  *
  * 入参：
@@ -157,6 +238,23 @@ export function listGuests(meetingId: string): Promise<Guest[]> {
  */
 export function listStaff(meetingId: string): Promise<StaffUser[]> {
   return delay(data.staff.filter((staff) => staff.meetingIds.includes(meetingId)))
+}
+
+/**
+ * 创建工作人员账号并授权其负责指定会议。
+ *
+ * 入参：meetingId 为会议 ID，input 包含必填的姓名、手机号和账号。
+ * 返回值：Promise<StaffUser | undefined>，账号重复或会议不存在时返回 undefined。
+ * 异常：当前 mock 不主动抛出异常；真实 API 应校验会议管理员权限。
+ */
+export function createStaff(meetingId: string, input: StaffCreateInput): Promise<StaffUser | undefined> {
+  if (!data.meetings.some((meeting) => meeting.id === meetingId) || data.staff.some((staff) => staff.account === input.account)) {
+    return delay(undefined)
+  }
+
+  const staff: StaffUser = { id: `s-${Date.now()}`, name: input.name, phone: input.phone, account: input.account, meetingIds: [meetingId] }
+  data.staff.push(staff)
+  return delay(staff)
 }
 
 /**
