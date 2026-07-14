@@ -1,5 +1,5 @@
 <template>
-  <section class="page">
+  <section class="page staff-check-in-page">
     <div class="page-heading">
       <div>
         <p class="eyebrow">工作人员端</p>
@@ -13,16 +13,6 @@
         <p v-else class="muted">请先选择会议。</p>
       </div>
       <div class="heading-actions">
-        <el-button
-          v-if="session.staff && meeting"
-          type="primary"
-          plain
-          :icon="Download"
-          :loading="exporting"
-          @click="handleExportCheckInSheet"
-        >
-          导出签到表
-        </el-button>
         <el-button v-if="!session.staff" type="primary" @click="goLogin">去登录</el-button>
       </div>
     </div>
@@ -30,13 +20,19 @@
     <el-empty v-if="!session.staff" description="暂无工作人员会话" />
     <el-empty v-else-if="!meeting" description="未找到会议" />
     <div v-else class="guest-content-stack">
-      <div class="stats-grid">
+      <el-alert
+        v-if="!isOnline"
+        type="error"
+        :closable="false"
+        title="网络连接已断开，暂时无法完成新的签到操作；请恢复网络后重试。"
+      />
+      <div class="stats-grid staff-stats-grid">
         <el-card shadow="never"><div class="stat-number">{{ guests.length }}</div><div class="muted">参会人员</div></el-card>
         <el-card shadow="never"><div class="stat-number">{{ checkedCount }}</div><div class="muted">已签到</div></el-card>
         <el-card shadow="never"><div class="stat-number">{{ uncheckedCount }}</div><div class="muted">未签到</div></el-card>
       </div>
 
-      <div class="detail-grid">
+      <div class="detail-grid staff-detail-grid">
         <el-card shadow="never" class="form-card">
           <template #header>扫码签到</template>
           <el-form label-position="top" @submit.prevent>
@@ -45,7 +41,7 @@
             </el-form-item>
             <div class="action-row">
               <el-button @click="fillDemoToken">填入示例</el-button>
-              <el-button type="primary" :loading="loading" @click="handleScan">确认签到</el-button>
+              <el-button type="primary" :loading="loading" :disabled="!isOnline" @click="handleScan">确认签到</el-button>
             </div>
           </el-form>
         </el-card>
@@ -69,7 +65,8 @@
 
       <el-tabs model-value="guests" class="section-tabs">
         <el-tab-pane label="参会人员" name="guests">
-          <el-table :data="guestRows" row-key="id">
+          <el-input v-model="guestQuery" clearable class="table-search" placeholder="搜索姓名、手机号、单位或座位号，核验嘉宾签到状态" />
+          <el-table class="staff-desktop-table" :data="filteredGuestRows" row-key="id">
             <el-table-column prop="name" label="姓名" width="120" />
             <el-table-column label="电话" min-width="150">
               <template #default="{ row }">
@@ -86,14 +83,42 @@
             </el-table-column>
             <el-table-column label="操作" width="140">
               <template #default="{ row }">
-                <el-button v-if="!row.checkedIn" type="primary" size="small" :loading="manualLoadingId === row.id" @click="handleManualCheckIn(row.id)">标记签到</el-button>
+                <el-button v-if="!row.checkedIn" type="primary" size="small" :loading="manualLoadingId === row.id" :disabled="!isOnline" @click="handleManualCheckIn(row.id)">标记签到</el-button>
                 <span v-else class="muted">已完成</span>
               </template>
             </el-table-column>
           </el-table>
+          <div class="staff-mobile-list">
+            <el-empty v-if="!filteredGuestRows.length" description="未找到匹配嘉宾" :image-size="72" />
+            <article v-for="row in filteredGuestRows" :key="row.id" class="staff-mobile-card">
+              <div class="staff-mobile-card__header">
+                <div>
+                  <strong>{{ row.name }}</strong>
+                  <p>{{ row.organization }}</p>
+                </div>
+                <el-tag :type="row.checkedIn ? 'success' : 'info'">{{ row.checkedIn ? '已签到' : '未签到' }}</el-tag>
+              </div>
+              <div class="staff-mobile-card__meta">
+                <span>{{ row.tag }}</span>
+                <span>座位 {{ row.seat }}</span>
+              </div>
+              <a v-if="!row.checkedIn" class="phone-link staff-mobile-card__phone" :href="`tel:${row.phone}`">{{ row.phone }}</a>
+              <span v-else class="staff-mobile-card__phone">{{ row.phone }}</span>
+              <el-button
+                v-if="!row.checkedIn"
+                class="staff-mobile-card__action"
+                type="primary"
+                :loading="manualLoadingId === row.id"
+                :disabled="!isOnline"
+                @click="handleManualCheckIn(row.id)"
+              >
+                确认签到
+              </el-button>
+            </article>
+          </div>
         </el-tab-pane>
         <el-tab-pane label="签到列表" name="checkins">
-          <el-table :data="checkInRows" row-key="id">
+          <el-table class="staff-desktop-table" :data="checkInRows" row-key="id">
             <el-table-column prop="guestName" label="姓名" width="120" />
             <el-table-column prop="phone" label="电话" min-width="150" />
             <el-table-column label="签到时间" min-width="180">
@@ -103,6 +128,17 @@
               <template #default="{ row }">{{ methodText(row.method) }}</template>
             </el-table-column>
           </el-table>
+          <div class="staff-mobile-list">
+            <el-empty v-if="!checkInRows.length" description="暂无签到记录" :image-size="72" />
+            <article v-for="row in checkInRows" :key="row.id" class="staff-mobile-card staff-mobile-check-in-card">
+              <div class="staff-mobile-card__header">
+                <strong>{{ row.guestName }}</strong>
+                <el-tag type="success">{{ methodText(row.method) }}</el-tag>
+              </div>
+              <span class="staff-mobile-card__phone">{{ row.phone }}</span>
+              <p class="staff-mobile-card__time">{{ formatDate(row.checkedInAt) }}</p>
+            </article>
+          </div>
         </el-tab-pane>
       </el-tabs>
     </div>
@@ -110,11 +146,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Download } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { utils, writeFileXLSX } from 'xlsx'
 
 import { getMeeting, listCheckIns, listGuests, markGuestCheckedIn, scanGuest } from '../../mock/mockApi'
 import { useSessionStore } from '../../stores/session'
@@ -129,19 +162,6 @@ interface CheckInRow extends CheckInRecord {
   phone: string
 }
 
-interface CheckInExportRow {
-  序号: number
-  姓名: string
-  手机号: string
-  单位: string
-  职务: string
-  身份: string
-  座位号: string
-  签到状态: string
-  签到时间: string
-  签到方式: string
-}
-
 const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
@@ -149,9 +169,10 @@ const meeting = ref<Meeting>()
 const guests = ref<Guest[]>([])
 const checkIns = ref<CheckInRecord[]>([])
 const qrToken = ref('')
+const guestQuery = ref('')
 const loading = ref(false)
 const manualLoadingId = ref('')
-const exporting = ref(false)
+const isOnline = ref(navigator.onLine)
 const scanResult = ref<ScanResult>()
 const resultAlertType = computed(alertType)
 const checkedCount = computed(() => checkIns.value.length)
@@ -160,6 +181,7 @@ const guestRows = computed<GuestRow[]>(() => guests.value.map((guest) => ({
   ...guest,
   checkedIn: checkIns.value.some((record) => record.guestId === guest.id),
 })))
+const filteredGuestRows = computed<GuestRow[]>(filterGuestRows)
 const checkInRows = computed<CheckInRow[]>(() => checkIns.value.map((record) => {
   const guest = guests.value.find((item) => item.id === record.guestId)
   return {
@@ -168,6 +190,81 @@ const checkInRows = computed<CheckInRow[]>(() => checkIns.value.map((record) => 
     phone: guest?.phone ?? '-',
   }
 }))
+
+/**
+ * 按工作人员输入的关键信息筛选嘉宾，用于现场身份与签到状态核验。
+ *
+ * 入参：
+ *   无；函数读取当前搜索关键词和已加载的嘉宾行。
+ *
+ * 返回值：
+ *   GuestRow[]：匹配姓名、手机号、单位或座位号的嘉宾行；空关键词时返回全部嘉宾。
+ *
+ * 异常：
+ *   当前函数不主动抛出异常。
+ */
+function filterGuestRows(): GuestRow[] {
+  const keyword = guestQuery.value.trim().toLocaleLowerCase('zh-CN')
+
+  // 未输入关键词时保留完整名单，方便工作人员直接核验与签到。
+  if (!keyword) {
+    return guestRows.value
+  }
+
+  return guestRows.value.filter((guest) => [guest.name, guest.phone, guest.organization, guest.seat]
+    .some((value) => value.toLocaleLowerCase('zh-CN').includes(keyword)))
+}
+
+/**
+ * 同步浏览器当前网络连接状态。
+ *
+ * 入参：
+ *   无；函数读取浏览器 Navigator（导航器）对象的在线状态。
+ *
+ * 返回值：
+ *   void：更新页面网络状态提示和签到按钮可用状态。
+ *
+ * 异常：
+ *   当前函数不主动抛出异常；浏览器不支持网络状态检测时按其默认在线状态处理。
+ */
+function updateNetworkStatus(): void {
+  isOnline.value = navigator.onLine
+}
+
+/**
+ * 启动工作人员签到页的网络状态监听。
+ *
+ * 入参：
+ *   无。
+ *
+ * 返回值：
+ *   void：注册网络连接和断开事件监听，并立即同步一次状态。
+ *
+ * 异常：
+ *   当前函数不主动抛出异常。
+ */
+function startNetworkMonitoring(): void {
+  updateNetworkStatus()
+  window.addEventListener('online', updateNetworkStatus)
+  window.addEventListener('offline', updateNetworkStatus)
+}
+
+/**
+ * 停止工作人员签到页的网络状态监听，避免离开页面后残留事件处理器。
+ *
+ * 入参：
+ *   无。
+ *
+ * 返回值：
+ *   void：移除网络连接和断开事件监听。
+ *
+ * 异常：
+ *   当前函数不主动抛出异常。
+ */
+function stopNetworkMonitoring(): void {
+  window.removeEventListener('online', updateNetworkStatus)
+  window.removeEventListener('offline', updateNetworkStatus)
+}
 
 /**
  * 加载工作人员签到工作台所需数据。
@@ -271,6 +368,12 @@ async function handleScan(): Promise<void> {
     return
   }
 
+  // 网络断开时不提交新的签到请求，避免工作人员误以为操作已成功。
+  if (!isOnline.value) {
+    scanResult.value = { status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' }
+    return
+  }
+
   if (!qrToken.value.trim()) {
     scanResult.value = { status: 'invalid', message: '请填写嘉宾二维码 token。' }
     return
@@ -300,137 +403,16 @@ async function handleManualCheckIn(guestId: string): Promise<void> {
     return
   }
 
+  // 网络断开时不提交新的签到请求，避免产生无法确认的现场状态。
+  if (!isOnline.value) {
+    scanResult.value = { status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' }
+    return
+  }
+
   manualLoadingId.value = guestId
   scanResult.value = await markGuestCheckedIn(String(route.params.id), session.staff.id, guestId)
   manualLoadingId.value = ''
   await refreshCheckIns()
-}
-
-/**
- * 将全量嘉宾和签到记录转换为导出工作表行。
- *
- * 入参：
- *   guestList：当前会议的嘉宾列表，必填。
- *   records：当前会议的签到记录，必填；每位嘉宾最多一条记录。
- *
- * 返回值：
- *   CheckInExportRow[]：按嘉宾列表顺序排列的签到表行，包含未签到嘉宾。
- *
- * 异常：
- *   当前函数不主动抛出异常；签到记录中找不到嘉宾时不会影响其他行。
- *
- * 示例：
- *   createCheckInExportRows(guests.value, checkIns.value)
- */
-function createCheckInExportRows(guestList: Guest[], records: CheckInRecord[]): CheckInExportRow[] {
-  const checkInByGuestId = new Map<string, CheckInRecord>()
-
-  // 按嘉宾 ID 建立索引，便于在导出时快速关联签到信息。
-  for (const record of records) {
-    checkInByGuestId.set(record.guestId, record)
-  }
-
-  const rows: CheckInExportRow[] = []
-
-  // 以嘉宾列表为基准，确保未签到嘉宾也会出现在导出的签到表中。
-  for (const [index, guest] of guestList.entries()) {
-    const record = checkInByGuestId.get(guest.id)
-    rows.push({
-      序号: index + 1,
-      姓名: guest.name,
-      手机号: guest.phone,
-      单位: guest.organization,
-      职务: guest.title,
-      身份: guest.tag,
-      座位号: guest.seat,
-      签到状态: record ? '已签到' : '未签到',
-      签到时间: record ? formatExportDate(record.checkedInAt) : '',
-      签到方式: record ? methodText(record.method) : '',
-    })
-  }
-
-  return rows
-}
-
-/**
- * 格式化 Excel 工作表中的签到时间。
- *
- * 入参：
- *   value：ISO 格式日期时间字符串，必填。
- *
- * 返回值：
- *   string：按中文地区习惯展示的本地日期时间。
- *
- * 异常：
- *   当前函数不主动抛出异常；非法日期将按浏览器默认结果展示。
- */
-function formatExportDate(value: string): string {
-  return new Date(value).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'medium', hour12: false })
-}
-
-/**
- * 生成符合文件系统命名规则的签到表文件名。
- *
- * 入参：
- *   currentMeeting：当前会议详情，必填。
- *
- * 返回值：
- *   string：由会议标题和“嘉宾签到表”组成的 xlsx 文件名。
- *
- * 异常：
- *   当前函数不主动抛出异常；标题中的文件系统保留字符会替换为下划线。
- */
-function buildCheckInExportFileName(currentMeeting: Meeting): string {
-  const safeTitle = currentMeeting.title.replace(/[\\/:*?"<>|]/g, '_')
-  return `${safeTitle}-嘉宾签到表.xlsx`
-}
-
-/**
- * 导出当前会议的全量嘉宾签到表为 xlsx 文件。
- *
- * 入参：
- *   无；函数读取已加载的会议、嘉宾和签到记录。
- *
- * 返回值：
- *   Promise<void>：浏览器生成并下载 Excel 文件后结束。
- *
- * 异常：
- *   导出库写入文件失败时展示错误提示，不向页面外抛出异常。
- *
- * 示例：
- *   await handleExportCheckInSheet()
- */
-async function handleExportCheckInSheet(): Promise<void> {
-  if (!meeting.value) {
-    ElMessage.warning('未找到会议，无法导出签到表。')
-    return
-  }
-
-  exporting.value = true
-
-  try {
-    const worksheet = utils.json_to_sheet(createCheckInExportRows(guests.value, checkIns.value))
-    worksheet['!cols'] = [
-      { wch: 8 },
-      { wch: 14 },
-      { wch: 16 },
-      { wch: 24 },
-      { wch: 16 },
-      { wch: 14 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 22 },
-      { wch: 12 },
-    ]
-    const workbook = utils.book_new()
-    utils.book_append_sheet(workbook, worksheet, '嘉宾签到表')
-    writeFileXLSX(workbook, buildCheckInExportFileName(meeting.value))
-    ElMessage.success('嘉宾签到表已开始下载。')
-  } catch {
-    ElMessage.error('签到表导出失败，请稍后重试。')
-  } finally {
-    exporting.value = false
-  }
 }
 
 /**
@@ -486,4 +468,6 @@ function methodText(method: CheckInRecord['method']): string {
 }
 
 onMounted(loadDetail)
+onMounted(startNetworkMonitoring)
+onUnmounted(stopNetworkMonitoring)
 </script>

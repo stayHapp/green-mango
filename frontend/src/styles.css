@@ -232,6 +232,37 @@ h1 {
   padding: 8px 16px 16px;
 }
 
+.table-search {
+  margin-bottom: 16px;
+}
+
+.staff-mobile-list {
+  display: none;
+}
+
+.staff-meeting-list {
+  display: grid;
+  gap: 12px;
+}
+
+.staff-meeting-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.staff-meeting-card h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 17px;
+  line-height: 1.45;
+}
+
 .stat-number {
   color: #111827;
   font-size: 28px;
@@ -359,5 +390,143 @@ h1 {
   .example-grid,
   .feature-menu-grid {
     grid-template-columns: 1fr;
+  }
+
+  .staff-check-in-page {
+    padding: 20px 12px 32px;
+  }
+
+  .staff-check-in-page h1 {
+    font-size: 24px;
+  }
+
+  .staff-check-in-page .compact-info-list {
+    grid-template-columns: 38px minmax(0, 1fr);
+    font-size: 14px;
+    margin-top: 12px;
+  }
+
+  .staff-stats-grid {
+    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .staff-stats-grid .el-card__body {
+    padding: 12px 8px;
+    text-align: center;
+  }
+
+  .staff-stats-grid .stat-number {
+    font-size: 22px;
+  }
+
+  .staff-stats-grid .muted {
+    font-size: 12px;
+  }
+
+  .staff-detail-grid {
+    gap: 12px;
+  }
+
+  .staff-check-in-page .el-card__header {
+    padding: 12px 14px;
+  }
+
+  .staff-check-in-page .el-card__body {
+    padding: 14px;
+  }
+
+  .staff-check-in-page .action-row {
+    gap: 8px;
+  }
+
+  .staff-check-in-page .action-row .el-button {
+    flex: 1;
+    min-height: 42px;
+    margin: 0;
+  }
+
+  .staff-check-in-page .section-tabs {
+    padding: 6px 12px 12px;
+  }
+
+  .staff-check-in-page .el-tabs__item {
+    padding: 0 14px;
+  }
+
+  .staff-check-in-page .table-search .el-input__wrapper {
+    min-height: 44px;
+  }
+
+  .staff-check-in-page .staff-desktop-table {
+    display: none;
+  }
+
+  .staff-check-in-page .staff-mobile-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .staff-mobile-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 14px;
+  }
+
+  .staff-mobile-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .staff-mobile-card__header strong {
+    color: #111827;
+    font-size: 17px;
+  }
+
+  .staff-mobile-card__header p,
+  .staff-mobile-card__time {
+    margin: 4px 0 0;
+    color: #6b7280;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .staff-mobile-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    margin-top: 12px;
+    color: #4b5563;
+    font-size: 13px;
+  }
+
+  .staff-mobile-card__phone {
+    display: block;
+    margin-top: 12px;
+    color: #374151;
+    font-size: 15px;
+  }
+
+  .staff-mobile-card__action {
+    width: 100%;
+    min-height: 42px;
+    margin-top: 14px;
+  }
+
+  .staff-mobile-check-in-card {
+    padding: 13px 14px;
+  }
+
+  .staff-meeting-card {
+    padding: 14px;
+  }
+
+  .staff-meeting-card .el-button {
+    flex: 0 0 auto;
+    min-width: 76px;
+    min-height: 42px;
   }
 }

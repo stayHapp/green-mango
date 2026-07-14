@@ -10,18 +10,13 @@
     </div>
 
     <el-empty v-if="!session.staff" description="暂无工作人员会话" />
-    <el-table v-else :data="meetings" class="data-table" row-key="id">
-      <el-table-column prop="title" label="会议名称" min-width="220" />
-      <el-table-column prop="location" label="地点" min-width="200" />
-      <el-table-column label="时间" min-width="260">
-        <template #default="{ row }">{{ formatDate(row.startTime) }} - {{ formatDate(row.endTime) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="140">
-        <template #default="{ row }">
-          <el-button type="primary" size="small" @click="goCheckIn(row.id)">签到</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <el-empty v-else-if="!meetings.length" description="暂无负责会议" />
+    <div v-else class="staff-meeting-list">
+      <article v-for="meeting in meetings" :key="meeting.id" class="staff-meeting-card">
+        <h2>{{ meeting.title }}</h2>
+        <el-button type="primary" @click="goCheckIn(meeting.id)">签到</el-button>
+      </article>
+    </div>
   </section>
 </template>
 
@@ -88,22 +83,6 @@ function goLogin(): void {
  */
 function goCheckIn(meetingId: string): void {
   router.push(`/staff/meetings/${meetingId}/check-in`)
-}
-
-/**
- * 格式化日期时间展示。
- *
- * 入参：
- *   value：ISO 日期字符串，必填。
- *
- * 返回值：
- *   string：中文本地化日期时间文本。
- *
- * 异常：
- *   当前函数不主动抛出异常；非法日期会按浏览器默认结果展示。
- */
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' })
 }
 
 onMounted(loadMeetings)

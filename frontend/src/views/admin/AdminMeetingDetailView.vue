@@ -8,6 +8,16 @@
       </div>
       <div class="heading-actions">
         <el-button v-if="!session.admin" type="primary" @click="goLogin">去登录</el-button>
+        <el-button
+          v-else
+          type="primary"
+          plain
+          :icon="Download"
+          :loading="exporting"
+          @click="handleExportCheckInSheet"
+        >
+          导出签到表
+        </el-button>
         <el-tag type="success">签到 {{ checkedCount }}/{{ guests.length }}</el-tag>
       </div>
     </div>
@@ -98,10 +108,26 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Download } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { utils, writeFileXLSX } from 'xlsx'
 
 import { getMeeting, listCheckIns, listGuestFields, listGuests, listStaff, updateMeeting } from '../../mock/mockApi'
 import { useSessionStore } from '../../stores/session'
 import type { CheckInRecord, Guest, GuestField, Meeting, MeetingStatus, StaffUser } from '../../types'
+
+interface CheckInExportRow {
+  序号: number
+  姓名: string
+  手机号: string
+  单位: string
+  职务: string
+  身份: string
+  座位号: string
+  签到状态: string
+  签到时间: string
+  签到方式: string
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -112,6 +138,7 @@ const fields = ref<GuestField[]>([])
 const staff = ref<StaffUser[]>([])
 const checkIns = ref<CheckInRecord[]>([])
 const saving = ref(false)
+const exporting = ref(false)
 const saveMessage = ref('')
 const saveMessageType = ref<'success' | 'warning' | 'error' | 'info'>('success')
 const editForm = ref({
@@ -249,6 +276,141 @@ function guestName(guestId: string): string {
  */
 function staffName(staffId: string): string {
   return staff.value.find((item) => item.id === staffId)?.name ?? '未知工作人员'
+}
+
+/**
+ * 将全量嘉宾和签到记录转换为管理员导出的工作表行。
+ *
+ * 入参：
+ *   guestList：当前会议的嘉宾列表，必填。
+ *   records：当前会议的签到记录，必填；每位嘉宾最多一条。
+ *
+ * 返回值：
+ *   CheckInExportRow[]：按嘉宾列表顺序排列的导出行，包含未签到嘉宾。
+ *
+ * 异常：
+ *   当前函数不主动抛出异常；找不到关联签到记录时，该嘉宾按未签到处理。
+ *
+ * 示例：
+ *   createCheckInExportRows(guests.value, checkIns.value)
+ */
+function createCheckInExportRows(guestList: Guest[], records: CheckInRecord[]): CheckInExportRow[] {
+  const checkInByGuestId = new Map<string, CheckInRecord>()
+
+  // 按嘉宾 ID 建立索引，避免导出每一行时重复遍历签到记录。
+  for (const record of records) {
+    checkInByGuestId.set(record.guestId, record)
+  }
+
+  // 以全量嘉宾为基准，确保管理员可同时获取已签到和未签到名单。
+  return guestList.map((guest, index) => {
+    const record = checkInByGuestId.get(guest.id)
+    return {
+      序号: index + 1,
+      姓名: guest.name,
+      手机号: guest.phone,
+      单位: guest.organization,
+      职务: guest.title,
+      身份: guest.tag,
+      座位号: guest.seat,
+      签到状态: record ? '已签到' : '未签到',
+      签到时间: record ? formatExportDate(record.checkedInAt) : '',
+      签到方式: record ? methodText(record.method) : '',
+    }
+  })
+}
+
+/**
+ * 格式化 Excel 工作表中的签到时间。
+ *
+ * 入参：
+ *   value：ISO 格式日期时间字符串，必填。
+ *
+ * 返回值：
+ *   string：按中文地区习惯展示的本地日期时间。
+ *
+ * 异常：
+ *   当前函数不主动抛出异常；非法日期由浏览器按默认规则处理。
+ */
+function formatExportDate(value: string): string {
+  return new Date(value).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'medium', hour12: false })
+}
+
+/**
+ * 生成符合文件系统命名规则的签到表文件名。
+ *
+ * 入参：
+ *   currentMeeting：当前会议详情，必填。
+ *
+ * 返回值：
+ *   string：由会议标题和“嘉宾签到表”组成的 xlsx 文件名。
+ *
+ * 异常：
+ *   当前函数不主动抛出异常；标题中的文件系统保留字符会替换为下划线。
+ */
+function buildCheckInExportFileName(currentMeeting: Meeting): string {
+  const safeTitle = currentMeeting.title.replace(/[\\/:*?"<>|]/g, '_')
+  return `${safeTitle}-嘉宾签到表.xlsx`
+}
+
+/**
+ * 将当前会议的全量嘉宾签到表导出为 xlsx 文件。
+ *
+ * 入参：
+ *   无；函数读取已加载的会议、嘉宾和签到记录。
+ *
+ * 返回值：
+ *   Promise<void>：浏览器生成并下载 Excel 文件后结束。
+ *
+ * 异常：
+ *   会议未加载或导出库写入失败时展示页面提示，不向页面外抛出异常。
+ *
+ * 示例：
+ *   await handleExportCheckInSheet()
+ */
+async function handleExportCheckInSheet(): Promise<void> {
+  if (!meeting.value) {
+    ElMessage.warning('未找到会议，无法导出签到表。')
+    return
+  }
+
+  exporting.value = true
+
+  try {
+    const worksheet = utils.json_to_sheet(createCheckInExportRows(guests.value, checkIns.value))
+    worksheet['!cols'] = [
+      { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 24 }, { wch: 16 },
+      { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 12 },
+    ]
+    const workbook = utils.book_new()
+    utils.book_append_sheet(workbook, worksheet, '嘉宾签到表')
+    writeFileXLSX(workbook, buildCheckInExportFileName(meeting.value))
+    ElMessage.success('嘉宾签到表已开始下载。')
+  } catch {
+    ElMessage.error('签到表导出失败，请稍后重试。')
+  } finally {
+    exporting.value = false
+  }
+}
+
+/**
+ * 将签到方式转换为中文文本。
+ *
+ * 入参：
+ *   method：签到方式，必填，可取 scan 或 manual。
+ *
+ * 返回值：
+ *   string：对应的中文签到方式文本。
+ *
+ * 异常：
+ *   当前函数不主动抛出异常。
+ */
+function methodText(method: CheckInRecord['method']): string {
+  const methodTextMap: Record<CheckInRecord['method'], string> = {
+    scan: '扫码',
+    manual: '手动',
+  }
+  return methodTextMap[method]
 }
 
 /**
