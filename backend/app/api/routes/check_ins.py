@@ -1,5 +1,7 @@
 """工作人员签到路由。"""
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.dependencies import CurrentStaff, DatabaseSession
@@ -8,6 +10,33 @@ from app.services.check_ins import CheckInBusinessError, create_check_in, get_au
 from app.models.guest import Guest
 
 router = APIRouter(prefix="/staff/meetings")
+
+
+def normalize_utc_datetime(value: datetime) -> datetime:
+    """恢复 SQLite 丢失的 UTC 时区信息。
+
+    入参：value 为数据库读取的签到时间，必填。
+    返回值：datetime：已有时区时保持原值，无时区时补为 UTC。
+    异常：当前函数不主动抛出异常。
+    """
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def build_check_in_response(check_in) -> CheckInResponse:
+    """把签到 ORM 对象转换为时区明确的接口响应。
+
+    入参：check_in 为已持久化签到记录，必填。
+    返回值：CheckInResponse：字段完整且签到时间按 UTC 表达的响应。
+    异常：签到记录字段缺失时由属性访问抛出异常。
+    """
+    return CheckInResponse(
+        id=check_in.id,
+        meeting_id=check_in.meeting_id,
+        guest_id=check_in.guest_id,
+        staff_id=check_in.staff_id,
+        method=check_in.method,
+        checked_in_at=normalize_utc_datetime(check_in.checked_in_at),
+    )
 
 
 def load_staff_meeting_or_404(db: DatabaseSession, staff: CurrentStaff, meeting_id: int):
@@ -31,7 +60,7 @@ def execute_check_in(db: DatabaseSession, meeting, staff: CurrentStaff, guest: G
     异常：签到业务规则不满足时抛出对应状态码的 HTTPException。
     """
     try:
-        return create_check_in(db, meeting, staff, guest, method)
+        return build_check_in_response(create_check_in(db, meeting, staff, guest, method))
     except CheckInBusinessError as error:
         raise HTTPException(status_code=error.status_code, detail=error.message) from error
 
@@ -74,7 +103,10 @@ def get_check_ins(meeting_id: int, db: DatabaseSession, staff: CurrentStaff) -> 
     返回值：list[CheckInResponse]：签到记录列表。
     异常：无会议权限时返回 404。
     """
-    return list_check_ins(db, load_staff_meeting_or_404(db, staff, meeting_id))
+    return [
+        build_check_in_response(check_in)
+        for check_in in list_check_ins(db, load_staff_meeting_or_404(db, staff, meeting_id))
+    ]
 
 
 @router.get("/{meeting_id}/guests", response_model=list[StaffGuestResponse])
@@ -99,7 +131,7 @@ def search_meeting_guests(
             seat=guest.seat,
             is_active=guest.is_active,
             checked_in=check_in is not None,
-            checked_in_at=check_in.checked_in_at if check_in else None,
+            checked_in_at=normalize_utc_datetime(check_in.checked_in_at) if check_in else None,
         )
         for guest, check_in in search_guests_with_check_in_status(db, meeting, query)
     ]

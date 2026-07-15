@@ -18,6 +18,8 @@
     </div>
 
     <el-empty v-if="!session.staff" description="暂无工作人员会话" />
+    <el-alert v-else-if="pageError" type="error" :closable="false" :title="pageError" />
+    <el-skeleton v-else-if="pageLoading" :rows="8" animated />
     <el-empty v-else-if="!meeting" description="未找到会议" />
     <div v-else class="guest-content-stack">
       <el-alert
@@ -149,18 +151,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Html5Qrcode } from 'html5-qrcode'
 
-import { getMeeting, listCheckIns, listGuests, markGuestCheckedIn, scanGuest } from '../../mock/mockApi'
+import { getApiErrorMessage } from '../../api/client'
+import {
+  listStaffCheckIns,
+  listStaffMeetings,
+  manualStaffCheckIn,
+  scanStaffCheckIn,
+  searchStaffGuests,
+  type StaffGuest,
+} from '../../api/staffCheckIns'
 import { useSessionStore } from '../../stores/session'
-import type { CheckInRecord, Guest, Meeting, ScanResult } from '../../types'
-
-interface GuestRow extends Guest {
-  checkedIn: boolean
-}
+import type { CheckInRecord, Meeting, ScanResult } from '../../types'
 
 interface CheckInRow extends CheckInRecord {
   guestName: string
@@ -173,7 +179,8 @@ const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const meeting = ref<Meeting>()
-const guests = ref<Guest[]>([])
+const guests = ref<StaffGuest[]>([])
+const displayedGuests = ref<StaffGuest[]>([])
 const checkIns = ref<CheckInRecord[]>([])
 const qrToken = ref('')
 const guestQuery = ref('')
@@ -181,16 +188,15 @@ const loading = ref(false)
 const manualLoadingId = ref('')
 const isOnline = ref(navigator.onLine)
 const cameraScanning = ref(false)
+const pageLoading = ref(false)
+const pageError = ref('')
+let guestSearchTimer: number | undefined
 let qrScanner: Html5Qrcode | undefined
 const scanResult = ref<ScanResult>()
 const resultAlertType = computed(alertType)
 const checkedCount = computed(() => checkIns.value.length)
 const uncheckedCount = computed(() => Math.max(guests.value.length - checkedCount.value, 0))
-const guestRows = computed<GuestRow[]>(() => guests.value.map((guest) => ({
-  ...guest,
-  checkedIn: checkIns.value.some((record) => record.guestId === guest.id),
-})))
-const filteredGuestRows = computed<GuestRow[]>(filterGuestRows)
+const filteredGuestRows = computed(() => displayedGuests.value)
 const checkInRows = computed<CheckInRow[]>(() => checkIns.value.map((record) => {
   const guest = guests.value.find((item) => item.id === record.guestId)
   return {
@@ -201,27 +207,17 @@ const checkInRows = computed<CheckInRow[]>(() => checkIns.value.map((record) => 
 }))
 
 /**
- * 按工作人员输入的关键信息筛选嘉宾，用于现场身份与签到状态核验。
+ * 延迟触发服务端嘉宾搜索，避免连续输入产生过多请求。
  *
- * 入参：
- *   无；函数读取当前搜索关键词和已加载的嘉宾行。
- *
- * 返回值：
- *   GuestRow[]：匹配姓名、手机号、单位或座位号的嘉宾行；空关键词时返回全部嘉宾。
- *
- * 异常：
- *   当前函数不主动抛出异常。
+ * 入参：无；函数读取当前搜索关键词。
+ * 返回值：void：重置 300 毫秒搜索计时器。
+ * 异常：搜索接口异常由 loadGuests 转换为页面消息。
  */
-function filterGuestRows(): GuestRow[] {
-  const keyword = guestQuery.value.trim().toLocaleLowerCase('zh-CN')
-
-  // 未输入关键词时保留完整名单，方便工作人员直接核验与签到。
-  if (!keyword) {
-    return guestRows.value
+function scheduleGuestSearch(): void {
+  if (guestSearchTimer !== undefined) {
+    window.clearTimeout(guestSearchTimer)
   }
-
-  return guestRows.value.filter((guest) => [guest.name, guest.phone, guest.organization, guest.seat]
-    .some((value) => value.toLocaleLowerCase('zh-CN').includes(keyword)))
+  guestSearchTimer = window.setTimeout(() => { void loadGuests(guestQuery.value) }, 300)
 }
 
 /**
@@ -313,19 +309,46 @@ async function stopCameraScan(): Promise<void> {
  * 返回值：
  *   Promise<void>：加载完成后更新会议、参会人员和签到列表。
  *
- * 异常：
- *   当前 mock API 不主动抛出异常；会议不存在时页面展示空状态。
+ * 异常：登录过期、会议未授权或网络异常时展示页面错误。
  */
 async function loadDetail(): Promise<void> {
   const meetingId = String(route.params.id)
-  const [meetingData, guestData, checkInData] = await Promise.all([
-    getMeeting(meetingId),
-    listGuests(meetingId),
-    listCheckIns(meetingId),
-  ])
-  meeting.value = meetingData
-  guests.value = guestData
-  checkIns.value = checkInData
+  pageLoading.value = true
+  pageError.value = ''
+  try {
+    const [meetingData, guestData, checkInData] = await Promise.all([
+      listStaffMeetings(),
+      searchStaffGuests(meetingId, ''),
+      listStaffCheckIns(meetingId),
+    ])
+    meeting.value = meetingData.find((item) => item.id === meetingId)
+    if (!meeting.value) {
+      throw new Error('会议不存在或无签到权限。')
+    }
+    guests.value = guestData
+    displayedGuests.value = guestData
+    checkIns.value = checkInData
+  } catch (error) {
+    meeting.value = undefined
+    pageError.value = getApiErrorMessage(error, '签到工作台加载失败。')
+  } finally {
+    pageLoading.value = false
+  }
+}
+
+/**
+ * 调用服务端按关键词查询嘉宾。
+ *
+ * 入参：query 为姓名、手机号、单位或座位关键词，可为空。
+ * 返回值：Promise<void>：成功后更新当前展示结果。
+ * 异常：接口异常时保留原列表并展示消息提示。
+ */
+async function loadGuests(query: string): Promise<void> {
+  try {
+    displayedGuests.value = await searchStaffGuests(String(route.params.id), query.trim())
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '嘉宾搜索失败。'))
+  }
 }
 
 /**
@@ -341,7 +364,15 @@ async function loadDetail(): Promise<void> {
  *   当前 mock API 不主动抛出异常。
  */
 async function refreshCheckIns(): Promise<void> {
-  checkIns.value = await listCheckIns(String(route.params.id))
+  const meetingId = String(route.params.id)
+  const [guestData, displayedGuestData, checkInData] = await Promise.all([
+    searchStaffGuests(meetingId, ''),
+    searchStaffGuests(meetingId, guestQuery.value.trim()),
+    listStaffCheckIns(meetingId),
+  ])
+  guests.value = guestData
+  displayedGuests.value = displayedGuestData
+  checkIns.value = checkInData
 }
 
 /**
@@ -373,7 +404,7 @@ function alertType(): 'success' | 'warning' | 'error' | 'info' {
 }
 
 /**
- * 填入 mock 数据中的嘉宾二维码 token 示例。
+ * 填入本地种子数据中的嘉宾二维码 token 示例。
  *
  * 入参：
  *   无。
@@ -385,7 +416,7 @@ function alertType(): 'success' | 'warning' | 'error' | 'info' {
  *   当前函数不主动抛出异常。
  */
 function fillDemoToken(): void {
-  qrToken.value = 'QR-MEDU-G002'
+  qrToken.value = 'dev-guest-1-qr-token'
 }
 
 /**
@@ -397,8 +428,7 @@ function fillDemoToken(): void {
  * 返回值：
  *   Promise<void>：签到完成后更新结果和签到列表。
  *
- * 异常：
- *   当前 mock API 不主动抛出异常；缺少工作人员会话或 token 时展示错误结果。
+ * 异常：缺少会话或 token 时展示错误；后端业务和网络异常转换为签到结果。
  */
 async function handleScan(): Promise<void> {
   if (!session.staff) {
@@ -418,9 +448,22 @@ async function handleScan(): Promise<void> {
   }
 
   loading.value = true
-  scanResult.value = await scanGuest(String(route.params.id), session.staff.id, qrToken.value.trim())
-  loading.value = false
-  await refreshCheckIns()
+  try {
+    const record = await scanStaffCheckIn(String(route.params.id), qrToken.value.trim())
+    await refreshCheckIns()
+    const guest = guests.value.find((item) => item.id === record.guestId)
+    scanResult.value = {
+      status: 'success',
+      message: '签到成功。',
+      guest: guest ? { ...guest, meetingId: record.meetingId, qrToken: '' } : undefined,
+      checkIn: record,
+    }
+  } catch (error) {
+    const message = getApiErrorMessage(error, '扫码签到失败。')
+    scanResult.value = { status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message }
+  } finally {
+    loading.value = false
+  }
 }
 
 /**
@@ -432,8 +475,7 @@ async function handleScan(): Promise<void> {
  * 返回值：
  *   Promise<void>：手动签到完成后更新结果和签到列表。
  *
- * 异常：
- *   当前 mock API 不主动抛出异常；缺少工作人员会话时展示错误结果。
+ * 异常：缺少工作人员会话时展示错误；后端业务和网络异常转换为签到结果。
  */
 async function handleManualCheckIn(guestId: string): Promise<void> {
   if (!session.staff) {
@@ -448,9 +490,22 @@ async function handleManualCheckIn(guestId: string): Promise<void> {
   }
 
   manualLoadingId.value = guestId
-  scanResult.value = await markGuestCheckedIn(String(route.params.id), session.staff.id, guestId)
-  manualLoadingId.value = ''
-  await refreshCheckIns()
+  try {
+    const record = await manualStaffCheckIn(String(route.params.id), guestId)
+    await refreshCheckIns()
+    const guest = guests.value.find((item) => item.id === record.guestId)
+    scanResult.value = {
+      status: 'success',
+      message: '人工签到成功。',
+      guest: guest ? { ...guest, meetingId: record.meetingId, qrToken: '' } : undefined,
+      checkIn: record,
+    }
+  } catch (error) {
+    const message = getApiErrorMessage(error, '人工签到失败。')
+    scanResult.value = { status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message }
+  } finally {
+    manualLoadingId.value = ''
+  }
 }
 
 /**
@@ -507,6 +562,10 @@ function methodText(method: CheckInRecord['method']): string {
 
 onMounted(loadDetail)
 onMounted(startNetworkMonitoring)
+watch(guestQuery, scheduleGuestSearch)
 onUnmounted(stopNetworkMonitoring)
-onUnmounted(() => { void stopCameraScan() })
+onUnmounted(() => {
+  if (guestSearchTimer !== undefined) window.clearTimeout(guestSearchTimer)
+  void stopCameraScan()
+})
 </script>

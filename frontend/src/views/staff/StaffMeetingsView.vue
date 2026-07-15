@@ -10,6 +10,8 @@
     </div>
 
     <el-empty v-if="!session.staff" description="暂无工作人员会话" />
+    <el-alert v-else-if="errorMessage" type="error" :closable="false" :title="errorMessage" />
+    <el-skeleton v-else-if="loading" :rows="4" animated />
     <el-empty v-else-if="!meetings.length" description="暂无负责会议" />
     <div v-else class="staff-meeting-list">
       <article v-for="meeting in meetings" :key="meeting.id" class="staff-meeting-card">
@@ -24,13 +26,16 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { listStaffMeetings } from '../../mock/mockApi'
+import { getApiErrorMessage } from '../../api/client'
+import { listStaffMeetings } from '../../api/staffCheckIns'
 import { useSessionStore } from '../../stores/session'
 import type { Meeting } from '../../types'
 
 const router = useRouter()
 const session = useSessionStore()
 const meetings = ref<Meeting[]>([])
+const loading = ref(false)
+const errorMessage = ref('')
 
 /**
  * 加载当前工作人员负责的会议。
@@ -41,8 +46,7 @@ const meetings = ref<Meeting[]>([])
  * 返回值：
  *   Promise<void>：加载完成后更新工作人员会议列表。
  *
- * 异常：
- *   当前 mock API 不主动抛出异常；未登录时直接跳过加载。
+ * 异常：登录过期、账号停用或网络异常时展示页面错误；未登录时直接跳过加载。
  */
 async function loadMeetings(): Promise<void> {
   if (!session.staff) {
@@ -50,7 +54,16 @@ async function loadMeetings(): Promise<void> {
     return
   }
 
-  meetings.value = await listStaffMeetings(session.staff.id)
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    meetings.value = await listStaffMeetings()
+  } catch (error) {
+    meetings.value = []
+    errorMessage.value = getApiErrorMessage(error, '负责会议加载失败。')
+  } finally {
+    loading.value = false
+  }
 }
 
 /**
