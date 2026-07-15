@@ -204,6 +204,20 @@ export function importGuests(meetingId: string, rows: GuestImportInput[]): Promi
 }
 
 /**
+ * 为指定会议新增一名嘉宾并生成个人二维码凭证。
+ *
+ * 入参：meetingId 为会议 ID；input 包含嘉宾信息，姓名和手机号必填。
+ * 返回值：Promise<Guest>：新增后的嘉宾信息。
+ * 异常：当前 mock 不主动抛出异常；真实 API 应校验管理员权限与手机号重复。
+ */
+export function createGuest(meetingId: string, input: GuestImportInput): Promise<Guest> {
+  const suffix = Date.now()
+  const guest: Guest = { id: `g-create-${suffix}`, meetingId, name: input.name.trim(), phone: input.phone.trim(), organization: input.organization?.trim() ?? '', title: input.title?.trim() ?? '', tag: input.tag?.trim() || '参会嘉宾', seat: input.seat?.trim() ?? '', qrToken: `QR-CREATE-${suffix}` }
+  data.guests.push(guest)
+  return delay(guest)
+}
+
+/**
  * 为会议嘉宾补齐个人二维码凭证，不覆盖已有凭证。
  *
  * 入参：meetingId 为会议 ID，必填。

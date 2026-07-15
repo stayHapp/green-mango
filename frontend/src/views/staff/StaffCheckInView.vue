@@ -40,10 +40,13 @@
               <el-input v-model="qrToken" placeholder="请输入或粘贴嘉宾 token" />
             </el-form-item>
             <div class="action-row">
+              <el-button :disabled="!isOnline" @click="startCameraScan">手机扫码</el-button>
               <el-button @click="fillDemoToken">填入示例</el-button>
               <el-button type="primary" :loading="loading" :disabled="!isOnline" @click="handleScan">确认签到</el-button>
             </div>
           </el-form>
+          <div v-if="cameraScanning" id="staff-qr-reader" class="camera-preview" />
+          <el-button v-if="cameraScanning" class="top-gap" @click="stopCameraScan">停止扫码</el-button>
         </el-card>
 
         <el-card shadow="never">
@@ -148,6 +151,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { Html5Qrcode } from 'html5-qrcode'
 
 import { getMeeting, listCheckIns, listGuests, markGuestCheckedIn, scanGuest } from '../../mock/mockApi'
 import { useSessionStore } from '../../stores/session'
@@ -162,6 +167,8 @@ interface CheckInRow extends CheckInRecord {
   phone: string
 }
 
+interface BarcodeDetectorLike { detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>> }
+
 const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
@@ -173,6 +180,8 @@ const guestQuery = ref('')
 const loading = ref(false)
 const manualLoadingId = ref('')
 const isOnline = ref(navigator.onLine)
+const cameraScanning = ref(false)
+let qrScanner: Html5Qrcode | undefined
 const scanResult = ref<ScanResult>()
 const resultAlertType = computed(alertType)
 const checkedCount = computed(() => checkIns.value.length)
@@ -264,6 +273,35 @@ function startNetworkMonitoring(): void {
 function stopNetworkMonitoring(): void {
   window.removeEventListener('online', updateNetworkStatus)
   window.removeEventListener('offline', updateNetworkStatus)
+}
+
+/**
+ * 启动手机后置摄像头并识别嘉宾二维码。
+ *
+ * 入参：无。
+ * 返回值：Promise<void>：成功识别后自动填充 token 并执行签到。
+ * 异常：摄像头权限被拒绝或浏览器不支持扫码能力时展示提示。
+ */
+async function startCameraScan(): Promise<void> {
+  try {
+    cameraScanning.value = true
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    qrScanner = new Html5Qrcode('staff-qr-reader')
+    await qrScanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 240 } }, async (decodedText) => { qrToken.value = decodedText; await stopCameraScan(); await handleScan() }, () => undefined)
+  } catch { stopCameraScan(); ElMessage.error('无法打开摄像头，请检查权限后重试。') }
+}
+
+/**
+ * 停止摄像头扫码并释放媒体设备资源。
+ *
+ * 入参：无。
+ * 返回值：void：关闭视频轨道和扫描循环。
+ * 异常：当前函数不主动抛出异常。
+ */
+async function stopCameraScan(): Promise<void> {
+  if (qrScanner?.isScanning) await qrScanner.stop()
+  qrScanner = undefined
+  cameraScanning.value = false
 }
 
 /**
@@ -470,4 +508,5 @@ function methodText(method: CheckInRecord['method']): string {
 onMounted(loadDetail)
 onMounted(startNetworkMonitoring)
 onUnmounted(stopNetworkMonitoring)
+onUnmounted(() => { void stopCameraScan() })
 </script>

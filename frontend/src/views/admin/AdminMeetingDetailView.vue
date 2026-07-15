@@ -79,7 +79,7 @@
         </el-form>
       </el-tab-pane>
       <el-tab-pane label="嘉宾" name="guests">
-        <div class="action-row"><el-button type="primary" :loading="generatingGuestQr" @click="handleGenerateGuestQrTokens">一键生成嘉宾二维码</el-button></div>
+        <div class="action-row"><el-button @click="guestCreateDialogVisible = true">新增嘉宾</el-button><el-button type="primary" :loading="generatingGuestQr" @click="handleGenerateGuestQrTokens">一键生成嘉宾二维码</el-button></div>
         <el-alert v-if="guestQrMessage" class="top-gap" :type="guestQrMessageType" :closable="false" :title="guestQrMessage" />
         <el-table :data="guestRows" row-key="id">
           <el-table-column prop="name" label="姓名" width="120" />
@@ -94,6 +94,7 @@
           </el-table-column>
           <el-table-column label="操作" width="100"><template #default="{ row }"><el-button size="small" @click="showGuestDetail(row)">查看</el-button></template></el-table-column>
         </el-table>
+        <el-dialog v-model="guestCreateDialogVisible" title="新增嘉宾" width="min(520px, calc(100% - 32px))"><el-form label-position="top" @submit.prevent><div class="form-grid"><el-form-item label="姓名"><el-input v-model="guestForm.name" /></el-form-item><el-form-item label="手机号"><el-input v-model="guestForm.phone" /></el-form-item></div><div class="form-grid"><el-form-item label="单位"><el-input v-model="guestForm.organization" /></el-form-item><el-form-item label="职务"><el-input v-model="guestForm.title" /></el-form-item></div><div class="form-grid"><el-form-item label="身份"><el-input v-model="guestForm.tag" /></el-form-item><el-form-item label="座位"><el-input v-model="guestForm.seat" /></el-form-item></div><div class="action-row"><el-button type="primary" :loading="creatingGuest" @click="handleCreateGuest">保存嘉宾</el-button></div></el-form></el-dialog>
         <el-dialog v-model="guestDetailDialogVisible" title="嘉宾信息" width="min(420px, calc(100% - 32px))" align-center>
           <dl v-if="selectedGuest" class="info-list"><dt>姓名</dt><dd>{{ selectedGuest.name }}</dd><dt>手机号</dt><dd>{{ selectedGuest.phone }}</dd><dt>单位</dt><dd>{{ selectedGuest.organization }}</dd><dt>职务</dt><dd>{{ selectedGuest.title }}</dd><dt>身份</dt><dd>{{ selectedGuest.tag }}</dd><dt>座位</dt><dd>{{ selectedGuest.seat }}</dd></dl>
           <img v-if="guestQrCode" class="meeting-entry-qr" :src="guestQrCode" alt="嘉宾签到二维码" />
@@ -150,7 +151,7 @@ import { ElMessage } from 'element-plus'
 import { read, utils, writeFileXLSX } from 'xlsx'
 import QRCode from 'qrcode'
 
-import { createStaff, generateGuestQrTokens, getMeeting, importGuests, listCheckIns, listGuestFields, listGuests, listStaff, updateMeeting } from '../../mock/mockApi'
+import { createGuest, createStaff, generateGuestQrTokens, getMeeting, importGuests, listCheckIns, listGuestFields, listGuests, listStaff, updateMeeting } from '../../mock/mockApi'
 import { useSessionStore } from '../../stores/session'
 import type { CheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingStatus, StaffUser } from '../../types'
 
@@ -185,6 +186,9 @@ const guestQrMessageType = ref<'success' | 'info'>('success')
 const selectedGuest = ref<Guest>()
 const guestDetailDialogVisible = ref(false)
 const guestQrCode = ref('')
+const guestCreateDialogVisible = ref(false)
+const creatingGuest = ref(false)
+const guestForm = ref<GuestImportInput>({ name: '', phone: '', organization: '', title: '', tag: '', seat: '' })
 const staffMessage = ref('')
 const staffMessageType = ref<'success' | 'error'>('success')
 const staffForm = ref({ name: '', phone: '', account: '' })
@@ -365,6 +369,24 @@ async function showGuestDetail(guest: Guest): Promise<void> {
     guestQrCode.value = ''
     ElMessage.error('嘉宾二维码生成失败，请稍后重试。')
   }
+}
+
+/**
+ * 创建嘉宾并刷新当前会议嘉宾列表。
+ *
+ * 入参：无；读取当前会议和新增嘉宾表单。
+ * 返回值：Promise<void>：创建完成后关闭弹窗并更新列表。
+ * 异常：姓名或手机号缺失时显示错误提示。
+ */
+async function handleCreateGuest(): Promise<void> {
+  if (!meeting.value || !guestForm.value.name.trim() || !guestForm.value.phone.trim()) { ElMessage.warning('请填写嘉宾姓名和手机号。'); return }
+  creatingGuest.value = true
+  await createGuest(meeting.value.id, guestForm.value)
+  creatingGuest.value = false
+  guests.value = await listGuests(meeting.value.id)
+  guestForm.value = { name: '', phone: '', organization: '', title: '', tag: '', seat: '' }
+  guestCreateDialogVisible.value = false
+  ElMessage.success('嘉宾已新增，并已生成个人二维码。')
 }
 
 /**
