@@ -66,3 +66,5 @@ class GuestQrResponse(BaseModel):
 
     qr_token: str
     expires_at: datetime | None
+    is_checked_in: bool
+    checked_in_at: datetime | None

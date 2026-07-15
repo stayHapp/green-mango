@@ -99,7 +99,7 @@
 
 会议助手功能已发布时返回 `content`；未发布时只返回 `unpublished_message` 和发布状态，响应中的 `content` 必须为 `null`，避免草稿泄露。嘉宾只能访问自己所属会议的会议助手内容。
 
-后续实现二维码签到标记时，二维码响应增加 `is_checked_in` 和可空的 `checked_in_at`。这两个字段从 `check_ins` 读取，不改变二维码 token 与过期规则。
+二维码响应包含 `is_checked_in` 和可空的 `checked_in_at`，两个字段从 `check_ins` 读取，不改变二维码 token 与过期规则。SQLite 读取出的无时区签到时间在响应前按 UTC 恢复，前端按嘉宾本地时区展示。
 
 ## 工作人员端接口
 

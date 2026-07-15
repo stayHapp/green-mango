@@ -35,7 +35,7 @@
           <dt>座位</dt>
           <dd>{{ session.guest.seat }}</dd>
         </dl>
-        <GuestQrCode :token="session.guest.qrToken" />
+        <GuestQrCode :meeting-id="meeting.id" :token="session.guest.qrToken" />
       </el-card>
 
     </div>

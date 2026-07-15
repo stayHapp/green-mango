@@ -1,5 +1,7 @@
 """嘉宾登录和嘉宾会议路由。"""
 
+from datetime import timezone
+
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.dependencies import CurrentGuest, DatabaseSession
@@ -63,13 +65,23 @@ def get_my_check_in_qr(meeting_id: int, db: DatabaseSession, guest: CurrentGuest
     """获取当前嘉宾在所属会议中的签到二维码 token。
 
     入参：meeting_id 为会议 ID；db 与 guest 由 FastAPI 注入。
-    返回值：GuestQrResponse：不包含个人信息的二维码 token 与过期时间。
+    返回值：GuestQrResponse：不包含个人信息的二维码 token、过期时间和签到状态。
     异常：嘉宾身份无效时返回 401；跨会议访问时返回 404。
     """
     meeting = get_guest_meeting(db, guest, meeting_id)
     if meeting is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会议不存在或无访问权限。")
-    return GuestQrResponse(qr_token=guest.qr_token, expires_at=meeting.end_time)
+    check_in = guest.check_in
+    checked_in_at = check_in.checked_in_at if check_in else None
+    # SQLite 会丢失 DateTime 的时区信息；应用统一按 utc_now 写入，因此响应前按 UTC 恢复。
+    if checked_in_at is not None and checked_in_at.tzinfo is None:
+        checked_in_at = checked_in_at.replace(tzinfo=timezone.utc)
+    return GuestQrResponse(
+        qr_token=guest.qr_token,
+        expires_at=meeting.end_time,
+        is_checked_in=check_in is not None,
+        checked_in_at=checked_in_at,
+    )
 
 
 @router.get("/meetings/{meeting_id}/profile", response_model=GuestProfileResponse)

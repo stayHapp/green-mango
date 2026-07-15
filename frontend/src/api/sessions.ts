@@ -1,6 +1,6 @@
 /** 三端登录、嘉宾入口资料和统一退出 API。 */
 
-import type { AdminUser, ClientRole, Guest, Meeting, StaffUser } from '../types'
+import type { AdminUser, ClientRole, Guest, GuestCheckInQr, Meeting, StaffUser } from '../types'
 import type { AccessSession } from './authStorage'
 import { apiClient, authorizationConfig } from './client'
 
@@ -43,6 +43,13 @@ interface GuestProfileApiResponse {
   tag: string | null
   seat: string | null
   qr_token: string
+}
+
+interface GuestQrApiResponse {
+  qr_token: string
+  expires_at: string | null
+  is_checked_in: boolean
+  checked_in_at: string | null
 }
 
 export interface LoginResult<T> {
@@ -169,6 +176,26 @@ export async function loginGuest(
       seat: profile.seat || '',
       qrToken: profile.qr_token,
     },
+  }
+}
+
+/**
+ * 获取当前嘉宾所属会议的二维码凭证、有效期和签到状态。
+ *
+ * 入参：meetingId 为数字会议 ID 的字符串形式，必填。
+ * 返回值：Promise<GuestCheckInQr>：转换后的二维码和签到状态；可空时间转换为空字符串。
+ * 异常：嘉宾未登录、跨会议访问、会话过期或网络失败时抛出异常。
+ */
+export async function getGuestCheckInQr(meetingId: string): Promise<GuestCheckInQr> {
+  const { data } = await apiClient.get<GuestQrApiResponse>(
+    `/guest/meetings/${encodeURIComponent(meetingId)}/check-in-qr`,
+    authorizationConfig('guest'),
+  )
+  return {
+    qrToken: data.qr_token,
+    expiresAt: data.expires_at || '',
+    isCheckedIn: data.is_checked_in,
+    checkedInAt: data.checked_in_at || '',
   }
 }
 

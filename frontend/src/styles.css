@@ -984,6 +984,7 @@ h1 {
 }
 
 .guest-qr-code__frame {
+  position: relative;
   display: grid;
   place-items: center;
   width: min(218px, 100%);
@@ -992,6 +993,29 @@ h1 {
   border: 1px dashed #0f766e;
   border-radius: 8px;
   background: #f0fdfa;
+}
+
+.guest-qr-code__checked-mark {
+  position: absolute;
+  inset: 13px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  border: 3px solid #15803d;
+  border-radius: 50%;
+  background: rgba(240, 253, 244, 0.92);
+  color: #166534;
+  text-align: center;
+  transform: rotate(-8deg);
+}
+
+.guest-qr-code__checked-mark strong {
+  font-size: 28px;
+}
+
+.guest-qr-code__checked-mark span {
+  font-size: 12px;
 }
 
 .guest-qr-code__image,

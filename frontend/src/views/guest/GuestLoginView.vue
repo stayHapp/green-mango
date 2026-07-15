@@ -72,7 +72,7 @@
           <dt>座位</dt>
           <dd>{{ currentGuest.seat }}</dd>
         </dl>
-        <GuestQrCode :token="currentGuest.qrToken" />
+        <GuestQrCode :meeting-id="meeting.id" :token="currentGuest.qrToken" />
       </el-card>
 
     </div>

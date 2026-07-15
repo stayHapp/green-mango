@@ -71,6 +71,13 @@ export interface GuestQrGenerationResult {
   existingCount: number
 }
 
+export interface GuestCheckInQr {
+  qrToken: string
+  expiresAt: string
+  isCheckedIn: boolean
+  checkedInAt: string
+}
+
 export type MeetingAssistantFeatureKey = 'agenda' | 'manual' | 'weather' | 'route' | 'contact'
 
 export interface MeetingAssistantFeature {

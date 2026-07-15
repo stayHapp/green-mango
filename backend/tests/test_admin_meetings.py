@@ -503,7 +503,31 @@ def test_guest_can_login_and_read_own_meeting_and_qr(client_and_session: tuple[T
     assert detail_response.status_code == 200
     assert profile_response.status_code == 200
     assert profile_response.json()["name"] == "李文博"
-    assert qr_response.json() == {"qr_token": "guest-session-token", "expires_at": None}
+    assert qr_response.json() == {
+        "qr_token": "guest-session-token",
+        "expires_at": None,
+        "is_checked_in": False,
+        "checked_in_at": None,
+    }
+
+    checked_in_at = datetime.now(timezone.utc)
+    db.add(
+        CheckIn(
+            meeting_id=meeting.id,
+            guest_id=guest.id,
+            staff_id=None,
+            method="manual",
+            checked_in_at=checked_in_at,
+        )
+    )
+    db.commit()
+
+    checked_in_qr_response = client.get(
+        f"/api/guest/meetings/{meeting.id}/check-in-qr", headers=headers
+    )
+    assert checked_in_qr_response.status_code == 200
+    assert checked_in_qr_response.json()["is_checked_in"] is True
+    assert checked_in_qr_response.json()["checked_in_at"] == checked_in_at.isoformat().replace("+00:00", "Z")
 
 
 def test_guest_login_and_cross_meeting_access_are_rejected(client_and_session: tuple[TestClient, Session]) -> None:
