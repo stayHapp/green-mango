@@ -9,7 +9,10 @@
     </div>
 
     <el-empty v-if="!session.guest" description="暂无嘉宾会话" />
-    <el-table v-else :data="meetings" class="data-table" row-key="id">
+    <div v-else v-loading="loading">
+      <el-alert v-if="errorMessage" class="bottom-gap" type="error" :closable="false" :title="errorMessage" />
+      <el-empty v-if="!loading && !errorMessage && meetings.length === 0" description="暂无参会会议" />
+    <el-table v-else-if="!errorMessage" :data="meetings" class="data-table" row-key="id">
       <el-table-column prop="title" label="会议名称" min-width="220" />
       <el-table-column prop="location" label="地点" min-width="200" />
       <el-table-column label="时间" min-width="260">
@@ -26,6 +29,7 @@
         </template>
       </el-table-column>
     </el-table>
+    </div>
   </section>
 </template>
 
@@ -33,13 +37,16 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { listGuestMeetings } from '../../mock/mockApi'
+import { getApiErrorMessage } from '../../api/client'
+import { listGuestMeetings } from '../../api/guestMeetings'
 import { useSessionStore } from '../../stores/session'
 import type { Meeting, MeetingStatus } from '../../types'
 
 const router = useRouter()
 const session = useSessionStore()
 const meetings = ref<Meeting[]>([])
+const loading = ref(false)
+const errorMessage = ref('')
 
 /**
  * 加载当前嘉宾可参加的会议。
@@ -51,7 +58,7 @@ const meetings = ref<Meeting[]>([])
  *   Promise<void>：加载完成后更新嘉宾会议列表。
  *
  * 异常：
- *   当前 mock API 不主动抛出异常；未登录时直接跳过加载。
+ *   会话失效或网络失败时捕获异常并展示中文提示；未登录时直接跳过加载。
  */
 async function loadMeetings(): Promise<void> {
   if (!session.guest) {
@@ -59,7 +66,16 @@ async function loadMeetings(): Promise<void> {
     return
   }
 
-  meetings.value = await listGuestMeetings(session.guest.id)
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    meetings.value = await listGuestMeetings()
+  } catch (error) {
+    meetings.value = []
+    errorMessage.value = getApiErrorMessage(error, '参会会议加载失败，请稍后重试。')
+  } finally {
+    loading.value = false
+  }
 }
 
 /**

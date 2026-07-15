@@ -15,6 +15,8 @@
     </div>
 
     <el-empty v-if="!session.guest" description="暂无嘉宾会话" />
+    <div v-else-if="loading" v-loading="loading" class="page-loading-block" />
+    <el-alert v-else-if="errorMessage" type="error" :closable="false" :title="errorMessage" />
     <el-empty v-else-if="!meeting" description="未找到会议" />
     <div v-else class="guest-content-stack">
       <el-card shadow="never" class="guest-pass-card">
@@ -50,7 +52,8 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { getMeeting } from '../../mock/mockApi'
+import { getApiErrorMessage } from '../../api/client'
+import { getGuestMeeting } from '../../api/guestMeetings'
 import { useSessionStore } from '../../stores/session'
 import type { Meeting } from '../../types'
 import GuestQrCode from '../../components/GuestQrCode.vue'
@@ -61,6 +64,8 @@ const router = useRouter()
 const session = useSessionStore()
 const meeting = ref<Meeting>()
 const featureDrawerVisible = ref(false)
+const loading = ref(false)
+const errorMessage = ref('')
 
 /**
  * 加载嘉宾会议详情。
@@ -72,10 +77,24 @@ const featureDrawerVisible = ref(false)
  *   Promise<void>：加载完成后更新会议详情。
  *
  * 异常：
- *   当前 mock API 不主动抛出异常；会议不存在时页面展示空状态。
+ *   会话失效、跨会议访问或网络失败时捕获异常并展示中文提示。
  */
 async function loadDetail(): Promise<void> {
-  meeting.value = await getMeeting(String(route.params.id))
+  if (!session.guest) {
+    meeting.value = undefined
+    return
+  }
+
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    meeting.value = await getGuestMeeting(String(route.params.id))
+  } catch (error) {
+    meeting.value = undefined
+    errorMessage.value = getApiErrorMessage(error, '会议详情加载失败，请稍后重试。')
+  } finally {
+    loading.value = false
+  }
 }
 
 /**
