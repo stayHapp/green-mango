@@ -12,6 +12,8 @@ from app.db.base import Base
 from app.models.user import utc_now
 
 if TYPE_CHECKING:
+    from app.models.access import MeetingAdmin, StaffMeeting
+    from app.models.guest import CheckIn, Guest, GuestField
     from app.models.registration import Registration, RegistrationField
     from app.models.user import User
 
@@ -43,6 +45,17 @@ class Meeting(Base):
         back_populates="meeting", cascade="all, delete-orphan", order_by="RegistrationField.sort_order"
     )
     registrations: Mapped[list[Registration]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
+    admin_assignments: Mapped[list[MeetingAdmin]] = relationship(
+        back_populates="meeting", cascade="all, delete-orphan"
+    )
+    staff_assignments: Mapped[list[StaffMeeting]] = relationship(
+        back_populates="meeting", cascade="all, delete-orphan"
+    )
+    guest_fields: Mapped[list[GuestField]] = relationship(
+        back_populates="meeting", cascade="all, delete-orphan", order_by="GuestField.sort_order"
+    )
+    guests: Mapped[list[Guest]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
+    check_ins: Mapped[list[CheckIn]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
 
 
 class MeetingSetting(Base):
