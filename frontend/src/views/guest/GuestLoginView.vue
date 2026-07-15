@@ -70,10 +70,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
-import { getMeeting, listMeetings, loginGuest } from '../../mock/mockApi'
+import { getApiErrorMessage } from '../../api/client'
+import { getPublicMeeting, loginGuest } from '../../api/sessions'
 import { useSessionStore } from '../../stores/session'
 import type { Guest, Meeting } from '../../types'
 import GuestQrCode from '../../components/GuestQrCode.vue'
@@ -109,31 +110,54 @@ const featureMenus: FeatureMenuItem[] = [
 ]
 
 /**
+ * 嘉宾会话被清除时同步清空身份表单和功能提示。
+ *
+ * 入参：guest 为当前 Pinia 嘉宾状态；退出后为 undefined。
+ * 返回值：void：只更新当前页面的敏感表单和提示状态。
+ * 异常：当前函数不主动抛出异常。
+ */
+function clearIdentityAfterLogout(guest: Guest | undefined): void {
+  if (guest) {
+    return
+  }
+  name.value = ''
+  phone.value = ''
+  errorMessage.value = ''
+  featureMessage.value = ''
+  featureDrawerVisible.value = false
+}
+
+watch(() => session.guest, clearIdentityAfterLogout)
+
+/**
  * 加载扫码入口对应的会议信息。
  *
  * 入参：
- *   无；函数优先读取 URL 中的 meetingId 参数，缺省时使用 mock 数据中的第一个会议。
+ *   无；函数读取 URL 中的 meetingId 参数，并调用公开会议 API。
  *
  * 返回值：
  *   Promise<void>：加载完成后更新页面会议信息。
  *
  * 异常：
- *   当前 mock API 不主动抛出异常；会议不存在时页面展示空状态。
+ *   会议不存在、尚未发布或后端不可用时清空会议信息并展示错误提示。
  */
 async function loadMeeting(): Promise<void> {
   const meetingId = route.query.meetingId ? String(route.query.meetingId) : ''
 
-  if (meetingId) {
-    meeting.value = await getMeeting(meetingId)
+  if (!meetingId) {
+    errorMessage.value = '缺少会议入口 ID，请通过会议二维码进入。'
     return
   }
-
-  const meetings = await listMeetings()
-  meeting.value = meetings[0]
+  try {
+    meeting.value = await getPublicMeeting(meetingId)
+  } catch (error) {
+    meeting.value = undefined
+    errorMessage.value = getApiErrorMessage(error, '会议入口不存在或尚未发布。')
+  }
 }
 
 /**
- * 使用 mock 数据填入一组嘉宾登录示例。
+ * 填入本地联调嘉宾示例。
  *
  * 入参：
  *   无。
@@ -151,7 +175,7 @@ function fillDemoGuest(): void {
 }
 
 /**
- * 执行嘉宾端 mock 登录。
+ * 调用后端 API 完成嘉宾登录并读取完整个人资料。
  *
  * 入参：
  *   无；函数从页面表单中读取姓名和手机号，两个字段均必填。
@@ -160,7 +184,7 @@ function fillDemoGuest(): void {
  *   Promise<void>：登录成功后保存嘉宾会话并跳转到嘉宾会议列表。
  *
  * 异常：
- *   mock API 当前不主动抛出异常；匹配不到嘉宾时展示页面错误提示。
+ *   身份不匹配、会议无效或网络异常时展示后端错误提示。
  */
 async function handleLogin(): Promise<void> {
   errorMessage.value = ''
@@ -176,21 +200,15 @@ async function handleLogin(): Promise<void> {
   }
 
   loading.value = true
-  const guest = await loginGuest(name.value.trim(), phone.value.trim())
-  loading.value = false
-
-  if (!guest) {
-    errorMessage.value = '未找到匹配的嘉宾，请检查 mock 登录信息。'
-    return
+  try {
+    const result = await loginGuest(meeting.value.id, name.value.trim(), phone.value.trim())
+    session.setGuest(result.user, result.access)
+    featureMessage.value = ''
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error, '嘉宾登录失败，请检查姓名和手机号。')
+  } finally {
+    loading.value = false
   }
-
-  if (guest.meetingId !== meeting.value.id) {
-    errorMessage.value = '该嘉宾不属于当前会议，请核对入口二维码。'
-    return
-  }
-
-  session.setGuest(guest)
-  featureMessage.value = ''
 }
 
 /**
@@ -234,6 +252,9 @@ function openFeatureDrawer(): void {
  *   当前函数不主动抛出异常；非法日期会按浏览器默认结果展示。
  */
 function formatDate(value: string): string {
+  if (!value) {
+    return '待定'
+  }
   return new Date(value).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' })
 }
 

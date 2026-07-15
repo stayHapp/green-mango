@@ -96,8 +96,10 @@
         </el-table>
         <el-dialog v-model="guestCreateDialogVisible" title="新增嘉宾" width="min(520px, calc(100% - 32px))"><el-form label-position="top" @submit.prevent><div class="form-grid"><el-form-item label="姓名"><el-input v-model="guestForm.name" /></el-form-item><el-form-item label="手机号"><el-input v-model="guestForm.phone" /></el-form-item></div><div class="form-grid"><el-form-item label="单位"><el-input v-model="guestForm.organization" /></el-form-item><el-form-item label="职务"><el-input v-model="guestForm.title" /></el-form-item></div><div class="form-grid"><el-form-item label="身份"><el-input v-model="guestForm.tag" /></el-form-item><el-form-item label="座位"><el-input v-model="guestForm.seat" /></el-form-item></div><div class="action-row"><el-button type="primary" :loading="creatingGuest" @click="handleCreateGuest">保存嘉宾</el-button></div></el-form></el-dialog>
         <el-dialog v-model="guestDetailDialogVisible" title="嘉宾信息" width="min(420px, calc(100% - 32px))" align-center>
-          <dl v-if="selectedGuest" class="info-list"><dt>姓名</dt><dd>{{ selectedGuest.name }}</dd><dt>手机号</dt><dd>{{ selectedGuest.phone }}</dd><dt>单位</dt><dd>{{ selectedGuest.organization }}</dd><dt>职务</dt><dd>{{ selectedGuest.title }}</dd><dt>身份</dt><dd>{{ selectedGuest.tag }}</dd><dt>座位</dt><dd>{{ selectedGuest.seat }}</dd></dl>
-          <img v-if="guestQrCode" class="meeting-entry-qr" :src="guestQrCode" alt="嘉宾签到二维码" />
+          <div v-loading="guestDetailLoading" class="guest-detail-content">
+            <dl v-if="selectedGuest" class="info-list"><dt>姓名</dt><dd>{{ selectedGuest.name }}</dd><dt>手机号</dt><dd>{{ selectedGuest.phone }}</dd><dt>单位</dt><dd>{{ selectedGuest.organization }}</dd><dt>职务</dt><dd>{{ selectedGuest.title }}</dd><dt>身份</dt><dd>{{ selectedGuest.tag }}</dd><dt>座位</dt><dd>{{ selectedGuest.seat }}</dd></dl>
+            <img v-if="guestQrCode" class="meeting-entry-qr" :src="guestQrCode" alt="嘉宾签到二维码" />
+          </div>
         </el-dialog>
       </el-tab-pane>
       <el-tab-pane label="导入嘉宾" name="import">
@@ -141,6 +143,13 @@
       </el-tab-pane>
     </el-tabs>
   </section>
+  <section v-else class="page">
+    <el-skeleton v-if="detailLoading" :rows="6" animated />
+    <template v-else>
+      <el-alert type="error" :closable="false" :title="detailError || '会议详情加载失败。'" />
+      <div class="action-row top-gap"><el-button @click="goMeetings">返回会议管理</el-button></div>
+    </template>
+  </section>
 </template>
 
 <script setup lang="ts">
@@ -151,7 +160,16 @@ import { ElMessage } from 'element-plus'
 import { read, utils, writeFileXLSX } from 'xlsx'
 import QRCode from 'qrcode'
 
-import { createGuest, createStaff, generateGuestQrTokens, getMeeting, importGuests, listCheckIns, listGuestFields, listGuests, listStaff, updateMeeting } from '../../mock/mockApi'
+import {
+  createAdminGuest,
+  generateAdminGuestQrTokens,
+  getAdminGuest,
+  listAdminGuestFields,
+  listAdminGuests,
+} from '../../api/adminGuests'
+import { getAdminMeeting, updateAdminMeeting } from '../../api/adminMeetings'
+import { getApiErrorMessage } from '../../api/client'
+import { createStaff, importGuests, listCheckIns, listStaff } from '../../mock/mockApi'
 import { useSessionStore } from '../../stores/session'
 import type { CheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingStatus, StaffUser } from '../../types'
 
@@ -172,6 +190,8 @@ const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const meeting = ref<Meeting>()
+const detailLoading = ref(true)
+const detailError = ref('')
 const guests = ref<Guest[]>([])
 const fields = ref<GuestField[]>([])
 const staff = ref<StaffUser[]>([])
@@ -182,9 +202,10 @@ const importing = ref(false)
 const creatingStaff = ref(false)
 const generatingGuestQr = ref(false)
 const guestQrMessage = ref('')
-const guestQrMessageType = ref<'success' | 'info'>('success')
+const guestQrMessageType = ref<'success' | 'info' | 'error'>('success')
 const selectedGuest = ref<Guest>()
 const guestDetailDialogVisible = ref(false)
+const guestDetailLoading = ref(false)
 const guestQrCode = ref('')
 const guestCreateDialogVisible = ref(false)
 const creatingGuest = ref(false)
@@ -222,23 +243,37 @@ const guestRows = computed(() => guests.value.map((guest) => ({
  *
  * 返回值：Promise<void>：加载完成后更新会议、嘉宾、字段、工作人员和签到记录。
  *
- * 异常：当前 mock API 不主动抛出异常；真实 API 失败时需要补充错误处理。
+ * 异常：会议身份、权限或网络异常时清空详情并展示后端错误；其他资源本阶段仍使用 Mock。
  */
 async function loadDetail(): Promise<void> {
+  if (!session.admin) {
+    detailLoading.value = false
+    detailError.value = '请先完成管理员登录。'
+    return
+  }
   const meetingId = String(route.params.id)
-  const [meetingData, guestData, fieldData, staffData, checkInData] = await Promise.all([
-    getMeeting(meetingId),
-    listGuests(meetingId),
-    listGuestFields(meetingId),
-    listStaff(meetingId),
-    listCheckIns(meetingId),
-  ])
-  meeting.value = meetingData
-  guests.value = guestData
-  fields.value = fieldData
-  staff.value = staffData
-  checkIns.value = checkInData
-  resetEditForm()
+  detailLoading.value = true
+  detailError.value = ''
+  try {
+    const [meetingData, guestData, fieldData, staffData, checkInData] = await Promise.all([
+      getAdminMeeting(meetingId),
+      listAdminGuests(meetingId),
+      listAdminGuestFields(meetingId),
+      listStaff(meetingId),
+      listCheckIns(meetingId),
+    ])
+    meeting.value = meetingData
+    guests.value = guestData
+    fields.value = fieldData
+    staff.value = staffData
+    checkIns.value = checkInData
+    resetEditForm()
+  } catch (error) {
+    meeting.value = undefined
+    detailError.value = getApiErrorMessage(error, '会议详情加载失败。')
+  } finally {
+    detailLoading.value = false
+  }
 }
 
 /**
@@ -279,7 +314,7 @@ function resetEditForm(): void {
  *   Promise<void>：保存成功后刷新页面会议详情并展示结果提示。
  *
  * 异常：
- *   mock API 当前不主动抛出异常；字段缺失或会议不存在时展示页面错误提示。
+ *   字段、时间、权限、登录或网络无效时展示后端错误提示。
  */
 async function saveMeeting(): Promise<void> {
   if (!editForm.value.title.trim() || !editForm.value.location.trim()) {
@@ -289,26 +324,26 @@ async function saveMeeting(): Promise<void> {
   }
 
   saving.value = true
-  const savedMeeting = await updateMeeting(String(route.params.id), {
-    title: editForm.value.title.trim(),
-    description: editForm.value.description.trim(),
-    location: editForm.value.location.trim(),
-    startTime: toIsoWithChinaTimezone(editForm.value.startTime),
-    endTime: toIsoWithChinaTimezone(editForm.value.endTime),
-    status: editForm.value.status,
-  })
-  saving.value = false
-
-  if (!savedMeeting) {
+  saveMessage.value = ''
+  try {
+    const savedMeeting = await updateAdminMeeting(String(route.params.id), {
+      title: editForm.value.title.trim(),
+      description: editForm.value.description.trim(),
+      location: editForm.value.location.trim(),
+      startTime: toIsoWithChinaTimezone(editForm.value.startTime),
+      endTime: toIsoWithChinaTimezone(editForm.value.endTime),
+      status: editForm.value.status,
+    })
+    meeting.value = savedMeeting
+    resetEditForm()
+    saveMessageType.value = 'success'
+    saveMessage.value = '会议信息已保存。'
+  } catch (error) {
     saveMessageType.value = 'error'
-    saveMessage.value = '保存失败，未找到当前会议。'
-    return
+    saveMessage.value = getApiErrorMessage(error, '会议信息保存失败。')
+  } finally {
+    saving.value = false
   }
-
-  meeting.value = savedMeeting
-  resetEditForm()
-  saveMessageType.value = 'success'
-  saveMessage.value = '会议信息已保存。'
 }
 
 /**
@@ -342,32 +377,48 @@ function staffName(staffId: string): string {
  *
  * 入参：无；函数读取当前会议。
  * 返回值：Promise<void>：生成完成后展示数量摘要。
- * 异常：会议未加载时直接返回。
+ * 异常：会议未加载时直接返回；权限、登录或网络异常时展示后端错误。
  */
 async function handleGenerateGuestQrTokens(): Promise<void> {
-  if (!meeting.value) return
+  if (!meeting.value) {
+    return
+  }
   generatingGuestQr.value = true
-  const result = await generateGuestQrTokens(meeting.value.id)
-  generatingGuestQr.value = false
-  guestQrMessageType.value = result.generatedCount ? 'success' : 'info'
-  guestQrMessage.value = `本次生成 ${result.generatedCount} 个二维码；已有 ${result.existingCount} 个二维码保持不变。`
+  guestQrMessage.value = ''
+  try {
+    const result = await generateAdminGuestQrTokens(meeting.value.id)
+    guestQrMessageType.value = result.generatedCount ? 'success' : 'info'
+    guestQrMessage.value = `本次生成 ${result.generatedCount} 个二维码；已有 ${result.existingCount} 个二维码保持不变。`
+  } catch (error) {
+    guestQrMessageType.value = 'error'
+    guestQrMessage.value = getApiErrorMessage(error, '嘉宾二维码生成失败。')
+  } finally {
+    generatingGuestQr.value = false
+  }
 }
 
 /**
  * 打开嘉宾详情窗口并生成该嘉宾的个人签到二维码。
  *
- * 入参：guest 为当前列表选中的嘉宾，必填。
- * 返回值：Promise<void>：更新详情窗口、嘉宾信息和二维码图片。
- * 异常：二维码生成失败时展示错误提示。
+ * 入参：guest 为当前列表选中的嘉宾，必填；函数使用其 ID 查询完整资料。
+ * 返回值：Promise<void>：详情读取完成后更新嘉宾信息和二维码图片。
+ * 异常：权限、网络或二维码生成失败时关闭加载状态并展示错误提示。
  */
 async function showGuestDetail(guest: Guest): Promise<void> {
-  selectedGuest.value = guest
+  selectedGuest.value = undefined
+  guestQrCode.value = ''
   guestDetailDialogVisible.value = true
+  guestDetailLoading.value = true
   try {
-    guestQrCode.value = await QRCode.toDataURL(guest.qrToken, { width: 220, margin: 1 })
-  } catch {
+    const guestDetail = await getAdminGuest(guest.meetingId, guest.id)
+    selectedGuest.value = guestDetail
+    guestQrCode.value = await QRCode.toDataURL(guestDetail.qrToken, { width: 220, margin: 1 })
+  } catch (error) {
     guestQrCode.value = ''
-    ElMessage.error('嘉宾二维码生成失败，请稍后重试。')
+    guestDetailDialogVisible.value = false
+    ElMessage.error(getApiErrorMessage(error, '嘉宾详情或二维码加载失败。'))
+  } finally {
+    guestDetailLoading.value = false
   }
 }
 
@@ -376,17 +427,25 @@ async function showGuestDetail(guest: Guest): Promise<void> {
  *
  * 入参：无；读取当前会议和新增嘉宾表单。
  * 返回值：Promise<void>：创建完成后关闭弹窗并更新列表。
- * 异常：姓名或手机号缺失时显示错误提示。
+ * 异常：姓名或手机号缺失、权限、登录或网络异常时显示错误提示。
  */
 async function handleCreateGuest(): Promise<void> {
-  if (!meeting.value || !guestForm.value.name.trim() || !guestForm.value.phone.trim()) { ElMessage.warning('请填写嘉宾姓名和手机号。'); return }
+  if (!meeting.value || !guestForm.value.name.trim() || !guestForm.value.phone.trim()) {
+    ElMessage.warning('请填写嘉宾姓名和手机号。')
+    return
+  }
   creatingGuest.value = true
-  await createGuest(meeting.value.id, guestForm.value)
-  creatingGuest.value = false
-  guests.value = await listGuests(meeting.value.id)
-  guestForm.value = { name: '', phone: '', organization: '', title: '', tag: '', seat: '' }
-  guestCreateDialogVisible.value = false
-  ElMessage.success('嘉宾已新增，并已生成个人二维码。')
+  try {
+    await createAdminGuest(meeting.value.id, guestForm.value)
+    guests.value = await listAdminGuests(meeting.value.id)
+    guestForm.value = { name: '', phone: '', organization: '', title: '', tag: '', seat: '' }
+    guestCreateDialogVisible.value = false
+    ElMessage.success('嘉宾已新增，并已生成个人二维码。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '嘉宾新增失败。'))
+  } finally {
+    creatingGuest.value = false
+  }
 }
 
 /**
@@ -485,7 +544,7 @@ async function handleGuestImportFileChange(event: Event): Promise<void> {
       seat: String(row.座位号 ?? ''),
     }))
     const result = await importGuests(meeting.value.id, rows)
-    guests.value = await listGuests(meeting.value.id)
+    guests.value = await listAdminGuests(meeting.value.id)
     importMessageType.value = result.invalidRows.length ? 'warning' : 'success'
     importMessage.value = result.invalidRows.length
       ? `成功导入 ${result.importedCount} 名嘉宾；第 ${result.invalidRows.join('、')} 行缺少姓名或手机号，未导入。`

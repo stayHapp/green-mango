@@ -11,7 +11,8 @@
 
     <el-empty v-if="!session.admin" description="暂无管理员会话" />
     <template v-else>
-      <el-table :data="meetings" class="data-table top-gap" row-key="id">
+      <el-alert v-if="loadError" class="top-gap" type="error" :closable="false" :title="loadError" />
+      <el-table v-loading="loading" :data="meetings" class="data-table top-gap" row-key="id">
       <el-table-column prop="title" label="会议名称" min-width="220" />
       <el-table-column prop="location" label="地点" min-width="220" />
       <el-table-column label="时间" min-width="260">
@@ -46,13 +47,16 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { createMeeting, listAdminMeetings } from '../../mock/mockApi'
+import { createAdminMeeting, listAdminMeetings } from '../../api/adminMeetings'
+import { getApiErrorMessage } from '../../api/client'
 import { useSessionStore } from '../../stores/session'
 import type { Meeting, MeetingStatus } from '../../types'
 
 const router = useRouter()
 const session = useSessionStore()
 const meetings = ref<Meeting[]>([])
+const loading = ref(false)
+const loadError = ref('')
 const creating = ref(false)
 const createMessage = ref('')
 const createMessageType = ref<'success' | 'error'>('success')
@@ -69,7 +73,7 @@ const createForm = ref({ title: '', location: '', description: '', startTime: ''
  *   Promise<void>：加载完成后更新页面会议列表。
  *
  * 异常：
- *   mock API 当前不主动抛出异常；后续真实 API 失败时需要补充错误提示。
+ *   登录过期、权限或网络异常时清空列表并显示后端错误提示。
  */
 async function loadMeetings(): Promise<void> {
   if (!session.admin) {
@@ -77,7 +81,16 @@ async function loadMeetings(): Promise<void> {
     return
   }
 
-  meetings.value = await listAdminMeetings(session.admin.id)
+  loading.value = true
+  loadError.value = ''
+  try {
+    meetings.value = await listAdminMeetings()
+  } catch (error) {
+    meetings.value = []
+    loadError.value = getApiErrorMessage(error, '会议列表加载失败。')
+  } finally {
+    loading.value = false
+  }
 }
 
 /**
@@ -85,7 +98,7 @@ async function loadMeetings(): Promise<void> {
  *
  * 入参：无；函数读取当前管理员和创建表单。
  * 返回值：Promise<void>：创建完成后更新会议列表与提示信息。
- * 异常：管理员未登录或会议名称、地点缺失时显示错误提示。
+ * 异常：管理员未登录、字段无效、登录过期或网络异常时显示错误提示。
  */
 async function handleCreateMeeting(): Promise<void> {
   if (!session.admin || !createForm.value.title.trim() || !createForm.value.location.trim()) {
@@ -94,13 +107,27 @@ async function handleCreateMeeting(): Promise<void> {
     return
   }
   creating.value = true
-  await createMeeting(session.admin.id, { title: createForm.value.title.trim(), location: createForm.value.location.trim(), description: createForm.value.description.trim(), startTime: createForm.value.startTime ? `${createForm.value.startTime}:00+08:00` : '', endTime: createForm.value.endTime ? `${createForm.value.endTime}:00+08:00` : '', status: 'draft' })
-  creating.value = false
-  createForm.value = { title: '', location: '', description: '', startTime: '', endTime: '' }
-  createMessageType.value = 'success'
-  createMessage.value = '会议已创建。'
-  await loadMeetings()
-  createDialogVisible.value = false
+  createMessage.value = ''
+  try {
+    await createAdminMeeting({
+      title: createForm.value.title.trim(),
+      location: createForm.value.location.trim(),
+      description: createForm.value.description.trim(),
+      startTime: toChinaIso(createForm.value.startTime),
+      endTime: toChinaIso(createForm.value.endTime),
+      status: 'draft',
+    })
+    createForm.value = { title: '', location: '', description: '', startTime: '', endTime: '' }
+    createMessageType.value = 'success'
+    createMessage.value = '会议已创建。'
+    await loadMeetings()
+    createDialogVisible.value = false
+  } catch (error) {
+    createMessageType.value = 'error'
+    createMessage.value = getApiErrorMessage(error, '会议创建失败。')
+  } finally {
+    creating.value = false
+  }
 }
 
 /**
@@ -160,7 +187,21 @@ function goDetail(meetingId: string): void {
  *   日期字符串非法时浏览器会返回 Invalid Date 文本，后续真实数据应在接口层校验。
  */
 function formatDate(value: string): string {
+  if (!value) {
+    return '待定'
+  }
   return new Date(value).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+/**
+ * 将 datetime-local 输入转换为带中国时区的 ISO 字符串。
+ *
+ * 入参：value 为 `YYYY-MM-DDTHH:mm` 格式文本；允许为空。
+ * 返回值：string：非空时补充秒和 `+08:00`，空值原样返回。
+ * 异常：具体日期合法性由后端 Pydantic 校验。
+ */
+function toChinaIso(value: string): string {
+  return value ? `${value}:00+08:00` : ''
 }
 
 /**

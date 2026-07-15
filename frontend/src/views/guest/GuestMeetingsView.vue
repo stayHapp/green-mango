@@ -76,7 +76,7 @@ async function loadMeetings(): Promise<void> {
  *   当前函数不主动抛出异常。
  */
 function goLogin(): void {
-  router.push('/guest/login?meetingId=m-edu-2026')
+  router.push('/guest/login')
 }
 
 /**

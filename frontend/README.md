@@ -1,6 +1,6 @@
 # Frontend
 
-知会前端项目，当前使用 Vue 3、Vite 和 TypeScript 实现管理员端、嘉宾端、工作人员端的交互原型。
+知会前端项目，使用 Vue 3、Vite 和 TypeScript 实现管理员端、嘉宾端、工作人员端。登录和退出已开始接入真实 FastAPI 会话，其余业务页面按联调计划逐步从 Mock 切换。
 
 计划技术栈：
 
@@ -22,6 +22,14 @@ npm run dev
 ```
 
 启动成功后，按终端输出的本地地址在浏览器中访问。首次运行或 `package.json`、`package-lock.json` 变更后，需要先执行 `npm install`。
+
+默认请求 `http://127.0.0.1:8000/api`。需要修改后端地址时，从 `.env.example` 创建 `.env.local`：
+
+```text
+VITE_API_BASE_URL=http://127.0.0.1:8000/api
+```
+
+三端本地演示账号由后端 `python -m app.scripts.seed_dev` 命令创建，具体凭据见后端 README。
 
 ## 可用命令
 

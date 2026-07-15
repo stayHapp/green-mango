@@ -1,167 +1,129 @@
-/**
- * 三端原型的会话状态。
- *
- * 当前只保存 mock 登录结果，不代表最终鉴权方案。
- */
+/** 三端真实 API 会话状态与持久化。 */
+
 import { defineStore } from 'pinia'
 
-import type { AdminUser, Guest, StaffUser } from '../types'
-
-const STORAGE_KEYS = {
-  admin: 'green-mango-admin-session',
-  guest: 'green-mango-guest-session',
-  staff: 'green-mango-staff-session',
-}
-
-/**
- * 从 localStorage（本地存储）读取指定会话对象。
- *
- * 入参：
- *   key：localStorage 存储键，必填，取值应来自 STORAGE_KEYS。
- *
- * 返回值：
- *   T | undefined：解析成功时返回对应会话对象；不存在或解析失败时返回 undefined。
- *
- * 异常：
- *   JSON 解析失败或浏览器存储不可用时会被捕获，并返回 undefined。
- */
-function readStoredSession<T>(key: string): T | undefined {
-  try {
-    const value = window.localStorage.getItem(key)
-
-    if (!value) {
-      return undefined
-    }
-
-    return JSON.parse(value) as T
-  } catch {
-    return undefined
-  }
-}
+import {
+  readClientSession,
+  removeClientSession,
+  type AccessSession,
+  type StoredClientSession,
+  writeClientSession,
+} from '../api/authStorage'
+import type { AdminUser, ClientRole, Guest, StaffUser } from '../types'
 
 /**
- * 将指定会话对象写入 localStorage（本地存储）。
+ * 创建 Pinia 初始会话状态，过滤已过期或旧版 Mock 存储。
  *
- * 入参：
- *   key：localStorage 存储键，必填，取值应来自 STORAGE_KEYS。
- *   value：需要保存的会话对象，必填。
- *
- * 返回值：
- *   void：只产生浏览器本地存储副作用。
- *
- * 异常：
- *   浏览器存储不可用或写入失败时会被捕获，避免阻断页面流程。
+ * 入参：无。
+ * 返回值：包含三端用户和访问会话的状态对象。
+ * 异常：浏览器存储读取异常由 readClientSession 内部捕获。
  */
-function writeStoredSession<T>(key: string, value: T): void {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    // 忽略本地存储写入失败，确保 mock 登录流程不被浏览器策略阻断。
-  }
-}
-
-/**
- * 删除指定的 localStorage（本地存储）会话对象。
- *
- * 入参：key 为 localStorage 存储键，必填，取值应来自 STORAGE_KEYS。
- * 返回值：void：只产生浏览器本地存储删除副作用。
- * 异常：浏览器存储不可用或删除失败时会被捕获，避免阻断退出流程。
- */
-function removeStoredSession(key: string): void {
-  try {
-    window.localStorage.removeItem(key)
-  } catch {
-    // 忽略本地存储删除失败，确保页面仍可完成退出状态切换。
+function createInitialState() {
+  const adminSession = readClientSession<AdminUser>('admin')
+  const guestSession = readClientSession<Guest>('guest')
+  const staffSession = readClientSession<StaffUser>('staff')
+  return {
+    admin: adminSession?.user,
+    adminAccess: adminSession?.access,
+    guest: guestSession?.user,
+    guestAccess: guestSession?.access,
+    staff: staffSession?.user,
+    staffAccess: staffSession?.access,
   }
 }
 
 export const useSessionStore = defineStore('session', {
-  state: () => ({
-    admin: readStoredSession<AdminUser>(STORAGE_KEYS.admin),
-    guest: readStoredSession<Guest>(STORAGE_KEYS.guest),
-    staff: readStoredSession<StaffUser>(STORAGE_KEYS.staff),
-  }),
+  state: createInitialState,
   actions: {
     /**
-     * 保存管理员端 mock 登录结果。
+     * 保存管理员展示数据和真实访问会话。
      *
-     * 入参：
-     *   admin：登录成功的管理员对象，必填。
-     *
-     * 返回值：
-     *   void：只更新前端会话状态。
-     *
-     * 异常：
-     *   当前函数不主动抛出异常。
+     * 入参：admin 为页面兼容的管理员数据；access 为后端签发会话，均必填。
+     * 返回值：void：同步更新 Pinia 和 localStorage。
+     * 异常：本地存储写入异常由工具函数捕获。
      */
-    setAdmin(admin: AdminUser) {
+    setAdmin(admin: AdminUser, access: AccessSession): void {
       this.admin = admin
-      writeStoredSession(STORAGE_KEYS.admin, admin)
+      this.adminAccess = access
+      writeClientSession<AdminUser>('admin', { user: admin, access })
     },
     /**
-     * 保存嘉宾端 mock 登录结果。
+     * 保存嘉宾展示数据和真实访问会话。
      *
-     * 入参：
-     *   guest：登录成功的嘉宾对象，必填。
-     *
-     * 返回值：
-     *   void：只更新前端会话状态。
-     *
-     * 异常：
-     *   当前函数不主动抛出异常。
+     * 入参：guest 为完整嘉宾资料；access 为后端签发会话，均必填。
+     * 返回值：void：同步更新 Pinia 和 localStorage。
+     * 异常：本地存储写入异常由工具函数捕获。
      */
-    setGuest(guest: Guest) {
+    setGuest(guest: Guest, access: AccessSession): void {
       this.guest = guest
-      writeStoredSession(STORAGE_KEYS.guest, guest)
+      this.guestAccess = access
+      writeClientSession<Guest>('guest', { user: guest, access })
     },
     /**
-     * 保存工作人员端 mock 登录结果。
+     * 保存工作人员展示数据和真实访问会话。
      *
-     * 入参：
-     *   staff：登录成功的工作人员对象，必填。
-     *
-     * 返回值：
-     *   void：只更新前端会话状态。
-     *
-     * 异常：
-     *   当前函数不主动抛出异常。
+     * 入参：staff 为页面兼容的工作人员数据；access 为后端签发会话，均必填。
+     * 返回值：void：同步更新 Pinia 和 localStorage。
+     * 异常：本地存储写入异常由工具函数捕获。
      */
-    setStaff(staff: StaffUser) {
+    setStaff(staff: StaffUser, access: AccessSession): void {
       this.staff = staff
-      writeStoredSession(STORAGE_KEYS.staff, staff)
+      this.staffAccess = access
+      writeClientSession<StaffUser>('staff', { user: staff, access })
     },
     /**
-     * 清除管理员端 Mock 会话。
+     * 清除管理员端本地会话。
      *
      * 入参：无。
-     * 返回值：void：清空状态管理库和本地存储中的管理员会话。
-     * 异常：本地存储删除失败时会被内部捕获，不影响内存状态清空。
+     * 返回值：void：清空内存和本地存储。
+     * 异常：存储异常由工具函数捕获。
      */
     clearAdmin(): void {
       this.admin = undefined
-      removeStoredSession(STORAGE_KEYS.admin)
+      this.adminAccess = undefined
+      removeClientSession('admin')
     },
     /**
-     * 清除嘉宾端 Mock 会话。
+     * 清除嘉宾端本地会话。
      *
      * 入参：无。
-     * 返回值：void：清空状态管理库和本地存储中的嘉宾会话。
-     * 异常：本地存储删除失败时会被内部捕获，不影响内存状态清空。
+     * 返回值：void：清空内存和本地存储。
+     * 异常：存储异常由工具函数捕获。
      */
     clearGuest(): void {
       this.guest = undefined
-      removeStoredSession(STORAGE_KEYS.guest)
+      this.guestAccess = undefined
+      removeClientSession('guest')
     },
     /**
-     * 清除工作人员端 Mock 会话。
+     * 清除工作人员端本地会话。
      *
      * 入参：无。
-     * 返回值：void：清空状态管理库和本地存储中的工作人员会话。
-     * 异常：本地存储删除失败时会被内部捕获，不影响内存状态清空。
+     * 返回值：void：清空内存和本地存储。
+     * 异常：存储异常由工具函数捕获。
      */
     clearStaff(): void {
       this.staff = undefined
-      removeStoredSession(STORAGE_KEYS.staff)
+      this.staffAccess = undefined
+      removeClientSession('staff')
+    },
+    /**
+     * 清除指定客户端会话，用于统一处理退出和过期状态。
+     *
+     * 入参：role 为 admin、staff 或 guest，必填。
+     * 返回值：void：调用对应客户端清理动作。
+     * 异常：当前函数不主动抛出异常。
+     */
+    clearRole(role: ClientRole): void {
+      if (role === 'admin') {
+        this.clearAdmin()
+      } else if (role === 'staff') {
+        this.clearStaff()
+      } else {
+        this.clearGuest()
+      }
     },
   },
 })
+
+export type { AccessSession, StoredClientSession }

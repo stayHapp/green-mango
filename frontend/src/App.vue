@@ -12,7 +12,7 @@
         </template>
         <template v-else>
           <router-link to="/login">管理与签到登录</router-link>
-          <router-link to="/guest/login?meetingId=m-edu-2026">嘉宾登录</router-link>
+          <router-link to="/guest/login">嘉宾登录</router-link>
         </template>
       </nav>
     </el-header>
@@ -24,9 +24,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
+import { logoutClientSession } from './api/sessions'
 import { useSessionStore } from './stores/session'
+import type { ClientRole } from './types'
 
 const route = useRoute()
 const router = useRouter()
@@ -57,26 +60,30 @@ function clientName(): string {
 }
 
 /**
- * 退出当前客户端的本地 Mock 会话并跳转至对应登录入口。
+ * 撤销当前服务端会话、清理本地状态并跳转至对应登录入口。
  *
  * 入参：无；函数根据当前路由确定需要清除的会话。
- * 返回值：void：清除会话后完成前端路由跳转。
- * 异常：当前函数不主动抛出异常。
+ * 返回值：Promise<void>：无论服务端是否可达，最终都会清理本地会话并完成跳转。
+ * 异常：服务端撤销失败时显示提示，但异常不会继续向外抛出。
  */
-function handleLogout(): void {
-  if (route.path.startsWith('/admin/')) {
-    session.clearAdmin()
-    router.push('/login')
-    return
+async function handleLogout(): Promise<void> {
+  const role: ClientRole = route.path.startsWith('/admin/')
+    ? 'admin'
+    : route.path.startsWith('/staff/')
+      ? 'staff'
+      : 'guest'
+  const guestMeetingId = role === 'guest' ? session.guest?.meetingId : undefined
+  try {
+    await logoutClientSession(role)
+  } catch {
+    ElMessage.warning('服务端会话可能已失效，本地登录状态已清除。')
+  } finally {
+    session.clearRole(role)
+    await router.push(
+      role === 'guest'
+        ? { path: '/guest/login', query: guestMeetingId ? { meetingId: guestMeetingId } : {} }
+        : '/login',
+    )
   }
-
-  if (route.path.startsWith('/staff/')) {
-    session.clearStaff()
-    router.push('/login')
-    return
-  }
-
-  session.clearGuest()
-  router.push('/guest/login')
 }
 </script>
