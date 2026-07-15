@@ -2,7 +2,6 @@
   <section class="page">
     <div class="page-heading">
       <div>
-        <p class="eyebrow">嘉宾端</p>
         <h1>我的会议</h1>
         <p class="muted">{{ session.guest ? `${session.guest.name} 的参会安排` : '请先完成嘉宾登录。' }}</p>
       </div>

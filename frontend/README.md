@@ -27,7 +27,10 @@ npm run dev
 
 ```text
 VITE_API_BASE_URL=http://127.0.0.1:8000/api
+VITE_PUBLIC_APP_URL=http://192.168.1.100:5173
 ```
+
+`VITE_PUBLIC_APP_URL` 用于管理员端生成会议入口链接和二维码。本地联调应填写本机局域网 IP，正式环境应填写嘉宾能够访问的域名，不能填写 `localhost`。
 
 三端本地演示账号由后端 `python -m app.scripts.seed_dev` 命令创建，具体凭据见后端 README。
 

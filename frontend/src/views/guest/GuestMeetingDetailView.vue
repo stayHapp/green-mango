@@ -2,7 +2,6 @@
   <section class="page">
     <div class="page-heading">
       <div>
-        <p class="eyebrow">嘉宾端</p>
         <h1>{{ meeting?.title ?? '会议详情' }}</h1>
         <dl v-if="meeting" class="compact-info-list">
           <dt>时间</dt>
@@ -42,13 +41,7 @@
     </div>
 
     <el-drawer v-model="featureDrawerVisible" title="会议功能" direction="rtl" size="min(360px, 88vw)">
-      <div class="feature-drawer-list">
-        <button v-for="item in featureMenus" :key="item.key" class="feature-menu-item" type="button" @click="openFeature(item)">
-          <span class="feature-menu-title">{{ item.title }}</span>
-          <span class="feature-menu-desc">{{ item.description }}</span>
-        </button>
-      </div>
-      <el-alert v-if="featureMessage" class="top-gap" type="info" :closable="false" :title="featureMessage" />
+      <MeetingAssistantMenu :meeting-id="String(route.params.id)" />
     </el-drawer>
   </section>
 </template>
@@ -61,26 +54,13 @@ import { getMeeting } from '../../mock/mockApi'
 import { useSessionStore } from '../../stores/session'
 import type { Meeting } from '../../types'
 import GuestQrCode from '../../components/GuestQrCode.vue'
-
-interface FeatureMenuItem {
-  key: string
-  title: string
-  description: string
-}
+import MeetingAssistantMenu from '../../components/MeetingAssistantMenu.vue'
 
 const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const meeting = ref<Meeting>()
-const featureMessage = ref('')
 const featureDrawerVisible = ref(false)
-const featureMenus: FeatureMenuItem[] = [
-  { key: 'agenda', title: '会议日程', description: '查看当天流程和环节安排' },
-  { key: 'manual', title: '会议手册', description: '查看会务资料和注意事项' },
-  { key: 'weather', title: '天气情况', description: '了解到场当天城市天气' },
-  { key: 'route', title: '路线指引', description: '查看会场位置和交通建议' },
-  { key: 'contact', title: '联系我们', description: '联系会务组和现场支持' },
-]
 
 /**
  * 加载嘉宾会议详情。
@@ -115,22 +95,6 @@ function goLogin(): void {
 }
 
 /**
- * 打开嘉宾端功能菜单。
- *
- * 入参：
- *   item：功能菜单项，必填，包含功能标识、标题和说明。
- *
- * 返回值：
- *   void：根据菜单项更新当前页面展示状态。
- *
- * 异常：
- *   当前函数不主动抛出异常。
- */
-function openFeature(item: FeatureMenuItem): void {
-  featureMessage.value = `${item.title} 功能将在后续版本接入正式内容。`
-}
-
-/**
  * 展开会议功能侧边面板并清除上一次功能提示。
  *
  * 入参：无。
@@ -138,7 +102,6 @@ function openFeature(item: FeatureMenuItem): void {
  * 异常：当前函数不主动抛出异常。
  */
 function openFeatureDrawer(): void {
-  featureMessage.value = ''
   featureDrawerVisible.value = true
 }
 

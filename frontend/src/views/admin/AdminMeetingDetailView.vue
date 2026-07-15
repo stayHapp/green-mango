@@ -119,6 +119,24 @@
           <el-table-column label="登录验证"><template #default="{ row }">{{ row.usedForLogin ? '是' : '否' }}</template></el-table-column>
         </el-table>
       </el-tab-pane>
+      <el-tab-pane label="会议助手" name="assistant">
+        <el-alert type="info" :closable="false" title="每项功能由管理员编辑并独立发布；未发布时，嘉宾点击后会看到对应提醒。" />
+        <el-table class="top-gap" :data="assistantFeatures" row-key="key">
+          <el-table-column prop="title" label="功能" width="140" />
+          <el-table-column prop="description" label="入口说明" min-width="220" />
+          <el-table-column label="发布状态" width="110"><template #default="{ row }"><el-tag :type="row.isPublished ? 'success' : 'info'">{{ row.isPublished ? '已发布' : '未发布' }}</el-tag></template></el-table-column>
+          <el-table-column prop="unpublishedMessage" label="未发布提醒" min-width="260" show-overflow-tooltip />
+          <el-table-column label="操作" width="100"><template #default="{ row }"><el-button size="small" @click="openAssistantEditDialog(row)">编辑</el-button></template></el-table-column>
+        </el-table>
+        <el-dialog v-model="assistantEditDialogVisible" :title="`编辑${selectedAssistantFeature?.title ?? '会议助手'}`" width="min(620px, calc(100% - 32px))">
+          <el-form label-position="top" @submit.prevent>
+            <el-form-item label="发布状态"><el-switch v-model="assistantEditForm.isPublished" active-text="已发布" inactive-text="未发布" /></el-form-item>
+            <el-form-item label="功能内容"><el-input v-model="assistantEditForm.content" type="textarea" :rows="7" placeholder="请输入发布后向嘉宾展示的内容" /></el-form-item>
+            <el-form-item label="未发布提醒"><el-input v-model="assistantEditForm.unpublishedMessage" type="textarea" :rows="3" placeholder="请输入功能尚未发布时向嘉宾展示的提醒" /></el-form-item>
+            <div class="action-row"><el-button type="primary" :loading="savingAssistantFeature" @click="saveAssistantFeature">保存配置</el-button></div>
+          </el-form>
+        </el-dialog>
+      </el-tab-pane>
       <el-tab-pane label="工作人员" name="staff">
         <el-form class="edit-form" label-position="top" @submit.prevent>
           <div class="form-grid">
@@ -183,8 +201,9 @@ import { getAdminMeeting, updateAdminMeeting } from '../../api/adminMeetings'
 import { createAdminStaff, listAdminStaff, removeAdminStaffAssignment, updateAdminStaff } from '../../api/adminStaff'
 import { getApiErrorMessage } from '../../api/client'
 import { listCheckIns } from '../../mock/mockApi'
+import { listMeetingAssistantFeatures, updateMeetingAssistantFeature } from '../../mock/meetingAssistant'
 import { useSessionStore } from '../../stores/session'
-import type { CheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingStatus, StaffUser } from '../../types'
+import type { CheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingAssistantFeature, MeetingStatus, StaffUser } from '../../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -196,11 +215,13 @@ const guests = ref<Guest[]>([])
 const fields = ref<GuestField[]>([])
 const staff = ref<StaffUser[]>([])
 const checkIns = ref<CheckInRecord[]>([])
+const assistantFeatures = ref<MeetingAssistantFeature[]>([])
 const saving = ref(false)
 const exporting = ref(false)
 const importing = ref(false)
 const creatingStaff = ref(false)
 const savingStaff = ref(false)
+const savingAssistantFeature = ref(false)
 const generatingGuestQr = ref(false)
 const guestQrMessage = ref('')
 const guestQrMessageType = ref<'success' | 'info' | 'error'>('success')
@@ -217,6 +238,9 @@ const staffForm = ref({ name: '', phone: '', account: '', initialPassword: '' })
 const selectedStaff = ref<StaffUser>()
 const staffEditDialogVisible = ref(false)
 const staffEditForm = ref({ name: '', phone: '', isActive: true, newPassword: '' })
+const selectedAssistantFeature = ref<MeetingAssistantFeature>()
+const assistantEditDialogVisible = ref(false)
+const assistantEditForm = ref({ content: '', unpublishedMessage: '', isPublished: false })
 const guestImportInput = ref<HTMLInputElement>()
 const importMessage = ref('')
 const importMessageType = ref<'success' | 'warning' | 'error' | 'info'>('success')
@@ -232,7 +256,8 @@ const editForm = ref({
 })
 
 const checkedCount = computed(() => checkIns.value.length)
-const meetingEntryUrl = computed(() => meeting.value ? `${window.location.origin}/meetings/${meeting.value.id}` : '')
+const publicAppBaseUrl = resolvePublicAppBaseUrl()
+const meetingEntryUrl = computed(() => meeting.value && publicAppBaseUrl ? `${publicAppBaseUrl}/meetings/${meeting.value.id}` : '')
 const meetingQrCode = ref('')
 const meetingQrDialogVisible = ref(false)
 const guestRows = computed(() => guests.value.map((guest) => ({
@@ -241,11 +266,29 @@ const guestRows = computed(() => guests.value.map((guest) => ({
 })))
 
 /**
+ * 解析提供给嘉宾访问的前端公开地址。
+ *
+ * 入参：无；优先读取 `VITE_PUBLIC_APP_URL`，未配置时读取管理员当前访问页面的来源地址。
+ * 返回值：string：去除末尾斜杠后的本机 IP 或域名地址；通过 localhost 访问且未配置公开地址时返回空字符串。
+ * 异常：当前函数不主动抛出异常；配置为空或不可用于外部访问时返回空字符串。
+ * 使用示例：配置 `VITE_PUBLIC_APP_URL=https://meeting.example.com` 后返回 `https://meeting.example.com`。
+ */
+function resolvePublicAppBaseUrl(): string {
+  const configuredUrl = import.meta.env.VITE_PUBLIC_APP_URL?.trim().replace(/\/+$/, '')
+  if (configuredUrl) {
+    return configuredUrl
+  }
+
+  const localHostNames = new Set(['localhost', '127.0.0.1', '::1'])
+  return localHostNames.has(window.location.hostname) ? '' : window.location.origin
+}
+
+/**
  * 加载管理员会议详情页所需数据。
  *
  * 入参：无。
  *
- * 返回值：Promise<void>：加载完成后更新会议、嘉宾、字段、工作人员和签到记录。
+ * 返回值：Promise<void>：加载完成后更新会议、嘉宾、字段、工作人员、签到记录和会议助手配置。
  *
  * 异常：会议身份、权限或网络异常时清空详情并展示后端错误；其他资源本阶段仍使用 Mock。
  */
@@ -259,18 +302,20 @@ async function loadDetail(): Promise<void> {
   detailLoading.value = true
   detailError.value = ''
   try {
-    const [meetingData, guestData, fieldData, staffData, checkInData] = await Promise.all([
+    const [meetingData, guestData, fieldData, staffData, checkInData, assistantData] = await Promise.all([
       getAdminMeeting(meetingId),
       listAdminGuests(meetingId),
       listAdminGuestFields(meetingId),
       listAdminStaff(meetingId),
       listCheckIns(meetingId),
+      listMeetingAssistantFeatures(meetingId),
     ])
     meeting.value = meetingData
     guests.value = guestData
     fields.value = fieldData
     staff.value = staffData
     checkIns.value = checkInData
+    assistantFeatures.value = assistantData
     resetEditForm()
   } catch (error) {
     meeting.value = undefined
@@ -278,6 +323,60 @@ async function loadDetail(): Promise<void> {
   } finally {
     detailLoading.value = false
   }
+}
+
+/**
+ * 打开单项会议助手配置编辑窗口。
+ *
+ * 入参：feature 为管理员选中的会议助手功能，必填。
+ * 返回值：void：复制当前配置到表单并显示编辑弹窗。
+ * 异常：当前函数不主动抛出异常。
+ */
+function openAssistantEditDialog(feature: MeetingAssistantFeature): void {
+  selectedAssistantFeature.value = feature
+  assistantEditForm.value = {
+    content: feature.content,
+    unpublishedMessage: feature.unpublishedMessage,
+    isPublished: feature.isPublished,
+  }
+  assistantEditDialogVisible.value = true
+}
+
+/**
+ * 保存会议助手正文、未发布提醒和发布状态。
+ *
+ * 入参：无；函数读取当前会议、选中功能和编辑表单。
+ * 返回值：Promise<void>：保存成功后刷新配置列表并关闭弹窗。
+ * 异常：提醒为空、已发布内容为空或 Mock 配置不存在时展示错误提示。
+ */
+async function saveAssistantFeature(): Promise<void> {
+  if (!meeting.value || !selectedAssistantFeature.value) {
+    return
+  }
+  const content = assistantEditForm.value.content.trim()
+  const unpublishedMessage = assistantEditForm.value.unpublishedMessage.trim()
+  if (!unpublishedMessage) {
+    ElMessage.warning('请填写未发布时向嘉宾展示的提醒。')
+    return
+  }
+  if (assistantEditForm.value.isPublished && !content) {
+    ElMessage.warning('发布前请填写功能内容。')
+    return
+  }
+  savingAssistantFeature.value = true
+  const savedFeature = await updateMeetingAssistantFeature(meeting.value.id, selectedAssistantFeature.value.key, {
+    content,
+    unpublishedMessage,
+    isPublished: assistantEditForm.value.isPublished,
+  })
+  savingAssistantFeature.value = false
+  if (!savedFeature) {
+    ElMessage.error('会议助手配置不存在，请刷新后重试。')
+    return
+  }
+  assistantFeatures.value = await listMeetingAssistantFeatures(meeting.value.id)
+  assistantEditDialogVisible.value = false
+  ElMessage.success(savedFeature.isPublished ? '会议助手内容已保存并发布。' : '会议助手草稿和提醒已保存。')
 }
 
 /**

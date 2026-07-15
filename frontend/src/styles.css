@@ -239,8 +239,8 @@ a {
   background: transparent;
   box-shadow: none;
   color: #ffffff;
-  margin-bottom: 22px;
-  padding: 30px 32px;
+  margin-bottom: 8px;
+  padding: 20px 32px 24px;
 }
 
 .guest-meeting-hero h1,
@@ -255,8 +255,9 @@ a {
 }
 
 .guest-meeting-hero .compact-info-list {
-  border-top: 1px solid rgba(255, 255, 255, 0.24);
-  padding-top: 18px;
+  border-top: 0;
+  margin-top: 8px;
+  padding-top: 0;
 }
 
 .guest-meeting-hero .compact-info-list dt {
@@ -703,7 +704,12 @@ h1 {
   }
 
   .guest-meeting-hero {
-    padding: 24px 20px;
+    margin-bottom: 6px;
+    padding: 16px 20px 18px;
+  }
+
+  .guest-meeting-hero .compact-info-list {
+    margin-top: 6px;
   }
 
   .guest-login-card.el-card,
@@ -777,8 +783,17 @@ h1 {
 .guest-qr-code {
   display: grid;
   justify-items: center;
-  margin-top: 20px;
-  padding: 16px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 16px auto 0;
+}
+
+.guest-qr-code__frame {
+  display: grid;
+  place-items: center;
+  width: min(218px, 100%);
+  aspect-ratio: 1;
+  padding: 13px;
   border: 1px dashed #0f766e;
   border-radius: 8px;
   background: #f0fdfa;
@@ -787,16 +802,16 @@ h1 {
 .guest-qr-code__image,
 .guest-qr-code__placeholder {
   display: block;
-  width: min(240px, 100%);
+  width: min(192px, 100%);
   height: auto;
   background: #ffffff;
-  padding: 8px;
+  padding: 6px;
 }
 
 .guest-qr-code__hint {
-  margin: 12px 0 0;
+  margin: 10px 0 0;
   color: #0f766e;
-  font-size: 14px;
+  font-size: 13px;
   text-align: center;
 }
 

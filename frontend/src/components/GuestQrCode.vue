@@ -1,10 +1,12 @@
 <template>
   <div class="guest-qr-code">
-    <img v-if="imageUrl" :src="imageUrl" alt="嘉宾签到二维码" class="guest-qr-code__image" />
-    <el-alert v-else-if="errorMessage" type="error" :closable="false" :title="errorMessage" />
-    <el-skeleton v-else animated>
-      <template #template><el-skeleton-item variant="image" class="guest-qr-code__placeholder" /></template>
-    </el-skeleton>
+    <div class="guest-qr-code__frame">
+      <img v-if="imageUrl" :src="imageUrl" alt="嘉宾签到二维码" class="guest-qr-code__image" />
+      <el-alert v-else-if="errorMessage" type="error" :closable="false" :title="errorMessage" />
+      <el-skeleton v-else animated>
+        <template #template><el-skeleton-item variant="image" class="guest-qr-code__placeholder" /></template>
+      </el-skeleton>
+    </div>
     <p class="guest-qr-code__hint">请向工作人员出示此二维码完成签到</p>
   </div>
 </template>

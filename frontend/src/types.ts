@@ -71,6 +71,18 @@ export interface GuestQrGenerationResult {
   existingCount: number
 }
 
+export type MeetingAssistantFeatureKey = 'agenda' | 'manual' | 'weather' | 'route' | 'contact'
+
+export interface MeetingAssistantFeature {
+  meetingId: string
+  key: MeetingAssistantFeatureKey
+  title: string
+  description: string
+  content: string
+  unpublishedMessage: string
+  isPublished: boolean
+}
+
 export interface StaffUser {
   id: string
   name: string
