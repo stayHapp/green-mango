@@ -107,7 +107,7 @@
         <div class="action-row top-gap">
           <el-button @click="downloadGuestImportTemplate">下载 Excel 模板</el-button>
           <el-button type="primary" :loading="importing" @click="openGuestImportFilePicker">导入 Excel 名单</el-button>
-          <input ref="guestImportInput" class="visually-hidden" type="file" accept=".xlsx,.xls" @change="handleGuestImportFileChange" />
+          <input ref="guestImportInput" class="visually-hidden" type="file" accept=".xlsx" @change="handleGuestImportFileChange" />
         </div>
         <el-alert v-if="importMessage" class="top-gap" :type="importMessageType" :closable="false" :title="importMessage" />
       </el-tab-pane>
@@ -157,9 +157,9 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { read, utils, writeFileXLSX } from 'xlsx'
 import QRCode from 'qrcode'
 
+import { downloadAdminCheckInExport, downloadAdminGuestImportTemplate, importAdminGuests } from '../../api/adminExcel'
 import {
   createAdminGuest,
   generateAdminGuestQrTokens,
@@ -169,22 +169,9 @@ import {
 } from '../../api/adminGuests'
 import { getAdminMeeting, updateAdminMeeting } from '../../api/adminMeetings'
 import { getApiErrorMessage } from '../../api/client'
-import { createStaff, importGuests, listCheckIns, listStaff } from '../../mock/mockApi'
+import { createStaff, listCheckIns, listStaff } from '../../mock/mockApi'
 import { useSessionStore } from '../../stores/session'
 import type { CheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingStatus, StaffUser } from '../../types'
-
-interface CheckInExportRow {
-  序号: number
-  姓名: string
-  手机号: string
-  单位: string
-  职务: string
-  身份: string
-  座位号: string
-  签到状态: string
-  签到时间: string
-  签到方式: string
-}
 
 const route = useRoute()
 const router = useRouter()
@@ -484,11 +471,15 @@ async function handleCreateStaff(): Promise<void> {
  *
  * 异常：当前函数不主动抛出异常；浏览器禁止下载时由浏览器提示。
  */
-function downloadGuestImportTemplate(): void {
-  const worksheet = utils.json_to_sheet([{ 姓名: '张三', 手机号: '13800000000', 单位: '示例学校', 职务: '教师', 身份: '参会嘉宾', 座位号: 'A01' }])
-  const workbook = utils.book_new()
-  utils.book_append_sheet(workbook, worksheet, '嘉宾名单')
-  writeFileXLSX(workbook, '嘉宾名单导入模板.xlsx')
+async function downloadGuestImportTemplate(): Promise<void> {
+  if (!meeting.value) {
+    return
+  }
+  try {
+    await downloadAdminGuestImportTemplate(meeting.value.id, meeting.value.title)
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '嘉宾导入模板下载失败。'))
+  }
 }
 
 /**
@@ -505,7 +496,7 @@ function openGuestImportFilePicker(): void {
 }
 
 /**
- * 读取管理员选择的 Excel 文件、校验必填列并导入当前会议嘉宾。
+ * 将管理员选择的 Excel 文件上传后端并展示逐行导入结果。
  *
  * 入参：
  *   event：文件输入框变化事件，必填。
@@ -513,7 +504,7 @@ function openGuestImportFilePicker(): void {
  * 返回值：Promise<void>：导入结束后刷新嘉宾列表并显示结果摘要。
  *
  * 异常：
- *   文件非 Excel、缺少必填列、工作表为空或解析失败时显示页面错误提示。
+ *   文件格式、大小、表头、字段值、权限或网络异常时显示后端错误提示。
  */
 async function handleGuestImportFileChange(event: Event): Promise<void> {
   const input = event.target as HTMLInputElement
@@ -527,110 +518,19 @@ async function handleGuestImportFileChange(event: Event): Promise<void> {
   importMessage.value = ''
 
   try {
-    const workbook = read(await file.arrayBuffer())
-    const worksheet = workbook.Sheets[workbook.SheetNames[0]]
-    const rawRows = worksheet ? utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: '' }) : []
-
-    if (!rawRows.length || !Object.prototype.hasOwnProperty.call(rawRows[0], '姓名') || !Object.prototype.hasOwnProperty.call(rawRows[0], '手机号')) {
-      throw new Error('文件首行必须包含“姓名”和“手机号”列。')
-    }
-
-    const rows: GuestImportInput[] = rawRows.map((row) => ({
-      name: String(row.姓名 ?? ''),
-      phone: String(row.手机号 ?? ''),
-      organization: String(row.单位 ?? ''),
-      title: String(row.职务 ?? ''),
-      tag: String(row.身份 ?? ''),
-      seat: String(row.座位号 ?? ''),
-    }))
-    const result = await importGuests(meeting.value.id, rows)
+    const result = await importAdminGuests(meeting.value.id, file)
     guests.value = await listAdminGuests(meeting.value.id)
-    importMessageType.value = result.invalidRows.length ? 'warning' : 'success'
-    importMessage.value = result.invalidRows.length
-      ? `成功导入 ${result.importedCount} 名嘉宾；第 ${result.invalidRows.join('、')} 行缺少姓名或手机号，未导入。`
+    importMessageType.value = result.errors.length ? 'warning' : 'success'
+    importMessage.value = result.errors.length
+      ? `成功导入 ${result.importedCount} 名嘉宾；${result.errors.map((item) => `第 ${item.rowNumber} 行：${item.message}`).join('；')}`
       : `成功导入 ${result.importedCount} 名嘉宾。`
   } catch (error) {
     importMessageType.value = 'error'
-    importMessage.value = error instanceof Error ? `导入失败：${error.message}` : '导入失败，请检查 Excel 文件后重试。'
+    importMessage.value = getApiErrorMessage(error, '导入失败，请检查 Excel 文件后重试。')
   } finally {
     importing.value = false
     input.value = ''
   }
-}
-
-/**
- * 将全量嘉宾和签到记录转换为管理员导出的工作表行。
- *
- * 入参：
- *   guestList：当前会议的嘉宾列表，必填。
- *   records：当前会议的签到记录，必填；每位嘉宾最多一条。
- *
- * 返回值：
- *   CheckInExportRow[]：按嘉宾列表顺序排列的导出行，包含未签到嘉宾。
- *
- * 异常：
- *   当前函数不主动抛出异常；找不到关联签到记录时，该嘉宾按未签到处理。
- *
- * 示例：
- *   createCheckInExportRows(guests.value, checkIns.value)
- */
-function createCheckInExportRows(guestList: Guest[], records: CheckInRecord[]): CheckInExportRow[] {
-  const checkInByGuestId = new Map<string, CheckInRecord>()
-
-  // 按嘉宾 ID 建立索引，避免导出每一行时重复遍历签到记录。
-  for (const record of records) {
-    checkInByGuestId.set(record.guestId, record)
-  }
-
-  // 以全量嘉宾为基准，确保管理员可同时获取已签到和未签到名单。
-  return guestList.map((guest, index) => {
-    const record = checkInByGuestId.get(guest.id)
-    return {
-      序号: index + 1,
-      姓名: guest.name,
-      手机号: guest.phone,
-      单位: guest.organization,
-      职务: guest.title,
-      身份: guest.tag,
-      座位号: guest.seat,
-      签到状态: record ? '已签到' : '未签到',
-      签到时间: record ? formatExportDate(record.checkedInAt) : '',
-      签到方式: record ? methodText(record.method) : '',
-    }
-  })
-}
-
-/**
- * 格式化 Excel 工作表中的签到时间。
- *
- * 入参：
- *   value：ISO 格式日期时间字符串，必填。
- *
- * 返回值：
- *   string：按中文地区习惯展示的本地日期时间。
- *
- * 异常：
- *   当前函数不主动抛出异常；非法日期由浏览器按默认规则处理。
- */
-function formatExportDate(value: string): string {
-  return new Date(value).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'medium', hour12: false })
-}
-
-/**
- * 生成符合文件系统命名规则的签到表文件名。
- *
- * 入参：
- *   currentMeeting：当前会议详情，必填。
- *
- * 返回值：
- *   string：由会议标题和“嘉宾签到表”组成的 xlsx 文件名。
- *
- * 异常：
- *   当前函数不主动抛出异常；标题中的文件系统保留字符会替换为下划线。
- */
-function buildCheckInExportFileName(currentMeeting: Meeting): string {
-  const safeTitle = currentMeeting.title.replace(/[\\/:*?"<>|]/g, '_')
-  return `${safeTitle}-嘉宾签到表.xlsx`
 }
 
 /**
@@ -640,10 +540,10 @@ function buildCheckInExportFileName(currentMeeting: Meeting): string {
  *   无；函数读取已加载的会议、嘉宾和签到记录。
  *
  * 返回值：
- *   Promise<void>：浏览器生成并下载 Excel 文件后结束。
+ *   Promise<void>：后端生成并下载 Excel 文件后结束。
  *
  * 异常：
- *   会议未加载或导出库写入失败时展示页面提示，不向页面外抛出异常。
+ *   会议未加载、权限或网络失败时展示页面提示，不向页面外抛出异常。
  *
  * 示例：
  *   await handleExportCheckInSheet()
@@ -657,40 +557,13 @@ async function handleExportCheckInSheet(): Promise<void> {
   exporting.value = true
 
   try {
-    const worksheet = utils.json_to_sheet(createCheckInExportRows(guests.value, checkIns.value))
-    worksheet['!cols'] = [
-      { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 24 }, { wch: 16 },
-      { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 12 },
-    ]
-    const workbook = utils.book_new()
-    utils.book_append_sheet(workbook, worksheet, '嘉宾签到表')
-    writeFileXLSX(workbook, buildCheckInExportFileName(meeting.value))
+    await downloadAdminCheckInExport(meeting.value.id, meeting.value.title)
     ElMessage.success('嘉宾签到表已开始下载。')
-  } catch {
-    ElMessage.error('签到表导出失败，请稍后重试。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '签到表导出失败，请稍后重试。'))
   } finally {
     exporting.value = false
   }
-}
-
-/**
- * 将签到方式转换为中文文本。
- *
- * 入参：
- *   method：签到方式，必填，可取 scan 或 manual。
- *
- * 返回值：
- *   string：对应的中文签到方式文本。
- *
- * 异常：
- *   当前函数不主动抛出异常。
- */
-function methodText(method: CheckInRecord['method']): string {
-  const methodTextMap: Record<CheckInRecord['method'], string> = {
-    scan: '扫码',
-    manual: '手动',
-  }
-  return methodTextMap[method]
 }
 
 /**
