@@ -7,6 +7,7 @@ from app.models.access import MeetingAdmin
 from app.models.meeting import Meeting, MeetingSetting
 from app.models.user import User
 from app.schemas.meeting import MeetingCreate, MeetingUpdate
+from app.services.meeting_assistant import ensure_meeting_assistant_features
 
 
 def list_authorized_meetings(db: Session, admin: User) -> list[Meeting]:
@@ -73,6 +74,7 @@ def create_meeting(db: Session, admin: User, payload: MeetingCreate) -> Meeting:
     # 新会议默认允许保留的嘉宾报名补充入口，具体开关由后续设置 API 管理。
     db.add(MeetingSetting(meeting_id=meeting.id))
     db.add(MeetingAdmin(meeting_id=meeting.id, user_id=admin.id))
+    ensure_meeting_assistant_features(db, meeting.id)
     db.commit()
     db.refresh(meeting)
     return meeting

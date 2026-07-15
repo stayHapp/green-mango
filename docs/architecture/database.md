@@ -9,7 +9,7 @@
 - 迁移工具：Alembic
 - 本地默认数据库：SQLite，`sqlite:///./dev.db`
 - 正式环境数据库：PostgreSQL，通过 `DATABASE_URL` 配置
-- 当前迁移头：`20260715_0004`
+- 当前迁移头：`20260716_0005`
 
 ## 表结构
 
@@ -18,6 +18,7 @@
 - `meetings`、`meeting_settings`：会议基础信息、报名开关和会议级 JSON 配置。
 - `meeting_admins`：会议与管理员的多对多授权。
 - `staff_meetings`：会议与工作人员的多对多授权。
+- `meeting_assistant_features`：会议助手五项固定功能的正文、未发布提醒和发布状态。
 - `guest_fields`：会议级动态嘉宾字段。
 - `guests`：正式嘉宾、固定资料、启用状态和随机二维码凭证。
 - `guest_values`：正式嘉宾的动态字段值。
@@ -48,6 +49,7 @@ users --< auth_sessions
 - 同一会议的同一管理员授权唯一：`uq_meeting_admins_meeting_id_user_id`。
 - 同一会议的同一工作人员授权唯一：`uq_staff_meetings_meeting_id_user_id`。
 - 同一会议内动态字段 key 唯一：`uq_guest_fields_meeting_id_key`。
+- 同一会议内会议助手功能 key 唯一：`uq_meeting_assistant_features_meeting_id_feature_key`。
 - 嘉宾二维码 token 全局唯一，且只承载随机凭证，不写入姓名和手机号。
 - 同一嘉宾的同一动态字段值唯一：`uq_guest_values_guest_id_field_id`。
 - 同一嘉宾在同一会议只能签到一次：`uq_check_ins_meeting_id_guest_id`。
@@ -62,3 +64,23 @@ users --< auth_sessions
 2. `20260715_0002`：三端会议授权、嘉宾、动态字段和签到结构。
 3. `20260715_0003`：安全认证会话表。
 4. `20260715_0004`：嘉宾自主报名申请和审核字段。
+5. `20260716_0005`：会议助手五项固定功能配置、发布状态和唯一约束。
+
+## 会议助手结构
+
+`meeting_assistant_features` 采用以下字段：
+
+| 字段 | 类型 | 约束与含义 |
+| --- | --- | --- |
+| `id` | bigint / integer | 主键 |
+| `meeting_id` | bigint / integer | 外键关联 `meetings.id`，会议删除时级联删除 |
+| `feature_key` | varchar(32) | 固定为 `agenda`、`manual`、`weather`、`route`、`contact` 之一 |
+| `content` | text | 管理员维护的纯文本草稿，默认空字符串 |
+| `unpublished_message` | varchar(500) | 未发布时向嘉宾展示的提醒 |
+| `is_published` | boolean | 当前功能是否向嘉宾发布，默认 `false` |
+| `created_at` | datetime with timezone | 创建时间 |
+| `updated_at` | datetime with timezone | 最后修改时间 |
+
+数据库唯一约束保证同一会议同一功能只有一条记录；应用服务负责为新会议创建五条默认配置，并在读取历史会议时补齐缺失配置。数据库不保存天气接口响应。
+
+使用唯一约束 `uq_meeting_assistant_features_meeting_id_feature_key` 保证同一会议内功能标识唯一。

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -60,6 +60,9 @@ class Meeting(Base):
     guest_applications: Mapped[list[GuestApplication]] = relationship(
         back_populates="meeting", cascade="all, delete-orphan"
     )
+    assistant_features: Mapped[list[MeetingAssistantFeature]] = relationship(
+        back_populates="meeting", cascade="all, delete-orphan"
+    )
 
 
 class MeetingSetting(Base):
@@ -78,3 +81,31 @@ class MeetingSetting(Base):
     )
 
     meeting: Mapped[Meeting] = relationship(back_populates="setting")
+
+
+class MeetingAssistantFeature(Base):
+    """会议下固定会议助手功能的正文、提醒和发布状态。"""
+
+    __tablename__ = "meeting_assistant_features"
+    __table_args__ = (
+        UniqueConstraint(
+            "meeting_id", "feature_key", name="uq_meeting_assistant_features_meeting_id_feature_key"
+        ),
+        CheckConstraint(
+            "feature_key IN ('agenda', 'manual', 'weather', 'route', 'contact')",
+            name="ck_meeting_assistant_features_feature_key",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    meeting_id: Mapped[int] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), nullable=False)
+    feature_key: Mapped[str] = mapped_column(String(32), nullable=False)
+    content: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    unpublished_message: Mapped[str] = mapped_column(String(500), nullable=False)
+    is_published: Mapped[bool] = mapped_column(default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    meeting: Mapped[Meeting] = relationship(back_populates="assistant_features")

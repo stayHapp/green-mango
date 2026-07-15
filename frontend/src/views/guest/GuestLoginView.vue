@@ -62,7 +62,7 @@
             <el-tag class="identity-role" type="success" effect="light">{{ currentGuest.tag }}</el-tag>
           </div>
         </div>
-        <dl class="info-list top-gap">
+        <dl class="info-list">
           <dt>电话</dt>
           <dd>{{ currentGuest.phone }}</dd>
           <dt>单位</dt>

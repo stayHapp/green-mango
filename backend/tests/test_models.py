@@ -11,6 +11,7 @@ CORE_TABLES = {
     "users",
     "meetings",
     "meeting_settings",
+    "meeting_assistant_features",
     "registration_fields",
     "registrations",
     "registration_values",
@@ -80,6 +81,12 @@ def test_core_models_create_expected_tables_and_constraints(tmp_path) -> None:
         for constraint in inspector.get_unique_constraints("check_ins")
     }
     assert ("meeting_id", "guest_id") in check_in_constraints
+
+    assistant_feature_constraints = {
+        tuple(constraint["column_names"])
+        for constraint in inspector.get_unique_constraints("meeting_assistant_features")
+    }
+    assert ("meeting_id", "feature_key") in assistant_feature_constraints
 
     guest_indexes = {index["name"]: index for index in inspector.get_indexes("guests")}
     assert guest_indexes["ix_guests_qr_token"]["unique"] == 1

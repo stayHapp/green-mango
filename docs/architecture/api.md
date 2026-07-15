@@ -74,6 +74,15 @@
 
 导出文件同时包含已签到和未签到嘉宾，以及签到时间、方式和执行工作人员。
 
+## 管理员会议助手接口
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/admin/meetings/{meeting_id}/assistant-features` | 获取会议固定五项会议助手配置 |
+| PATCH | `/api/admin/meetings/{meeting_id}/assistant-features/{feature_key}` | 修改单项正文、未发布提醒和发布状态 |
+
+`feature_key` 只接受 `agenda`、`manual`、`weather`、`route`、`contact`。正文为纯文本且最长 20,000 字符，未发布提醒为纯文本且最长 500 字符。管理员必须拥有当前会议授权；不受支持的功能标识返回 422。
+
 ## 嘉宾端接口
 
 以下接口除登录外均要求嘉宾 Bearer token，并校验嘉宾属于路径中的会议且处于启用状态。
@@ -84,8 +93,13 @@
 | GET | `/api/guest/meetings/{meeting_id}` | 查询会议和个人参会概要 |
 | GET | `/api/guest/meetings/{meeting_id}/profile` | 查询固定资料与动态字段值 |
 | GET | `/api/guest/meetings/{meeting_id}/check-in-qr` | 获取个人签到二维码 token 与过期时间 |
+| GET | `/api/guest/meetings/{meeting_id}/assistant-features/{feature_key}` | 获取单项会议助手公开内容或未发布提醒 |
 
 二维码图像由前端把 `qr_token` 编码为二维码；工作人员扫码后只把 token 交给后端校验。二维码在会议结束后失效。
+
+会议助手功能已发布时返回 `content`；未发布时只返回 `unpublished_message` 和发布状态，响应中的 `content` 必须为 `null`，避免草稿泄露。嘉宾只能访问自己所属会议的会议助手内容。
+
+后续实现二维码签到标记时，二维码响应增加 `is_checked_in` 和可空的 `checked_in_at`。这两个字段从 `check_ins` 读取，不改变二维码 token 与过期规则。
 
 ## 工作人员端接口
 
