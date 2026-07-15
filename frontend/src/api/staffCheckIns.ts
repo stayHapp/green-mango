@@ -49,6 +49,23 @@ export interface StaffGuest {
 }
 
 /**
+ * 将后端可能缺少时区标识的 UTC 时间补充为标准 ISO 时间。
+ *
+ * 入参：value 为后端日期时间字符串或空值，必填；带 `Z` 或时区偏移时保持原值。
+ * 返回值：string：空值返回空字符串，无时区值追加 `Z`，已有时区值保持不变。
+ * 异常：当前函数不主动抛出异常；非法时间文本保持原值，由页面日期格式化逻辑处理。
+ */
+function normalizeUtcDateTime(value: string | null): string {
+  if (!value) {
+    return ''
+  }
+  if (/Z$|[+-]\d{2}:\d{2}$/.test(value)) {
+    return value
+  }
+  return `${value}Z`
+}
+
+/**
  * 将工作人员会议响应转换为共享会议类型。
  *
  * 入参：meeting 为后端会议响应，必填。
@@ -82,7 +99,7 @@ function mapCheckIn(record: CheckInApiResponse): CheckInRecord {
     meetingId: String(record.meeting_id),
     guestId: String(record.guest_id),
     staffId: record.staff_id ? String(record.staff_id) : '',
-    checkedInAt: record.checked_in_at,
+    checkedInAt: normalizeUtcDateTime(record.checked_in_at),
     method: record.method,
   }
 }
@@ -121,7 +138,7 @@ export async function searchStaffGuests(meetingId: string, query: string): Promi
     seat: guest.seat || '',
     isActive: guest.is_active,
     checkedIn: guest.checked_in,
-    checkedInAt: guest.checked_in_at || '',
+    checkedInAt: normalizeUtcDateTime(guest.checked_in_at),
   }))
 }
 
