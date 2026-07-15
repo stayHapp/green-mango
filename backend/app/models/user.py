@@ -8,12 +8,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.access import MeetingAdmin, StaffMeeting
     from app.models.meeting import Meeting
 
 
@@ -33,7 +34,7 @@ def utc_now() -> datetime:
 
 
 class User(Base):
-    """管理员或未来登录用户，可作为会议创建人。"""
+    """管理员或工作人员账号。"""
 
     __tablename__ = "users"
 
@@ -42,9 +43,19 @@ class User(Base):
     # 这里只保存密码哈希值；密码校验由后续认证模块负责。
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(100))
+    # role 当前只允许由业务层写入 admin 或 staff，细粒度权限留待后续认证任务实现。
+    role: Mapped[str] = mapped_column(String(20), default="admin", nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(30), index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
 
     meetings: Mapped[list[Meeting]] = relationship(back_populates="created_by")
+    admin_assignments: Mapped[list[MeetingAdmin]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    staff_assignments: Mapped[list[StaffMeeting]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )

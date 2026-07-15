@@ -40,12 +40,20 @@ backend/
 - `RegistrationField`
 - `Registration`
 - `RegistrationValue`
+- `MeetingAdmin`
+- `StaffMeeting`
+- `GuestField`
+- `Guest`
+- `GuestValue`
+- `CheckIn`
 
 模型文件：
 
 - `backend/app/models/user.py`
 - `backend/app/models/meeting.py`
 - `backend/app/models/registration.py`
+- `backend/app/models/access.py`
+- `backend/app/models/guest.py`
 
 `backend/app/models/__init__.py` 负责导入所有模型，确保 Alembic 能通过 `Base.metadata` 发现业务表。
 
@@ -61,13 +69,13 @@ backend/
 
 `app/api/router.py` 负责汇总各模块路由，并由 `app/main.py` 挂载到 `/api` 前缀下。
 
-当前只实现健康检查路由，业务路由尚未实现。
+当前已实现健康检查路由，以及管理员会议列表、创建、详情和修改路由。其余业务路由尚未实现。
 
 ## services
 
 `services` 保存业务逻辑，例如会议创建、字段配置校验、报名提交和报名记录查询。
 
-当前尚未添加业务服务。
+当前已添加管理员会议管理、嘉宾字段配置、嘉宾录入、工作人员创建、工作人员会议查询和签到服务；嘉宾登录、导入导出等业务服务尚未实现。
 
 ## db
 
@@ -79,6 +87,7 @@ backend/
 - `app/db/session.py`：engine、SessionLocal、`create_db_engine()` 和 `get_db()`。
 - `alembic.ini` 与 `alembic/`：Alembic 迁移骨架。
 - `alembic/versions/20260707_0001_create_core_tables.py`：首个核心表迁移。
+- `alembic/versions/20260715_0002_add_meeting_guest_checkin_models.py`：三端 MVP 的授权、嘉宾和签到数据结构迁移。
 
 默认数据库为本地 SQLite，正式环境通过 `DATABASE_URL` 指向 PostgreSQL。
 
