@@ -71,8 +71,9 @@ import { computed, onMounted, ref } from 'vue'
 import { ArrowLeft, Location as LocationIcon } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { getApiErrorMessage } from '../../api/client'
 import { getPublicMeeting } from '../../api/sessions'
-import { listMeetingAssistantFeatures } from '../../mock/meetingAssistant'
+import { getGuestMeetingAssistantFeature, isMeetingAssistantFeatureKey } from '../../api/meetingAssistant'
 import type { Meeting, MeetingAssistantFeature } from '../../types'
 
 interface AgendaDisplayItem {
@@ -122,17 +123,18 @@ async function loadFeature(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [meetingData, features] = await Promise.all([
+    if (!isMeetingAssistantFeatureKey(featureKey)) {
+      errorMessage.value = '未找到对应的会议功能。'
+      return
+    }
+    const [meetingData, featureData] = await Promise.all([
       getPublicMeeting(meetingId),
-      listMeetingAssistantFeatures(meetingId),
+      getGuestMeetingAssistantFeature(meetingId, featureKey),
     ])
     meeting.value = meetingData
-    feature.value = features.find((item) => item.key === featureKey)
-    if (!feature.value) {
-      errorMessage.value = '未找到对应的会议功能。'
-    }
-  } catch {
-    errorMessage.value = '会议功能加载失败，请稍后重试。'
+    feature.value = featureData
+  } catch (error) {
+    errorMessage.value = getApiErrorMessage(error, '会议功能加载失败，请稍后重试。')
   } finally {
     loading.value = false
   }

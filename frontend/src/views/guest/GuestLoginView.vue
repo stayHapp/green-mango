@@ -87,9 +87,9 @@ import { Menu as MenuIcon, SwitchButton } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 import { getApiErrorMessage } from '../../api/client'
+import { meetingAssistantFeatureDefinitions } from '../../api/meetingAssistant'
 import { getPublicMeeting, loginGuest, logoutClientSession } from '../../api/sessions'
 import { useSessionStore } from '../../stores/session'
-import { meetingAssistantFeatureDefinitions } from '../../mock/meetingAssistant'
 import type { Guest, Meeting, MeetingAssistantFeatureKey } from '../../types'
 import GuestQrCode from '../../components/GuestQrCode.vue'
 

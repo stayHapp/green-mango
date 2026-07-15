@@ -121,7 +121,8 @@
       </el-tab-pane>
       <el-tab-pane label="会议助手" name="assistant">
         <el-alert type="info" :closable="false" title="每项功能由管理员编辑并独立发布；未发布时，嘉宾点击后会看到对应提醒。" />
-        <el-table class="top-gap" :data="assistantFeatures" row-key="key">
+        <el-alert v-if="assistantError" class="top-gap" type="error" :closable="false" :title="assistantError" />
+        <el-table v-loading="assistantLoading" class="top-gap" :data="assistantFeatures" row-key="key">
           <el-table-column prop="title" label="功能" width="140" />
           <el-table-column prop="description" label="入口说明" min-width="220" />
           <el-table-column label="发布状态" width="110"><template #default="{ row }"><el-tag :type="row.isPublished ? 'success' : 'info'">{{ row.isPublished ? '已发布' : '未发布' }}</el-tag></template></el-table-column>
@@ -198,10 +199,10 @@ import {
   listAdminGuests,
 } from '../../api/adminGuests'
 import { getAdminMeeting, updateAdminMeeting } from '../../api/adminMeetings'
+import { listAdminMeetingAssistantFeatures, updateAdminMeetingAssistantFeature } from '../../api/meetingAssistant'
 import { createAdminStaff, listAdminStaff, removeAdminStaffAssignment, updateAdminStaff } from '../../api/adminStaff'
 import { getApiErrorMessage } from '../../api/client'
 import { listCheckIns } from '../../mock/mockApi'
-import { listMeetingAssistantFeatures, updateMeetingAssistantFeature } from '../../mock/meetingAssistant'
 import { useSessionStore } from '../../stores/session'
 import type { CheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingAssistantFeature, MeetingStatus, StaffUser } from '../../types'
 
@@ -216,6 +217,8 @@ const fields = ref<GuestField[]>([])
 const staff = ref<StaffUser[]>([])
 const checkIns = ref<CheckInRecord[]>([])
 const assistantFeatures = ref<MeetingAssistantFeature[]>([])
+const assistantLoading = ref(false)
+const assistantError = ref('')
 const saving = ref(false)
 const exporting = ref(false)
 const importing = ref(false)
@@ -302,26 +305,36 @@ async function loadDetail(): Promise<void> {
   detailLoading.value = true
   detailError.value = ''
   try {
-    const [meetingData, guestData, fieldData, staffData, checkInData, assistantData] = await Promise.all([
+    const [meetingData, guestData, fieldData, staffData, checkInData] = await Promise.all([
       getAdminMeeting(meetingId),
       listAdminGuests(meetingId),
       listAdminGuestFields(meetingId),
       listAdminStaff(meetingId),
       listCheckIns(meetingId),
-      listMeetingAssistantFeatures(meetingId),
     ])
     meeting.value = meetingData
     guests.value = guestData
     fields.value = fieldData
     staff.value = staffData
     checkIns.value = checkInData
-    assistantFeatures.value = assistantData
     resetEditForm()
   } catch (error) {
     meeting.value = undefined
     detailError.value = getApiErrorMessage(error, '会议详情加载失败。')
   } finally {
     detailLoading.value = false
+  }
+  if (meeting.value) {
+    assistantLoading.value = true
+    assistantError.value = ''
+    try {
+      assistantFeatures.value = await listAdminMeetingAssistantFeatures(meetingId)
+    } catch (error) {
+      assistantFeatures.value = []
+      assistantError.value = getApiErrorMessage(error, '会议助手配置加载失败。')
+    } finally {
+      assistantLoading.value = false
+    }
   }
 }
 
@@ -347,7 +360,7 @@ function openAssistantEditDialog(feature: MeetingAssistantFeature): void {
  *
  * 入参：无；函数读取当前会议、选中功能和编辑表单。
  * 返回值：Promise<void>：保存成功后刷新配置列表并关闭弹窗。
- * 异常：提醒为空、已发布内容为空或 Mock 配置不存在时展示错误提示。
+ * 异常：提醒为空、已发布内容为空、登录过期、权限或网络异常时展示错误提示。
  */
 async function saveAssistantFeature(): Promise<void> {
   if (!meeting.value || !selectedAssistantFeature.value) {
@@ -364,19 +377,26 @@ async function saveAssistantFeature(): Promise<void> {
     return
   }
   savingAssistantFeature.value = true
-  const savedFeature = await updateMeetingAssistantFeature(meeting.value.id, selectedAssistantFeature.value.key, {
-    content,
-    unpublishedMessage,
-    isPublished: assistantEditForm.value.isPublished,
-  })
-  savingAssistantFeature.value = false
-  if (!savedFeature) {
-    ElMessage.error('会议助手配置不存在，请刷新后重试。')
-    return
+  assistantError.value = ''
+  try {
+    const savedFeature = await updateAdminMeetingAssistantFeature(
+      meeting.value.id,
+      selectedAssistantFeature.value.key,
+      {
+        content,
+        unpublishedMessage,
+        isPublished: assistantEditForm.value.isPublished,
+      },
+    )
+    assistantFeatures.value = await listAdminMeetingAssistantFeatures(meeting.value.id)
+    assistantEditDialogVisible.value = false
+    ElMessage.success(savedFeature.isPublished ? '会议助手内容已保存并发布。' : '会议助手草稿和提醒已保存。')
+  } catch (error) {
+    assistantError.value = getApiErrorMessage(error, '会议助手配置保存失败。')
+    ElMessage.error(assistantError.value)
+  } finally {
+    savingAssistantFeature.value = false
   }
-  assistantFeatures.value = await listMeetingAssistantFeatures(meeting.value.id)
-  assistantEditDialogVisible.value = false
-  ElMessage.success(savedFeature.isPublished ? '会议助手内容已保存并发布。' : '会议助手草稿和提醒已保存。')
 }
 
 /**
