@@ -19,7 +19,7 @@
         >
           导出签到表
         </el-button>
-        <el-tag type="success">签到 {{ checkedCount }}/{{ guests.length }}</el-tag>
+        <el-tag type="success">签到 {{ checkedCount }}/{{ totalGuestCount }}</el-tag>
       </div>
     </div>
 
@@ -37,7 +37,7 @@
     </el-alert>
 
     <div v-else class="stats-grid">
-      <el-card shadow="never"><div class="stat-number">{{ guests.length }}</div><div class="muted">嘉宾总数</div></el-card>
+      <el-card shadow="never"><div class="stat-number">{{ totalGuestCount }}</div><div class="muted">嘉宾总数</div></el-card>
       <el-card shadow="never"><div class="stat-number">{{ checkedCount }}</div><div class="muted">已签到</div></el-card>
       <el-card shadow="never"><div class="stat-number">{{ staff.length }}</div><div class="muted">工作人员</div></el-card>
     </div>
@@ -166,9 +166,12 @@
         </el-dialog>
       </el-tab-pane>
       <el-tab-pane label="签到记录" name="checkins">
-        <el-table :data="checkIns" row-key="id">
-          <el-table-column label="嘉宾"><template #default="{ row }">{{ guestName(row.guestId) }}</template></el-table-column>
-          <el-table-column label="工作人员"><template #default="{ row }">{{ staffName(row.staffId) }}</template></el-table-column>
+        <el-alert v-if="checkInError" type="error" :closable="false" :title="checkInError" />
+        <el-table v-loading="checkInLoading" class="top-gap" :data="checkIns" row-key="guestId">
+          <el-table-column prop="guestName" label="嘉宾" />
+          <el-table-column prop="phone" label="手机号" width="150" />
+          <el-table-column prop="staffName" label="工作人员" />
+          <el-table-column label="方式" width="100"><template #default="{ row }">{{ row.method === 'scan' ? '扫码' : '人工' }}</template></el-table-column>
           <el-table-column label="签到时间"><template #default="{ row }">{{ formatDate(row.checkedInAt) }}</template></el-table-column>
         </el-table>
       </el-tab-pane>
@@ -191,6 +194,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import QRCode from 'qrcode'
 
 import { downloadAdminCheckInExport, downloadAdminGuestImportTemplate, importAdminGuests } from '../../api/adminExcel'
+import { getAdminCheckInSummary } from '../../api/adminCheckIns'
 import {
   createAdminGuest,
   generateAdminGuestQrTokens,
@@ -202,9 +206,8 @@ import { getAdminMeeting, updateAdminMeeting } from '../../api/adminMeetings'
 import { listAdminMeetingAssistantFeatures, updateAdminMeetingAssistantFeature } from '../../api/meetingAssistant'
 import { createAdminStaff, listAdminStaff, removeAdminStaffAssignment, updateAdminStaff } from '../../api/adminStaff'
 import { getApiErrorMessage } from '../../api/client'
-import { listCheckIns } from '../../mock/mockApi'
 import { useSessionStore } from '../../stores/session'
-import type { CheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingAssistantFeature, MeetingStatus, StaffUser } from '../../types'
+import type { AdminCheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingAssistantFeature, MeetingStatus, StaffUser } from '../../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -215,7 +218,10 @@ const detailError = ref('')
 const guests = ref<Guest[]>([])
 const fields = ref<GuestField[]>([])
 const staff = ref<StaffUser[]>([])
-const checkIns = ref<CheckInRecord[]>([])
+const checkIns = ref<AdminCheckInRecord[]>([])
+const checkInLoading = ref(false)
+const checkInError = ref('')
+const totalGuestCount = ref(0)
 const assistantFeatures = ref<MeetingAssistantFeature[]>([])
 const assistantLoading = ref(false)
 const assistantError = ref('')
@@ -305,18 +311,17 @@ async function loadDetail(): Promise<void> {
   detailLoading.value = true
   detailError.value = ''
   try {
-    const [meetingData, guestData, fieldData, staffData, checkInData] = await Promise.all([
+    const [meetingData, guestData, fieldData, staffData] = await Promise.all([
       getAdminMeeting(meetingId),
       listAdminGuests(meetingId),
       listAdminGuestFields(meetingId),
       listAdminStaff(meetingId),
-      listCheckIns(meetingId),
     ])
     meeting.value = meetingData
     guests.value = guestData
     fields.value = fieldData
     staff.value = staffData
-    checkIns.value = checkInData
+    totalGuestCount.value = guestData.length
     resetEditForm()
   } catch (error) {
     meeting.value = undefined
@@ -325,16 +330,49 @@ async function loadDetail(): Promise<void> {
     detailLoading.value = false
   }
   if (meeting.value) {
-    assistantLoading.value = true
-    assistantError.value = ''
-    try {
-      assistantFeatures.value = await listAdminMeetingAssistantFeatures(meetingId)
-    } catch (error) {
-      assistantFeatures.value = []
-      assistantError.value = getApiErrorMessage(error, '会议助手配置加载失败。')
-    } finally {
-      assistantLoading.value = false
-    }
+    await Promise.all([loadAssistantFeatures(meetingId), loadCheckInSummary(meetingId)])
+  }
+}
+
+/**
+ * 独立加载会议助手配置，失败时保留会议其他资料。
+ *
+ * 入参：meetingId 为会议 ID，必填。
+ * 返回值：Promise<void>：成功后更新五项配置，失败后展示独立错误。
+ * 异常：接口异常在函数内转换为页面错误提示。
+ */
+async function loadAssistantFeatures(meetingId: string): Promise<void> {
+  assistantLoading.value = true
+  assistantError.value = ''
+  try {
+    assistantFeatures.value = await listAdminMeetingAssistantFeatures(meetingId)
+  } catch (error) {
+    assistantFeatures.value = []
+    assistantError.value = getApiErrorMessage(error, '会议助手配置加载失败。')
+  } finally {
+    assistantLoading.value = false
+  }
+}
+
+/**
+ * 独立加载管理员签到统计和明细。
+ *
+ * 入参：meetingId 为会议 ID，必填。
+ * 返回值：Promise<void>：成功后更新总数、签到记录和嘉宾签到状态。
+ * 异常：接口异常在函数内转换为签到页签错误，不影响会议其他资料。
+ */
+async function loadCheckInSummary(meetingId: string): Promise<void> {
+  checkInLoading.value = true
+  checkInError.value = ''
+  try {
+    const summary = await getAdminCheckInSummary(meetingId)
+    totalGuestCount.value = summary.totalGuests
+    checkIns.value = summary.records
+  } catch (error) {
+    checkIns.value = []
+    checkInError.value = getApiErrorMessage(error, '签到统计加载失败。')
+  } finally {
+    checkInLoading.value = false
   }
 }
 
@@ -467,32 +505,6 @@ async function saveMeeting(): Promise<void> {
   } finally {
     saving.value = false
   }
-}
-
-/**
- * 根据嘉宾 ID 获取嘉宾姓名。
- *
- * 入参：guestId：嘉宾 ID，必填。
- *
- * 返回值：string：嘉宾姓名；未匹配时返回占位文本。
- *
- * 异常：当前函数不主动抛出异常。
- */
-function guestName(guestId: string): string {
-  return guests.value.find((guest) => guest.id === guestId)?.name ?? '未知嘉宾'
-}
-
-/**
- * 根据工作人员 ID 获取工作人员姓名。
- *
- * 入参：staffId：工作人员 ID，必填。
- *
- * 返回值：string：工作人员姓名；未匹配时返回占位文本。
- *
- * 异常：当前函数不主动抛出异常。
- */
-function staffName(staffId: string): string {
-  return staff.value.find((item) => item.id === staffId)?.name ?? '未知工作人员'
 }
 
 /**

@@ -607,6 +607,7 @@ def test_admin_can_view_check_in_summary(client_and_session: tuple[TestClient, S
     assert response.json()["checked_in_count"] == 1
     assert response.json()["unchecked_count"] == 1
     assert response.json()["records"][0]["staff_name"] == "staff-summary"
+    assert response.json()["records"][0]["checked_in_at"].endswith("Z")
 
 
 def test_admin_excel_template_import_and_check_in_export(

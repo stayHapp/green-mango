@@ -119,6 +119,22 @@ export interface CheckInRecord {
   method: 'scan' | 'manual'
 }
 
+export interface AdminCheckInRecord {
+  guestId: string
+  guestName: string
+  phone: string
+  checkedInAt: string
+  method: 'scan' | 'manual'
+  staffName: string
+}
+
+export interface AdminCheckInSummary {
+  totalGuests: number
+  checkedInCount: number
+  uncheckedCount: number
+  records: AdminCheckInRecord[]
+}
+
 export interface MockData {
   meetings: Meeting[]
   admins: AdminUser[]
