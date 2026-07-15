@@ -126,13 +126,25 @@
             <el-form-item label="手机号"><el-input v-model="staffForm.phone" placeholder="请输入手机号" /></el-form-item>
           </div>
           <el-form-item label="登录账号"><el-input v-model="staffForm.account" placeholder="请输入工作人员账号" /></el-form-item>
+          <el-form-item label="初始密码"><el-input v-model="staffForm.initialPassword" type="password" show-password placeholder="至少 8 位" /></el-form-item>
           <div class="action-row"><el-button type="primary" :loading="creatingStaff" @click="handleCreateStaff">创建并授权当前会议</el-button></div>
           <el-alert v-if="staffMessage" class="top-gap" :type="staffMessageType" :closable="false" :title="staffMessage" />
         </el-form>
         <el-table :data="staff" row-key="id">
           <el-table-column prop="name" label="姓名" />
           <el-table-column prop="account" label="账号" />
+          <el-table-column prop="phone" label="手机号" />
+          <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="row.isActive ? 'success' : 'info'">{{ row.isActive ? '启用' : '停用' }}</el-tag></template></el-table-column>
+          <el-table-column label="操作" width="180"><template #default="{ row }"><el-button size="small" @click="openStaffEditDialog(row)">编辑</el-button><el-button size="small" type="danger" plain @click="handleRemoveStaff(row)">解除授权</el-button></template></el-table-column>
         </el-table>
+        <el-dialog v-model="staffEditDialogVisible" title="编辑工作人员" width="min(520px, calc(100% - 32px))">
+          <el-form label-position="top" @submit.prevent>
+            <div class="form-grid"><el-form-item label="姓名"><el-input v-model="staffEditForm.name" /></el-form-item><el-form-item label="手机号"><el-input v-model="staffEditForm.phone" /></el-form-item></div>
+            <el-form-item label="账号状态"><el-switch v-model="staffEditForm.isActive" active-text="启用" inactive-text="停用" /></el-form-item>
+            <el-form-item label="重置密码"><el-input v-model="staffEditForm.newPassword" type="password" show-password placeholder="不修改请留空；新密码至少 8 位" /></el-form-item>
+            <div class="action-row"><el-button type="primary" :loading="savingStaff" @click="handleUpdateStaff">保存</el-button></div>
+          </el-form>
+        </el-dialog>
       </el-tab-pane>
       <el-tab-pane label="签到记录" name="checkins">
         <el-table :data="checkIns" row-key="id">
@@ -156,7 +168,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Download } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import QRCode from 'qrcode'
 
 import { downloadAdminCheckInExport, downloadAdminGuestImportTemplate, importAdminGuests } from '../../api/adminExcel'
@@ -168,8 +180,9 @@ import {
   listAdminGuests,
 } from '../../api/adminGuests'
 import { getAdminMeeting, updateAdminMeeting } from '../../api/adminMeetings'
+import { createAdminStaff, listAdminStaff, removeAdminStaffAssignment, updateAdminStaff } from '../../api/adminStaff'
 import { getApiErrorMessage } from '../../api/client'
-import { createStaff, listCheckIns, listStaff } from '../../mock/mockApi'
+import { listCheckIns } from '../../mock/mockApi'
 import { useSessionStore } from '../../stores/session'
 import type { CheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingStatus, StaffUser } from '../../types'
 
@@ -187,6 +200,7 @@ const saving = ref(false)
 const exporting = ref(false)
 const importing = ref(false)
 const creatingStaff = ref(false)
+const savingStaff = ref(false)
 const generatingGuestQr = ref(false)
 const guestQrMessage = ref('')
 const guestQrMessageType = ref<'success' | 'info' | 'error'>('success')
@@ -199,7 +213,10 @@ const creatingGuest = ref(false)
 const guestForm = ref<GuestImportInput>({ name: '', phone: '', organization: '', title: '', tag: '', seat: '' })
 const staffMessage = ref('')
 const staffMessageType = ref<'success' | 'error'>('success')
-const staffForm = ref({ name: '', phone: '', account: '' })
+const staffForm = ref({ name: '', phone: '', account: '', initialPassword: '' })
+const selectedStaff = ref<StaffUser>()
+const staffEditDialogVisible = ref(false)
+const staffEditForm = ref({ name: '', phone: '', isActive: true, newPassword: '' })
 const guestImportInput = ref<HTMLInputElement>()
 const importMessage = ref('')
 const importMessageType = ref<'success' | 'warning' | 'error' | 'info'>('success')
@@ -246,7 +263,7 @@ async function loadDetail(): Promise<void> {
       getAdminMeeting(meetingId),
       listAdminGuests(meetingId),
       listAdminGuestFields(meetingId),
-      listStaff(meetingId),
+      listAdminStaff(meetingId),
       listCheckIns(meetingId),
     ])
     meeting.value = meetingData
@@ -443,23 +460,109 @@ async function handleCreateGuest(): Promise<void> {
  * 异常：必填字段缺失、会议不存在或账号重复时展示错误提示。
  */
 async function handleCreateStaff(): Promise<void> {
-  if (!meeting.value || !staffForm.value.name.trim() || !staffForm.value.phone.trim() || !staffForm.value.account.trim()) {
+  if (!meeting.value || !staffForm.value.name.trim() || !staffForm.value.account.trim() || staffForm.value.initialPassword.length < 8) {
     staffMessageType.value = 'error'
-    staffMessage.value = '请完整填写姓名、手机号和登录账号。'
+    staffMessage.value = '请填写姓名、登录账号和至少 8 位初始密码。'
     return
   }
   creatingStaff.value = true
-  const created = await createStaff(meeting.value.id, { name: staffForm.value.name.trim(), phone: staffForm.value.phone.trim(), account: staffForm.value.account.trim() })
-  creatingStaff.value = false
-  if (!created) {
+  staffMessage.value = ''
+  try {
+    await createAdminStaff(meeting.value.id, {
+      displayName: staffForm.value.name.trim(),
+      phone: staffForm.value.phone.trim(),
+      username: staffForm.value.account.trim(),
+      initialPassword: staffForm.value.initialPassword,
+    })
+    staff.value = await listAdminStaff(meeting.value.id)
+    staffForm.value = { name: '', phone: '', account: '', initialPassword: '' }
+    staffMessageType.value = 'success'
+    staffMessage.value = '工作人员已创建或复用，并授权当前会议。'
+  } catch (error) {
     staffMessageType.value = 'error'
-    staffMessage.value = '创建失败：账号已存在或会议不存在。'
+    staffMessage.value = getApiErrorMessage(error, '工作人员创建或授权失败。')
+  } finally {
+    creatingStaff.value = false
+  }
+}
+
+/**
+ * 打开工作人员编辑窗口并填充当前资料。
+ *
+ * 入参：currentStaff 为当前选中的工作人员，必填。
+ * 返回值：void：更新编辑表单并显示弹窗。
+ * 异常：当前函数不主动抛出异常。
+ */
+function openStaffEditDialog(currentStaff: StaffUser): void {
+  selectedStaff.value = currentStaff
+  staffEditForm.value = {
+    name: currentStaff.name,
+    phone: currentStaff.phone,
+    isActive: currentStaff.isActive !== false,
+    newPassword: '',
+  }
+  staffEditDialogVisible.value = true
+}
+
+/**
+ * 保存工作人员资料、状态和可选的新密码。
+ *
+ * 入参：无；函数读取当前会议、选中工作人员和编辑表单。
+ * 返回值：Promise<void>：保存成功后刷新列表并关闭弹窗。
+ * 异常：姓名为空、新密码不足 8 位、权限或网络异常时展示页面提示。
+ */
+async function handleUpdateStaff(): Promise<void> {
+  if (!meeting.value || !selectedStaff.value || !staffEditForm.value.name.trim()) {
+    ElMessage.warning('工作人员姓名不能为空。')
     return
   }
-  staff.value = await listStaff(meeting.value.id)
-  staffForm.value = { name: '', phone: '', account: '' }
-  staffMessageType.value = 'success'
-  staffMessage.value = '工作人员已创建并授权当前会议。'
+  if (staffEditForm.value.newPassword && staffEditForm.value.newPassword.length < 8) {
+    ElMessage.warning('新密码至少需要 8 位。')
+    return
+  }
+  savingStaff.value = true
+  try {
+    await updateAdminStaff(meeting.value.id, selectedStaff.value.id, {
+      displayName: staffEditForm.value.name.trim(),
+      phone: staffEditForm.value.phone.trim(),
+      isActive: staffEditForm.value.isActive,
+      newPassword: staffEditForm.value.newPassword || undefined,
+    })
+    staff.value = await listAdminStaff(meeting.value.id)
+    staffEditDialogVisible.value = false
+    ElMessage.success('工作人员资料已保存。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '工作人员资料保存失败。'))
+  } finally {
+    savingStaff.value = false
+  }
+}
+
+/**
+ * 经管理员确认后解除工作人员对当前会议的授权。
+ *
+ * 入参：currentStaff 为待解除授权的工作人员，必填。
+ * 返回值：Promise<void>：确认并解除成功后刷新工作人员列表。
+ * 异常：管理员取消时静默结束；权限、资源或网络异常时展示错误提示。
+ */
+async function handleRemoveStaff(currentStaff: StaffUser): Promise<void> {
+  if (!meeting.value) {
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确认解除“${currentStaff.name}”对当前会议的授权吗？`, '解除工作人员授权', {
+      confirmButtonText: '确认解除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await removeAdminStaffAssignment(meeting.value.id, currentStaff.id)
+    staff.value = await listAdminStaff(meeting.value.id)
+    ElMessage.success('工作人员会议授权已解除。')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(getApiErrorMessage(error, '工作人员授权解除失败。'))
+    }
+  }
 }
 
 /**

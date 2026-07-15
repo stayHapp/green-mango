@@ -77,6 +77,7 @@ export interface StaffUser {
   phone: string
   account: string
   meetingIds: string[]
+  isActive?: boolean
 }
 
 export interface StaffCreateInput {
