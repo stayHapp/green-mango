@@ -11,6 +11,7 @@ class StaffCreate(BaseModel):
     username: str = Field(pattern=r"^[a-zA-Z][a-zA-Z0-9_-]*$", min_length=3, max_length=100)
     display_name: str = Field(min_length=1, max_length=100)
     phone: str | None = Field(default=None, max_length=30)
+    initial_password: str = Field(min_length=8, max_length=128)
 
     @field_validator("display_name")
     @classmethod

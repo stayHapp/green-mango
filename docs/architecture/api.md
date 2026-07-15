@@ -1,264 +1,123 @@
 # API 设计
 
-本文档记录第一版概念性 API 设计。当前已实现健康检查和管理员会议管理 API；三端 MVP 的其余业务接口暂未实现。
+本文档记录三端 MVP 当前已实现的 HTTP API。统一前缀为 `/api`，交互式文档由 FastAPI 提供在 `/docs`。
 
-## 当前产品方向说明
+## 认证约定
 
-产品方向已调整为三端客户端：管理员端、嘉宾端、工作人员端。核心业务从“报名字段配置与报名提交”转向“嘉宾信息字段配置、嘉宾登录、二维码展示、工作人员扫码签到”。
+- 管理员、工作人员使用账号和密码分别调用登录接口。
+- 嘉宾使用会议 ID、姓名和手机号登录。
+- 登录成功返回 `access_token`、`token_type= bearer`、主体信息和过期时间。
+- 受保护接口统一携带 `Authorization: Bearer <access_token>`。
+- token 只在签发响应中返回；数据库仅保存 SHA-256 摘要，支持过期和主动撤销。
+- 三端共用 `POST /api/sessions/logout` 退出当前会话。
+- 旧的 `X-Admin-Id`、`X-Staff-Id`、`X-Guest-Id` 开发期请求头已删除。
 
-后端保留早期报名数据模型作为历史基线，并已新增会议授权、嘉宾、嘉宾字段和签到模型；后续 API 需直接围绕新的三端模型实现。
+## 通用与会话接口
 
-## 开发期身份校验
+| 方法 | 路径 | 权限 | 用途 |
+| --- | --- | --- | --- |
+| GET | `/api/health` | 公开 | 健康检查 |
+| GET | `/api/meetings/{meeting_id}` | 公开 | 嘉宾入口登录前读取已发布会议基础信息 |
+| POST | `/api/admin/sessions` | 公开 | 管理员账号密码登录 |
+| POST | `/api/staff/sessions` | 公开 | 工作人员账号密码登录 |
+| POST | `/api/guest/sessions` | 公开 | 嘉宾按会议、姓名、手机号登录 |
+| POST | `/api/sessions/logout` | 已登录 | 撤销当前服务端会话 |
 
-管理员会议接口当前必须携带 `X-Admin-Id` 请求头。服务端会校验该用户存在、已启用且角色为 `admin`。
+## 管理员会议接口
 
-该机制仅用于本地开发与自动化测试，不能作为生产认证方案；正式环境必须替换为经过认证系统签发的身份凭证。
+以下接口要求管理员 Bearer token。会议级资源还会校验 `meeting_admins` 授权，不存在和越权统一返回 404，避免泄露资源是否存在。
 
-工作人员会议列表当前必须携带 `X-Staff-Id` 请求头。服务端会校验该用户存在、已启用且角色为 `staff`；同样仅用于开发和测试。
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/admin/meetings` | 查询当前管理员可管理的会议 |
+| POST | `/api/admin/meetings` | 创建会议、默认设置和创建人授权 |
+| GET | `/api/admin/meetings/{meeting_id}` | 获取会议详情 |
+| PATCH | `/api/admin/meetings/{meeting_id}` | 修改会议基础信息与状态 |
+| GET | `/api/admin/meetings/{meeting_id}/admins` | 查询会议管理员 |
+| POST | `/api/admin/meetings/{meeting_id}/admins` | 按账号添加已有管理员 |
+| DELETE | `/api/admin/meetings/{meeting_id}/admins/{user_id}` | 移除非创建人管理员授权 |
 
-嘉宾后续接口当前必须携带 `X-Guest-Id` 请求头。嘉宾登录接口返回该 ID；它仅用于开发和测试，正式环境必须替换为安全会话凭证。
+会议结束时间必须晚于开始时间。创建人不能从自己的会议中移除。
 
-## 已实现接口
+## 管理员嘉宾接口
 
-### 健康检查
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET / PUT | `/api/admin/meetings/{meeting_id}/guest-fields` | 获取或全量保存动态字段配置 |
+| GET / PUT | `/api/admin/meetings/{meeting_id}/guest-login-fields` | 获取或确认登录字段，MVP 固定为 `name + phone` |
+| GET / POST | `/api/admin/meetings/{meeting_id}/guests` | 查询或录入单个嘉宾 |
+| GET / PATCH / DELETE | `/api/admin/meetings/{meeting_id}/guests/{guest_id}` | 查询完整资料、修改或软停用嘉宾 |
+| GET | `/api/admin/meetings/{meeting_id}/guests/import-template` | 下载当前会议 XLSX 导入模板 |
+| POST | `/api/admin/meetings/{meeting_id}/guests/import` | 上传 XLSX 并返回成功数和逐行错误 |
+| POST | `/api/admin/meetings/{meeting_id}/guest-qrcodes/generate` | 为缺少凭证的嘉宾补生成二维码 token |
 
-- 方法：`GET`
-- 路径：`/api/health`
-- 用途：确认后端服务可用。
-- 权限：公开接口，不返回敏感信息。
+嘉宾固定字段为姓名、手机号、单位、职务、身份和座位号。动态值通过 `values` 对象传递。导入模板还会包含会议配置的动态字段；姓名和手机号必填，文件最大 10MB、单次最多 10,000 行。合法行会导入，错误行不会阻断其他合法行。
 
-### 管理员会议列表
+嘉宾创建和导入时自动生成全局唯一的随机 `qr_token`，其中不包含个人信息。删除操作为软停用，保留历史签到记录。
 
-- 方法：`GET`
-- 路径：`/api/admin/meetings`
-- 权限：管理员；当前使用 `X-Admin-Id` 开发期请求头。
+## 管理员工作人员接口
 
-### 创建会议
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET / POST | `/api/admin/meetings/{meeting_id}/staff` | 查询工作人员，或创建账号并授权会议 |
+| PATCH | `/api/admin/meetings/{meeting_id}/staff/{staff_id}` | 修改资料、启用状态或密码 |
+| DELETE | `/api/admin/meetings/{meeting_id}/staff/{staff_id}` | 解除当前会议授权 |
 
-- 方法：`POST`
-- 路径：`/api/admin/meetings`
-- 权限：管理员；当前使用 `X-Admin-Id` 开发期请求头。
-- 规则：创建人自动获得会议管理员授权，并创建默认会议设置。
+创建工作人员时必须提供唯一账号和至少 8 位初始密码。已有同名工作人员再次加入会议时只补充授权，不创建重复账号。
 
-### 获取会议详情
+## 管理员签到接口
 
-- 方法：`GET`
-- 路径：`/api/admin/meetings/{meeting_id}`
-- 权限：已被授权的会议管理员。
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/admin/meetings/{meeting_id}/check-ins` | 获取总数、已签到数、未签到数和明细 |
+| GET | `/api/admin/meetings/{meeting_id}/check-ins/export` | 导出全量嘉宾签到 XLSX |
 
-### 修改会议
+导出文件同时包含已签到和未签到嘉宾，以及签到时间、方式和执行工作人员。
 
-- 方法：`PATCH`
-- 路径：`/api/admin/meetings/{meeting_id}`
-- 权限：已被授权的会议管理员。
-- 规则：结束时间必须晚于开始时间。
+## 嘉宾端接口
 
-## 管理员端概念 API
+以下接口除登录外均要求嘉宾 Bearer token，并校验嘉宾属于路径中的会议且处于启用状态。
 
-### 会议列表（已实现）
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/guest/meetings` | 查询当前嘉宾的会议列表 |
+| GET | `/api/guest/meetings/{meeting_id}` | 查询会议和个人参会概要 |
+| GET | `/api/guest/meetings/{meeting_id}/profile` | 查询固定资料与动态字段值 |
+| GET | `/api/guest/meetings/{meeting_id}/check-in-qr` | 获取个人签到二维码 token 与过期时间 |
 
-- 方法：`GET`
-- 路径：`/api/admin/meetings`
-- 用途：获取管理员可管理的会议列表。
-- 权限：管理员。
+二维码图像由前端把 `qr_token` 编码为二维码；工作人员扫码后只把 token 交给后端校验。二维码在会议结束后失效。
 
-### 创建会议（已实现）
+## 工作人员端接口
 
-- 方法：`POST`
-- 路径：`/api/admin/meetings`
-- 用途：创建会议。
-- 权限：管理员。
+以下接口要求工作人员 Bearer token，并校验 `staff_meetings` 会议授权。
 
-### 获取会议详情（已实现）
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/staff/meetings` | 查询负责会议 |
+| GET | `/api/staff/meetings/{meeting_id}/guests?query={keyword}` | 按姓名、手机号、单位或座位搜索嘉宾 |
+| POST | `/api/staff/meetings/{meeting_id}/check-ins/scan` | 提交 `qr_token` 扫码签到 |
+| POST | `/api/staff/meetings/{meeting_id}/check-ins/manual` | 提交 `guest_id` 人工签到 |
+| GET | `/api/staff/meetings/{meeting_id}/check-ins` | 查询会议签到记录 |
 
-- 方法：`GET`
-- 路径：`/api/admin/meetings/{meeting_id}`
-- 用途：获取会议基础信息和管理配置。
-- 权限：会议管理员。
+签到由后端判断工作人员授权、嘉宾归属、嘉宾启用状态、会议结束时间和重复签到。重复签到返回 409；无效、跨会议或过期二维码不会创建记录。
 
-### 修改会议（已实现）
+## 嘉宾补充报名接口
 
-- 方法：`PATCH`
-- 路径：`/api/admin/meetings/{meeting_id}`
-- 用途：修改会议基本信息。
-- 权限：会议管理员。
+| 方法 | 路径 | 权限 | 用途 |
+| --- | --- | --- | --- |
+| POST | `/api/meetings/{meeting_id}/guest-applications` | 公开 | 向已发布、未结束且开放报名的会议提交申请 |
+| GET | `/api/admin/meetings/{meeting_id}/guest-applications?status=pending` | 会议管理员 | 查询并按状态筛选申请 |
+| PATCH | `/api/admin/meetings/{meeting_id}/guest-applications/{application_id}` | 会议管理员 | 批准或拒绝待审核申请 |
 
-### 配置嘉宾信息字段
+同一会议和手机号只能存在一条待审核申请。批准后系统创建正式嘉宾、动态字段值和随机二维码 token，并将正式嘉宾 ID 写回申请；申请不能重复审核。
 
-- 方法：`GET` / `PUT`
-- 路径：`/api/admin/meetings/{meeting_id}/guest-fields`
-- 用途：获取或全量保存会议的嘉宾信息字段配置。
-- 权限：会议管理员。
-- 规则：同一会议的字段 key 必须唯一；已有嘉宾动态字段值时拒绝全量替换配置，避免丢失历史数据。
+## 状态码和设计原则
 
-### 配置嘉宾登录字段
+- `200/201`：请求成功或资源创建成功。
+- `401`：缺少、错误、过期或已撤销的登录凭证。
+- `403`：会话主体角色错误或账号已停用。
+- `404`：资源不存在、会议未开放，或当前主体没有会议授权。
+- `409`：重复签到等资源状态冲突。
+- `422`：请求字段或业务规则校验失败。
 
-- 方法：`PUT`
-- 路径：`/api/admin/meetings/{meeting_id}/guest-login-fields`
-- 用途：第一版确认嘉宾使用姓名 + 手机号登录；后续可扩展为指定已录入字段组合进行验证。
-- 权限：会议管理员。
-
-### 嘉宾列表（已实现）
-
-- 方法：`GET`
-- 路径：`/api/admin/meetings/{meeting_id}/guests`
-- 用途：查看会议嘉宾列表和签到状态。
-- 权限：会议管理员。
-
-### 创建嘉宾（已实现）
-
-- 方法：`POST`
-- 路径：`/api/admin/meetings/{meeting_id}/guests`
-- 用途：提前录入嘉宾信息。
-- 权限：会议管理员。
-- 规则：姓名和手机号必填；系统自动生成不包含个人信息的随机二维码 token。
-
-### 导入会议嘉宾名单
-
-- 方法：`POST`
-- 路径：`/api/admin/meetings/{meeting_id}/guests/import`
-- 用途：上传 Excel 嘉宾名单并返回导入成功数量、错误行和错误原因。
-- 权限：会议管理员。
-- 规则：第一版模板必须包含姓名和手机号列；两者均作为嘉宾登录验证信息。单位、职务、身份和座位号为可选列。
-
-### 批量生成嘉宾二维码
-
-- 方法：`POST`
-- 路径：`/api/admin/meetings/{meeting_id}/guest-qrcodes/generate`
-- 用途：为当前会议中缺少凭证的嘉宾批量生成个人二维码。
-- 权限：会议管理员。
-- 规则：默认不覆盖已有二维码；重新生成并使旧码失效应使用独立的受控接口。
-
-### 创建工作人员
-
-- 方法：`POST`
-- 路径：`/api/admin/meetings/{meeting_id}/staff`
-- 用途：创建或授权工作人员负责会议。
-- 权限：会议管理员。
-- 规则：创建成功后自动授权该工作人员负责当前会议；账号在系统内唯一。
-- 当前实现：已实现；重复提交同一工作人员账号仅补充当前会议授权，不会创建重复账号或授权。
-
-### 工作人员列表
-
-- 方法：`GET`
-- 路径：`/api/admin/meetings/{meeting_id}/staff`
-- 用途：查看当前会议已授权工作人员。
-- 权限：会议管理员。
-
-### 查看签到情况
-
-- 方法：`GET`
-- 路径：`/api/admin/meetings/{meeting_id}/check-ins`
-- 用途：查看签到统计和明细。
-- 权限：会议管理员。
-
-## 嘉宾端概念 API
-
-### 嘉宾登录
-
-- 方法：`POST`
-- 路径：`/api/guest/sessions`
-- 用途：嘉宾按会议配置的验证字段登录。
-- 权限：公开入口，但必须做输入校验和频率限制。
-- 当前实现：已实现，当前固定接收会议 ID、姓名和手机号；登录成功返回开发期嘉宾 ID。
-
-### 查看我的会议
-
-- 方法：`GET`
-- 路径：`/api/guest/meetings`
-- 用途：查看当前嘉宾参加的会议。
-- 权限：已登录嘉宾。
-- 当前实现：已实现；当前一名嘉宾对应一场会议，接口仍使用列表结构以便后续扩展。
-
-### 查看我的会议详情
-
-- 方法：`GET`
-- 路径：`/api/guest/meetings/{meeting_id}`
-- 用途：查看会议相关信息和个人参会信息。
-- 权限：已登录嘉宾，且属于该会议。
-- 当前实现：已实现。
-
-### 获取我的签到二维码
-
-- 方法：`GET`
-- 路径：`/api/guest/meetings/{meeting_id}/check-in-qr`
-- 用途：获取当前嘉宾在该会议下的签到二维码。
-- 权限：已登录嘉宾，且属于该会议。
-- 当前实现：已实现；返回随机 token 和会议结束时间，二维码图像仍由前端生成。
-
-## 工作人员端概念 API
-
-### 工作人员登录
-
-- 方法：`POST`
-- 路径：`/api/staff/sessions`
-- 用途：工作人员登录。
-- 权限：公开入口，但必须做输入校验和频率限制。
-
-### 工作人员会议列表
-
-- 方法：`GET`
-- 路径：`/api/staff/meetings`
-- 用途：查看当前工作人员可负责的会议。
-- 权限：已登录工作人员。
-- 当前实现：已实现；开发期使用 `X-Staff-Id` 请求头。
-
-### 搜索会议嘉宾
-
-- 方法：`GET`
-- 路径：`/api/staff/meetings/{meeting_id}/guests?query={keyword}`
-- 用途：按姓名、手机号、单位或座位号搜索嘉宾并核验签到状态。
-- 权限：已被授权的工作人员。
-- 当前实现：已实现；`query` 为空时返回会议全部嘉宾，响应含 `checked_in` 与 `checked_in_at`。
-
-### 扫码签到
-
-- 方法：`POST`
-- 路径：`/api/staff/meetings/{meeting_id}/check-ins/scan`
-- 用途：提交扫码结果并完成签到。
-- 权限：已登录工作人员，且有权限操作该会议。
-- 当前实现：已实现 `POST /api/staff/meetings/{meeting_id}/check-ins/scan`，请求体包含 `qr_token`。
-
-扫码签到需要处理：
-
-- 签到成功。
-- 已签到。
-- 二维码过期。
-- 二维码无效。
-- 嘉宾不存在。
-- 嘉宾不属于当前会议。
-- 工作人员无权限。
-
-### 人工签到
-
-- 方法：`POST`
-- 路径：`/api/staff/meetings/{meeting_id}/check-ins/manual`
-- 用途：工作人员按嘉宾 ID 完成人工核验签到。
-- 权限：已被授权的工作人员。
-- 当前实现：已实现；与扫码签到共用会议结束、嘉宾归属和单次签到校验。
-
-### 签到记录
-
-- 方法：`GET`
-- 路径：`/api/staff/meetings/{meeting_id}/check-ins`
-- 用途：查看当前会议签到记录。
-- 权限：已被授权的工作人员。
-- 当前实现：已实现。
-
-## 保留的补充入口
-
-### 嘉宾报名
-
-- 方法：`POST`
-- 路径：`/api/meetings/{meeting_id}/guest-applications`
-- 用途：作为嘉宾自主报名或补充录入入口。
-- 权限：公开入口，但第一版不作为主流程。
-
-## API 设计原则
-
-1. 前端校验只改善体验，后端必须做完整校验。
-2. 后台接口必须进行权限判断。
-3. 嘉宾登录字段由会议配置决定，但后端必须校验字段是否允许用于登录。
-4. 签到必须由后端判断二维码有效期，不能依赖客户端时间。
-5. 一个嘉宾在一个会议中只能签到一次。
-6. API 变更后必须同步更新本文档。
+前端校验只改善体验，后端始终执行最终权限、字段归属、时间范围和数据一致性判断。

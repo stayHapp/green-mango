@@ -28,10 +28,13 @@ class GuestLoginRequest(BaseModel):
 
 
 class GuestSessionResponse(BaseModel):
-    """开发期嘉宾登录成功响应。"""
+    """嘉宾登录成功响应。"""
 
     model_config = ConfigDict(from_attributes=True)
 
+    access_token: str
+    token_type: str = "bearer"
+    expires_at: datetime
     guest_id: int
     meeting_id: int
     name: str
@@ -49,6 +52,13 @@ class GuestMeetingResponse(BaseModel):
     start_time: datetime | None
     end_time: datetime | None
     status: str
+
+
+class PublicMeetingResponse(GuestMeetingResponse):
+    """嘉宾入口登录前可读取的非敏感会议信息。"""
+
+    registration_enabled: bool
+    guest_login_fields: list[str]
 
 
 class GuestQrResponse(BaseModel):

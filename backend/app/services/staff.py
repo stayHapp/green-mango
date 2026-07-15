@@ -1,10 +1,9 @@
 """工作人员创建、授权和会议查询业务服务。"""
 
-import secrets
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password
 from app.models.access import StaffMeeting
 from app.models.meeting import Meeting
 from app.models.user import User
@@ -22,10 +21,10 @@ def create_or_authorize_staff(db: Session, meeting: Meeting, payload: StaffCreat
     if staff is not None and staff.role != "staff":
         raise ValueError("该账号已被非工作人员用户使用。")
     if staff is None:
-        # 认证功能尚未实现，此随机占位值不得用于任何登录或密码校验流程。
+        # 初始密码只在请求中出现，持久化前立即转换为带盐 scrypt 哈希。
         staff = User(
             username=payload.username,
-            password_hash=secrets.token_urlsafe(48),
+            password_hash=hash_password(payload.initial_password),
             display_name=payload.display_name,
             phone=payload.phone,
             role="staff",

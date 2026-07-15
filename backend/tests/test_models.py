@@ -6,6 +6,8 @@ from sqlalchemy import inspect
 from app.db import Base, create_db_engine
 
 CORE_TABLES = {
+    "auth_sessions",
+    "guest_applications",
     "users",
     "meetings",
     "meeting_settings",

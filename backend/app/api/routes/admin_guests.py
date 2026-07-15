@@ -71,4 +71,8 @@ def post_guest(meeting_id: int, payload: GuestCreate, db: DatabaseSession, admin
     返回值：GuestResponse：新建嘉宾及其随机二维码 token。
     异常：管理员身份无效时返回 401 或 403；会议未授权时返回 404；输入无效时返回 422。
     """
-    return create_guest(db, load_authorized_meeting_or_404(db, admin, meeting_id), payload)
+    try:
+        return create_guest(db, load_authorized_meeting_or_404(db, admin, meeting_id), payload)
+    except ValueError as error:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error

@@ -8,14 +8,22 @@ from app.models.meeting import Meeting
 
 
 def login_guest(db: Session, meeting_id: int, name: str, phone: str) -> Guest | None:
-    """在指定会议内按姓名和手机号匹配已启用嘉宾。
+    """在已发布或已结束会议内按姓名和手机号匹配已启用嘉宾。
 
     入参：db 为数据库会话；meeting_id 为会议 ID；name 与 phone 为已标准化登录信息，均必填。
     返回值：Guest | None：匹配的启用嘉宾存在时返回对象，否则返回 None。
     异常：数据库查询失败时由 SQLAlchemy 抛出异常。
     """
-    statement = select(Guest).where(
-        Guest.meeting_id == meeting_id, Guest.name == name, Guest.phone == phone, Guest.is_active.is_(True)
+    statement = (
+        select(Guest)
+        .join(Meeting, Meeting.id == Guest.meeting_id)
+        .where(
+            Guest.meeting_id == meeting_id,
+            Guest.name == name,
+            Guest.phone == phone,
+            Guest.is_active.is_(True),
+            Meeting.status.in_(["published", "ended"]),
+        )
     )
     return db.scalar(statement)
 

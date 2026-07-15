@@ -1,56 +1,64 @@
 # 数据库设计
 
-本文档记录数据库设计状态。数据库结构变化必须同步更新本文档。
+本文档记录当前数据库结构。结构变化必须同步更新本文档和 Alembic 迁移。
 
 ## 当前状态
 
 - Python：3.12
 - ORM：SQLAlchemy 2.x
 - 迁移工具：Alembic
-- 本地默认数据库：SQLite，默认地址 `sqlite:///./dev.db`
+- 本地默认数据库：SQLite，`sqlite:///./dev.db`
 - 正式环境数据库：PostgreSQL，通过 `DATABASE_URL` 配置
-- 当前迁移版本：`20260715_0002_add_meeting_guest_checkin_models`
+- 当前迁移头：`20260715_0004`
 
-数据库保留早期报名相关表作为历史基线，并通过前向迁移新增当前三端 MVP 所需表：
+## 表结构
 
-- `users`：管理员和工作人员账号；包含角色、手机号与启用状态。
-- `meetings`、`meeting_settings`：会议基础信息与会议级配置。
-- `meeting_admins`：会议管理员授权关系。
-- `staff_meetings`：工作人员会议授权关系。
-- `guest_fields`：会议级嘉宾动态字段配置。
-- `guests`：管理员录入或导入的会议嘉宾与二维码凭证。
-- `guest_values`：嘉宾动态字段值。
-- `check_ins`：工作人员完成的嘉宾签到记录。
-- `registration_fields`、`registrations`、`registration_values`：早期报名流程的历史基线，当前不作为主流程使用。
+- `users`：管理员和工作人员账号、scrypt 密码哈希、角色、手机号和启用状态。
+- `auth_sessions`：三端统一服务端会话，保存 token 摘要、主体、过期和撤销时间。
+- `meetings`、`meeting_settings`：会议基础信息、报名开关和会议级 JSON 配置。
+- `meeting_admins`：会议与管理员的多对多授权。
+- `staff_meetings`：会议与工作人员的多对多授权。
+- `guest_fields`：会议级动态嘉宾字段。
+- `guests`：正式嘉宾、固定资料、启用状态和随机二维码凭证。
+- `guest_values`：正式嘉宾的动态字段值。
+- `check_ins`：嘉宾唯一签到记录及执行工作人员。
+- `guest_applications`：公开报名申请、动态值快照、审核结果和转化后的嘉宾 ID。
+- `registration_fields`、`registrations`、`registration_values`：早期通用报名模型的历史基线，当前不作为三端主流程使用。
 
 ## 三端 MVP 关系
 
 ```text
-users --< meeting_admins >-- meetings --< guests --< guest_values >-- guest_fields
-  |             |
-  |             +--< staff_meetings >-- users
+users --< auth_sessions
   |
-  +--< check_ins >-- guests
-             |
-          meetings
+  +--< meeting_admins >-- meetings --< guest_fields
+  |                           |              |
+  +--< staff_meetings >-------+              +--< guest_values >-- guests
+  |                           |                                     |
+  +--< check_ins >------------+-------------------------------------+
+  |
+  +--< guest_applications >--- meetings
+                  |
+                  +--(批准后)--> guests
 ```
+
+嘉宾会话通过 `auth_sessions.guest_id` 关联 `guests`；管理员和工作人员会话通过 `user_id` 关联 `users`。约束保证一个会话只对应其中一种主体。
 
 ## 核心约束
 
-- 一个会议可有多个管理员，且同一管理员只可被授权一次：`uq_meeting_admins_meeting_id_user_id`。
-- 一个会议可有多个工作人员，且同一工作人员只可被授权一次：`uq_staff_meetings_meeting_id_user_id`。
-- 同一会议内嘉宾字段标识唯一：`uq_guest_fields_meeting_id_key`。
-- 嘉宾二维码 token 全局唯一，并只保存随机凭证，不包含姓名或手机号等敏感信息。
+- 同一会议的同一管理员授权唯一：`uq_meeting_admins_meeting_id_user_id`。
+- 同一会议的同一工作人员授权唯一：`uq_staff_meetings_meeting_id_user_id`。
+- 同一会议内动态字段 key 唯一：`uq_guest_fields_meeting_id_key`。
+- 嘉宾二维码 token 全局唯一，且只承载随机凭证，不写入姓名和手机号。
+- 同一嘉宾的同一动态字段值唯一：`uq_guest_values_guest_id_field_id`。
 - 同一嘉宾在同一会议只能签到一次：`uq_check_ins_meeting_id_guest_id`。
-- 同一嘉宾同一动态字段只能保存一个值：`uq_guest_values_guest_id_field_id`。
+- 会话 token 摘要全局唯一：`ix_auth_sessions_token_hash`。
+- `auth_sessions` 通过 `ck_auth_sessions_exactly_one_subject` 保证只设置 `user_id` 或 `guest_id` 之一。
 
-## 当前边界
+公开报名的“同会议、同手机号只能有一条待审核申请”由服务层执行，因为已审核申请需要保留且允许之后重新提交。
 
-当前模型已能表达会议、授权、嘉宾与签到数据，但尚未实现：
+## 迁移历史
 
-- 账号认证、密码哈希策略与会话令牌。
-- 会议管理员、工作人员和嘉宾的业务权限校验。
-- 嘉宾二维码 token 的签发、过期与校验服务。
-- 嘉宾导入、签到、导出等业务 API。
-
-下一步应实现管理员会议与嘉宾管理的最小业务 API，并在服务层校验会议授权、动态字段归属和嘉宾登录规则。
+1. `20260707_0001`：早期会议和通用报名基线。
+2. `20260715_0002`：三端会议授权、嘉宾、动态字段和签到结构。
+3. `20260715_0003`：安全认证会话表。
+4. `20260715_0004`：嘉宾自主报名申请和审核字段。

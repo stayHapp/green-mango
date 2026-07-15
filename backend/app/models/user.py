@@ -1,7 +1,4 @@
-"""平台用户 ORM（对象关系映射）模型。
-
-MVP 只需要最小用户表，用于记录会议创建人。认证、密码哈希生成和密码校验不在本次模型任务范围内。
-"""
+"""管理员与工作人员账号 ORM（对象关系映射）模型。"""
 
 from __future__ import annotations
 
@@ -40,10 +37,10 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
-    # 这里只保存密码哈希值；密码校验由后续认证模块负责。
+    # 只保存带随机盐的 scrypt 密码哈希，原始密码不得持久化。
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(100))
-    # role 当前只允许由业务层写入 admin 或 staff，细粒度权限留待后续认证任务实现。
+    # role 当前只允许由业务层写入 admin 或 staff，会议级权限由授权关系表控制。
     role: Mapped[str] = mapped_column(String(20), default="admin", nullable=False)
     phone: Mapped[str | None] = mapped_column(String(30), index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

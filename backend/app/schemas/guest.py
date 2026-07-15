@@ -56,6 +56,7 @@ class GuestCreate(BaseModel):
     title: str | None = Field(default=None, max_length=100)
     tag: str | None = Field(default=None, max_length=100)
     seat: str | None = Field(default=None, max_length=100)
+    values: dict[str, str | None] = Field(default_factory=dict)
 
     @field_validator("name", "phone")
     @classmethod
@@ -89,3 +90,48 @@ class GuestResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class GuestUpdate(BaseModel):
+    """管理员修改嘉宾固定信息、动态字段值和启用状态的请求。"""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    phone: str | None = Field(default=None, min_length=1, max_length=30)
+    organization: str | None = Field(default=None, max_length=255)
+    title: str | None = Field(default=None, max_length=100)
+    tag: str | None = Field(default=None, max_length=100)
+    seat: str | None = Field(default=None, max_length=100)
+    is_active: bool | None = None
+    values: dict[str, str | None] | None = None
+
+
+class GuestProfileResponse(GuestResponse):
+    """包含动态字段值的嘉宾个人参会信息响应。"""
+
+    values: dict[str, str | None]
+
+
+class GuestLoginFieldsRequest(BaseModel):
+    """会议嘉宾登录字段配置请求；MVP 固定为姓名和手机号。"""
+
+    fields: list[str]
+
+    @field_validator("fields")
+    @classmethod
+    def validate_login_fields(cls, value: list[str]) -> list[str]:
+        """校验 MVP 登录字段只能且必须为姓名和手机号。
+
+        入参：value 为登录字段 key 列表，必填。
+        返回值：list[str]：合法时返回规范顺序的字段列表。
+        异常：字段组合不是 name 与 phone 时抛出 ValueError。
+        """
+        if set(value) != {"name", "phone"} or len(value) != 2:
+            raise ValueError("MVP 嘉宾登录字段固定为 name 和 phone。")
+        return ["name", "phone"]
+
+
+class GuestQrGenerationResponse(BaseModel):
+    """批量补生成嘉宾二维码 token 的结果。"""
+
+    generated_count: int
+    existing_count: int

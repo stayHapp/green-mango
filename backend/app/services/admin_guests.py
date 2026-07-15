@@ -65,9 +65,61 @@ def create_guest(db: Session, meeting: Meeting, payload: GuestCreate) -> Guest:
     for _ in range(5):
         token = secrets.token_urlsafe(32)
         if db.scalar(select(Guest.id).where(Guest.qr_token == token)) is None:
-            guest = Guest(meeting_id=meeting.id, qr_token=token, **payload.model_dump())
+            fixed_values = payload.model_dump(exclude={"values"})
+            guest = Guest(meeting_id=meeting.id, qr_token=token, **fixed_values)
             db.add(guest)
+            db.flush()
+            save_guest_values(db, meeting, guest, payload.values, require_all=True)
             db.commit()
             db.refresh(guest)
             return guest
     raise RuntimeError("生成嘉宾二维码凭证失败，请重试。")
+
+
+def save_guest_values(
+    db: Session,
+    meeting: Meeting,
+    guest: Guest,
+    values: dict[str, str | None],
+    require_all: bool,
+) -> None:
+    """校验并保存嘉宾动态字段值。
+
+    入参：db 为数据库会话；meeting 为会议；guest 为嘉宾；values 为 key 到值的映射；require_all 控制是否校验全部必填字段。
+    返回值：None：校验通过后新增或更新 GuestValue，事务由调用方提交。
+    异常：字段不存在、必填值缺失或字段不属于会议时抛出 ValueError。
+    """
+    fields = list(db.scalars(select(GuestField).where(GuestField.meeting_id == meeting.id)))
+    fields_by_key = {field.key: field for field in fields}
+    unknown_keys = set(values) - set(fields_by_key)
+    if unknown_keys:
+        raise ValueError(f"存在未配置的嘉宾字段：{', '.join(sorted(unknown_keys))}。")
+    if require_all:
+        missing_required = [
+            field.label
+            for field in fields
+            if field.required and (field.key not in values or values[field.key] is None or not str(values[field.key]).strip())
+        ]
+        if missing_required:
+            raise ValueError(f"缺少必填嘉宾字段：{', '.join(missing_required)}。")
+
+    for key, value in values.items():
+        field = fields_by_key[key]
+        guest_value = db.scalar(
+            select(GuestValue).where(GuestValue.guest_id == guest.id, GuestValue.field_id == field.id)
+        )
+        if guest_value is None:
+            db.add(GuestValue(guest_id=guest.id, field_id=field.id, field_key=key, value_text=value))
+        else:
+            guest_value.value_text = value
+
+
+def get_guest_values(db: Session, guest: Guest) -> dict[str, str | None]:
+    """读取嘉宾动态字段值映射。
+
+    入参：db 为数据库会话；guest 为目标嘉宾，均必填。
+    返回值：dict[str, str | None]：字段 key 到文本值的映射。
+    异常：数据库查询失败时由 SQLAlchemy 抛出异常。
+    """
+    statement = select(GuestValue).where(GuestValue.guest_id == guest.id).order_by(GuestValue.id)
+    return {value.field_key: value.value_text for value in db.scalars(statement)}

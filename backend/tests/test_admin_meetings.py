@@ -2,20 +2,24 @@
 
 from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from openpyxl import Workbook, load_workbook
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 import app.models  # noqa: F401  # 导入模型以注册完整 metadata（元数据）。
 from app.api.dependencies import get_db
+from app.core.security import hash_password
 from app.db import Base
 from app.main import create_app
 from app.models.access import MeetingAdmin, StaffMeeting
 from app.models.guest import CheckIn, Guest, GuestField, GuestValue
-from app.models.meeting import Meeting
+from app.models.meeting import Meeting, MeetingSetting
 from app.models.user import User
+from app.services.sessions import create_guest_session, create_user_session
 
 
 @pytest.fixture
@@ -55,18 +59,44 @@ def client_and_session(tmp_path) -> Generator[tuple[TestClient, Session], None, 
         engine.dispose()
 
 
-def create_user(db: Session, username: str, role: str = "admin", is_active: bool = True) -> User:
+def create_user(
+    db: Session,
+    username: str,
+    role: str = "admin",
+    is_active: bool = True,
+    password: str | None = None,
+) -> User:
     """创建用于管理员 API 测试的用户。
 
     入参：db 为数据库会话；username 为唯一账号；role 为角色；is_active 表示账号是否启用。
     返回值：User：已持久化并具有主键的用户对象。
     异常：账号重复或数据库写入失败时由 SQLAlchemy 抛出异常。
     """
-    user = User(username=username, password_hash="test-hash", display_name=username, role=role, is_active=is_active)
+    user = User(
+        username=username,
+        password_hash=hash_password(password) if password else "test-hash",
+        display_name=username,
+        role=role,
+        is_active=is_active,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
     return user
+
+
+def auth_headers(db: Session, subject: User | Guest) -> dict[str, str]:
+    """为测试用户或嘉宾创建真实 Bearer 会话请求头。
+
+    入参：db 为数据库会话；subject 为管理员、工作人员或嘉宾对象，均必填。
+    返回值：dict[str, str]：包含 Authorization Bearer token 的请求头。
+    异常：会话写入失败时由 SQLAlchemy 抛出异常。
+    """
+    if isinstance(subject, Guest):
+        token, _ = create_guest_session(db, subject)
+    else:
+        token, _ = create_user_session(db, subject)
+    return {"Authorization": f"Bearer {token}"}
 
 
 def test_admin_can_create_list_get_and_update_meeting(client_and_session: tuple[TestClient, Session]) -> None:
@@ -78,7 +108,7 @@ def test_admin_can_create_list_get_and_update_meeting(client_and_session: tuple[
     """
     client, db = client_and_session
     admin = create_user(db, "admin-one")
-    headers = {"X-Admin-Id": str(admin.id)}
+    headers = auth_headers(db, admin)
 
     create_response = client.post(
         "/api/admin/meetings",
@@ -127,7 +157,7 @@ def test_admin_cannot_access_unassigned_meeting(client_and_session: tuple[TestCl
     db.add(MeetingAdmin(meeting_id=meeting.id, user_id=owner.id))
     db.commit()
 
-    response = client.get(f"/api/admin/meetings/{meeting.id}", headers={"X-Admin-Id": str(visitor.id)})
+    response = client.get(f"/api/admin/meetings/{meeting.id}", headers=auth_headers(db, visitor))
     assert response.status_code == 404
 
 
@@ -142,11 +172,33 @@ def test_non_admin_or_disabled_user_cannot_use_admin_api(client_and_session: tup
     staff = create_user(db, "staff-one", role="staff")
     disabled_admin = create_user(db, "admin-disabled", is_active=False)
 
-    staff_response = client.get("/api/admin/meetings", headers={"X-Admin-Id": str(staff.id)})
-    disabled_response = client.get("/api/admin/meetings", headers={"X-Admin-Id": str(disabled_admin.id)})
+    staff_response = client.get("/api/admin/meetings", headers=auth_headers(db, staff))
+    disabled_response = client.get("/api/admin/meetings", headers=auth_headers(db, disabled_admin))
 
     assert staff_response.status_code == 403
-    assert disabled_response.status_code == 401
+    assert disabled_response.status_code == 403
+
+
+def test_admin_login_and_logout_use_revocable_bearer_session(
+    client_and_session: tuple[TestClient, Session],
+) -> None:
+    """验证管理员密码登录、Bearer 鉴权和退出撤销会话。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具。
+    返回值：None：断言通过表示安全会话完整闭环可用。
+    异常：当前函数不主动抛出业务异常；断言失败表示认证或撤销逻辑异常。
+    """
+    client, db = client_and_session
+    create_user(db, "secure-admin", password="safe-password-123")
+
+    login_response = client.post(
+        "/api/admin/sessions", json={"username": "secure-admin", "password": "safe-password-123"}
+    )
+    assert login_response.status_code == 200
+    headers = {"Authorization": f"Bearer {login_response.json()['access_token']}"}
+    assert client.get("/api/admin/meetings", headers=headers).status_code == 200
+    assert client.post("/api/sessions/logout", headers=headers).status_code == 200
+    assert client.get("/api/admin/meetings", headers=headers).status_code == 401
 
 
 def test_meeting_time_range_is_validated(client_and_session: tuple[TestClient, Session]) -> None:
@@ -158,7 +210,7 @@ def test_meeting_time_range_is_validated(client_and_session: tuple[TestClient, S
     """
     client, db = client_and_session
     admin = create_user(db, "admin-time")
-    headers = {"X-Admin-Id": str(admin.id)}
+    headers = auth_headers(db, admin)
 
     invalid_create = client.post(
         "/api/admin/meetings",
@@ -194,7 +246,7 @@ def test_admin_can_replace_guest_fields_and_create_guest(client_and_session: tup
     db.flush()
     db.add(MeetingAdmin(meeting_id=meeting.id, user_id=admin.id))
     db.commit()
-    headers = {"X-Admin-Id": str(admin.id)}
+    headers = auth_headers(db, admin)
 
     fields_response = client.put(
         f"/api/admin/meetings/{meeting.id}/guest-fields",
@@ -234,7 +286,7 @@ def test_guest_field_replace_rejects_duplicate_keys_and_existing_values(
     db.flush()
     db.add(MeetingAdmin(meeting_id=meeting.id, user_id=admin.id))
     db.commit()
-    headers = {"X-Admin-Id": str(admin.id)}
+    headers = auth_headers(db, admin)
 
     duplicate_response = client.put(
         f"/api/admin/meetings/{meeting.id}/guest-fields",
@@ -277,7 +329,7 @@ def test_guest_endpoints_reject_unassigned_admin(client_and_session: tuple[TestC
     db.add(MeetingAdmin(meeting_id=meeting.id, user_id=owner.id))
     db.commit()
 
-    response = client.get(f"/api/admin/meetings/{meeting.id}/guests", headers={"X-Admin-Id": str(visitor.id)})
+    response = client.get(f"/api/admin/meetings/{meeting.id}/guests", headers=auth_headers(db, visitor))
     assert response.status_code == 404
 
 
@@ -297,12 +349,12 @@ def test_admin_can_create_staff_and_staff_can_list_assigned_meetings(
     db.flush()
     db.add(MeetingAdmin(meeting_id=meeting.id, user_id=admin.id))
     db.commit()
-    admin_headers = {"X-Admin-Id": str(admin.id)}
+    admin_headers = auth_headers(db, admin)
 
     create_response = client.post(
         f"/api/admin/meetings/{meeting.id}/staff",
         headers=admin_headers,
-        json={"username": "staff01", "display_name": "现场一组", "phone": "13700000001"},
+        json={"username": "staff01", "display_name": "现场一组", "phone": "13700000001", "initial_password": "staff-pass-123"},
     )
     assert create_response.status_code == 201
     staff_id = create_response.json()["id"]
@@ -310,16 +362,24 @@ def test_admin_can_create_staff_and_staff_can_list_assigned_meetings(
     repeated_response = client.post(
         f"/api/admin/meetings/{meeting.id}/staff",
         headers=admin_headers,
-        json={"username": "staff01", "display_name": "现场一组"},
+        json={"username": "staff01", "display_name": "现场一组", "initial_password": "staff-pass-123"},
     )
     assert repeated_response.status_code == 201
     assert repeated_response.json()["id"] == staff_id
+
+    login_response = client.post(
+        "/api/staff/sessions", json={"username": "staff01", "password": "staff-pass-123"}
+    )
+    assert login_response.status_code == 200
 
     list_response = client.get(f"/api/admin/meetings/{meeting.id}/staff", headers=admin_headers)
     assert list_response.status_code == 200
     assert [item["id"] for item in list_response.json()] == [staff_id]
 
-    staff_meetings_response = client.get("/api/staff/meetings", headers={"X-Staff-Id": str(staff_id)})
+    db.expire_all()
+    staff_user = db.get(User, staff_id)
+    assert staff_user is not None
+    staff_meetings_response = client.get("/api/staff/meetings", headers=auth_headers(db, staff_user))
     assert staff_meetings_response.status_code == 200
     assert [item["id"] for item in staff_meetings_response.json()] == [meeting.id]
 
@@ -333,7 +393,7 @@ def test_staff_meetings_reject_non_staff_user(client_and_session: tuple[TestClie
     """
     client, db = client_and_session
     admin = create_user(db, "admin-not-staff")
-    response = client.get("/api/staff/meetings", headers={"X-Staff-Id": str(admin.id)})
+    response = client.get("/api/staff/meetings", headers=auth_headers(db, admin))
     assert response.status_code == 403
 
 
@@ -360,7 +420,7 @@ def test_staff_can_scan_and_manually_check_in_with_core_rules(client_and_session
     second_guest = Guest(meeting_id=meeting.id, name="人工嘉宾", phone="13900000004", qr_token="manual-token")
     db.add_all([first_guest, second_guest])
     db.commit()
-    headers = {"X-Staff-Id": str(staff.id)}
+    headers = auth_headers(db, staff)
 
     scan_response = client.post(
         f"/api/staff/meetings/{meeting.id}/check-ins/scan", headers=headers, json={"qr_token": "scan-token"}
@@ -406,7 +466,7 @@ def test_check_in_rejects_expired_or_other_meeting_guest(client_and_session: tup
         Guest(meeting_id=other_meeting.id, name="跨会嘉宾", phone="13900000006", qr_token="other-token"),
     ])
     db.commit()
-    headers = {"X-Staff-Id": str(staff.id)}
+    headers = auth_headers(db, staff)
 
     expired_response = client.post(f"/api/staff/meetings/{expired_meeting.id}/check-ins/scan", headers=headers, json={"qr_token": "expired-token"})
     other_response = client.post(f"/api/staff/meetings/{active_meeting.id}/check-ins/scan", headers=headers, json={"qr_token": "other-token"})
@@ -433,13 +493,16 @@ def test_guest_can_login_and_read_own_meeting_and_qr(client_and_session: tuple[T
     login_response = client.post("/api/guest/sessions", json={"meeting_id": meeting.id, "name": "李文博", "phone": "13900000007"})
     assert login_response.status_code == 200
     assert login_response.json()["guest_id"] == guest.id
-    headers = {"X-Guest-Id": str(guest.id)}
+    headers = {"Authorization": f"Bearer {login_response.json()['access_token']}"}
 
     meetings_response = client.get("/api/guest/meetings", headers=headers)
     detail_response = client.get(f"/api/guest/meetings/{meeting.id}", headers=headers)
+    profile_response = client.get(f"/api/guest/meetings/{meeting.id}/profile", headers=headers)
     qr_response = client.get(f"/api/guest/meetings/{meeting.id}/check-in-qr", headers=headers)
     assert meetings_response.status_code == 200
     assert detail_response.status_code == 200
+    assert profile_response.status_code == 200
+    assert profile_response.json()["name"] == "李文博"
     assert qr_response.json() == {"qr_token": "guest-session-token", "expires_at": None}
 
 
@@ -461,7 +524,7 @@ def test_guest_login_and_cross_meeting_access_are_rejected(client_and_session: t
     db.commit()
 
     failed_login = client.post("/api/guest/sessions", json={"meeting_id": first_meeting.id, "name": "王敏", "phone": "错误"})
-    cross_access = client.get(f"/api/guest/meetings/{other_meeting.id}", headers={"X-Guest-Id": str(guest.id)})
+    cross_access = client.get(f"/api/guest/meetings/{other_meeting.id}", headers=auth_headers(db, guest))
     assert failed_login.status_code == 401
     assert cross_access.status_code == 404
 
@@ -485,7 +548,7 @@ def test_staff_can_search_guests_with_check_in_status(client_and_session: tuple[
     db.flush()
     db.add(CheckIn(meeting_id=meeting.id, guest_id=guest.id, staff_id=staff.id, method="scan"))
     db.commit()
-    headers = {"X-Staff-Id": str(staff.id)}
+    headers = auth_headers(db, staff)
 
     response = client.get(f"/api/staff/meetings/{meeting.id}/guests?query=A12", headers=headers)
     assert response.status_code == 200
@@ -514,9 +577,243 @@ def test_admin_can_view_check_in_summary(client_and_session: tuple[TestClient, S
     db.add(CheckIn(meeting_id=meeting.id, guest_id=first_guest.id, staff_id=staff.id, method="scan"))
     db.commit()
 
-    response = client.get(f"/api/admin/meetings/{meeting.id}/check-ins", headers={"X-Admin-Id": str(admin.id)})
+    response = client.get(f"/api/admin/meetings/{meeting.id}/check-ins", headers=auth_headers(db, admin))
     assert response.status_code == 200
     assert response.json()["total_guests"] == 2
     assert response.json()["checked_in_count"] == 1
     assert response.json()["unchecked_count"] == 1
     assert response.json()["records"][0]["staff_name"] == "staff-summary"
+
+
+def test_admin_excel_template_import_and_check_in_export(
+    client_and_session: tuple[TestClient, Session],
+) -> None:
+    """验证 Excel 模板、逐行导入和完整签到导出闭环。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具。
+    返回值：None：断言通过表示生成和解析的文件均为真实可读 XLSX。
+    异常：当前函数不主动抛出业务异常；断言失败表示 Excel API 行为不符合预期。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-excel")
+    staff = create_user(db, "staff-excel", role="staff")
+    meeting = Meeting(title="Excel 验证会议", created_by_id=admin.id, status="published")
+    db.add(meeting)
+    db.flush()
+    db.add(MeetingAdmin(meeting_id=meeting.id, user_id=admin.id))
+    db.add(GuestField(meeting_id=meeting.id, label="学科", key="subject", field_type="text", required=True))
+    db.commit()
+    headers = auth_headers(db, admin)
+
+    template_response = client.get(
+        f"/api/admin/meetings/{meeting.id}/guests/import-template", headers=headers
+    )
+    assert template_response.status_code == 200
+    template_workbook = load_workbook(BytesIO(template_response.content))
+    assert [cell.value for cell in template_workbook["嘉宾导入"][1]][:7] == [
+        "姓名", "手机号", "单位", "职务", "身份", "座位号", "学科"
+    ]
+    template_workbook.close()
+
+    import_workbook = Workbook()
+    worksheet = import_workbook.active
+    worksheet.append(["姓名", "手机号", "单位", "职务", "身份", "座位号", "学科"])
+    worksheet.append(["有效嘉宾", "13800000001", "第一学校", None, "教师", "B01", "数学"])
+    worksheet.append(["缺手机号嘉宾", None, None, None, None, None, "语文"])
+    upload = BytesIO()
+    import_workbook.save(upload)
+    import_workbook.close()
+    import_response = client.post(
+        f"/api/admin/meetings/{meeting.id}/guests/import",
+        headers=headers,
+        files={"file": ("guests.xlsx", upload.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert import_response.status_code == 200
+    assert import_response.json()["imported_count"] == 1
+    assert import_response.json()["errors"][0]["row_number"] == 3
+
+    imported_guest = db.scalar(select(Guest).where(Guest.meeting_id == meeting.id, Guest.phone == "13800000001"))
+    assert imported_guest is not None
+    db.add(CheckIn(meeting_id=meeting.id, guest_id=imported_guest.id, staff_id=staff.id, method="manual"))
+    db.commit()
+    export_response = client.get(f"/api/admin/meetings/{meeting.id}/check-ins/export", headers=headers)
+    assert export_response.status_code == 200
+    export_workbook = load_workbook(BytesIO(export_response.content), data_only=True)
+    exported_rows = list(export_workbook["签到明细"].iter_rows(values_only=True))
+    export_workbook.close()
+    assert exported_rows[1][1] == "有效嘉宾"
+    assert exported_rows[1][7] == "已签到"
+    assert exported_rows[1][10] == "staff-excel"
+
+
+def test_public_application_can_be_reviewed_into_guest(
+    client_and_session: tuple[TestClient, Session],
+) -> None:
+    """验证公开报名、重复保护、管理员查询和批准创建正式嘉宾。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具。
+    返回值：None：断言通过表示报名审核形成正式嘉宾的闭环可用。
+    异常：当前函数不主动抛出业务异常；断言失败表示报名或审核规则异常。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-application")
+    meeting = Meeting(
+        title="开放报名会议",
+        created_by_id=admin.id,
+        status="published",
+        end_time=datetime.now(timezone.utc) + timedelta(days=2),
+    )
+    db.add(meeting)
+    db.flush()
+    db.add_all([
+        MeetingSetting(meeting_id=meeting.id, registration_enabled=True),
+        MeetingAdmin(meeting_id=meeting.id, user_id=admin.id),
+        GuestField(
+            meeting_id=meeting.id,
+            label="研究方向",
+            key="research_area",
+            field_type="text",
+            required=True,
+            visible_to_guest=True,
+        ),
+    ])
+    db.commit()
+    payload = {
+        "name": "报名嘉宾",
+        "phone": "13800000002",
+        "organization": "第二学校",
+        "values": {"research_area": "教育数字化"},
+    }
+
+    public_meeting_response = client.get(f"/api/meetings/{meeting.id}")
+    assert public_meeting_response.status_code == 200
+    assert public_meeting_response.json()["title"] == "开放报名会议"
+    assert public_meeting_response.json()["guest_login_fields"] == ["name", "phone"]
+
+    submit_response = client.post(f"/api/meetings/{meeting.id}/guest-applications", json=payload)
+    assert submit_response.status_code == 201
+    application_id = submit_response.json()["id"]
+    duplicate_response = client.post(f"/api/meetings/{meeting.id}/guest-applications", json=payload)
+    assert duplicate_response.status_code == 422
+
+    headers = auth_headers(db, admin)
+    list_response = client.get(
+        f"/api/admin/meetings/{meeting.id}/guest-applications?status=pending", headers=headers
+    )
+    assert list_response.status_code == 200
+    assert [item["id"] for item in list_response.json()] == [application_id]
+    review_response = client.patch(
+        f"/api/admin/meetings/{meeting.id}/guest-applications/{application_id}",
+        headers=headers,
+        json={"status": "approved"},
+    )
+    assert review_response.status_code == 200
+    assert review_response.json()["status"] == "approved"
+    assert review_response.json()["guest_id"] is not None
+    assert client.patch(
+        f"/api/admin/meetings/{meeting.id}/guest-applications/{application_id}",
+        headers=headers,
+        json={"status": "rejected"},
+    ).status_code == 422
+
+
+def test_admin_resource_maintenance_and_cors_are_available(
+    client_and_session: tuple[TestClient, Session],
+) -> None:
+    """验证嘉宾、登录规则、多管理员维护以及前端跨域预检。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具。
+    返回值：None：断言通过表示补充资源 API 和默认开发跨域配置可用。
+    异常：当前函数不主动抛出业务异常；断言失败表示补充接口未形成可用闭环。
+    """
+    client, db = client_and_session
+    owner = create_user(db, "admin-resource-owner")
+    other_admin = create_user(db, "admin-resource-other")
+    meeting = Meeting(title="资源维护会议", created_by_id=owner.id, status="draft")
+    db.add(meeting)
+    db.flush()
+    db.add_all([
+        MeetingSetting(meeting_id=meeting.id),
+        MeetingAdmin(meeting_id=meeting.id, user_id=owner.id),
+        GuestField(meeting_id=meeting.id, label="学段", key="school_stage", field_type="text"),
+    ])
+    guest = Guest(meeting_id=meeting.id, name="待修改嘉宾", phone="13800000003", qr_token="resource-token")
+    db.add(guest)
+    db.commit()
+    headers = auth_headers(db, owner)
+
+    update_response = client.patch(
+        f"/api/admin/meetings/{meeting.id}/guests/{guest.id}",
+        headers=headers,
+        json={"name": "已修改嘉宾", "values": {"school_stage": "高中"}},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["values"] == {"school_stage": "高中"}
+    login_fields_response = client.put(
+        f"/api/admin/meetings/{meeting.id}/guest-login-fields",
+        headers=headers,
+        json={"fields": ["phone", "name"]},
+    )
+    assert login_fields_response.json()["fields"] == ["name", "phone"]
+    add_admin_response = client.post(
+        f"/api/admin/meetings/{meeting.id}/admins",
+        headers=headers,
+        json={"username": other_admin.username},
+    )
+    assert add_admin_response.status_code == 200
+    other_admin_headers = auth_headers(db, other_admin)
+    assert client.get(f"/api/admin/meetings/{meeting.id}/admins", headers=other_admin_headers).status_code == 200
+    assert client.delete(
+        f"/api/admin/meetings/{meeting.id}/admins/{owner.id}", headers=headers
+    ).status_code == 422
+    assert client.delete(
+        f"/api/admin/meetings/{meeting.id}/admins/{other_admin.id}", headers=headers
+    ).status_code == 200
+    assert client.get(f"/api/admin/meetings/{meeting.id}", headers=other_admin_headers).status_code == 404
+
+    create_staff_response = client.post(
+        f"/api/admin/meetings/{meeting.id}/staff",
+        headers=headers,
+        json={
+            "username": "resource-staff",
+            "display_name": "资源工作人员",
+            "phone": "13700000009",
+            "initial_password": "resource-pass-123",
+        },
+    )
+    assert create_staff_response.status_code == 201
+    staff_id = create_staff_response.json()["id"]
+    patch_staff_response = client.patch(
+        f"/api/admin/meetings/{meeting.id}/staff/{staff_id}",
+        headers=headers,
+        json={"display_name": "已修改工作人员", "is_active": False},
+    )
+    assert patch_staff_response.status_code == 200
+    assert patch_staff_response.json()["is_active"] is False
+    assert client.delete(
+        f"/api/admin/meetings/{meeting.id}/staff/{staff_id}", headers=headers
+    ).status_code == 200
+
+    qr_response = client.post(
+        f"/api/admin/meetings/{meeting.id}/guest-qrcodes/generate", headers=headers
+    )
+    assert qr_response.json() == {"generated_count": 0, "existing_count": 1}
+    assert client.delete(
+        f"/api/admin/meetings/{meeting.id}/guests/{guest.id}", headers=headers
+    ).status_code == 200
+    assert client.post(
+        "/api/guest/sessions",
+        json={"meeting_id": meeting.id, "name": "已修改嘉宾", "phone": guest.phone},
+    ).status_code == 401
+
+    cors_response = client.options(
+        "/api/admin/meetings",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+    assert cors_response.status_code == 200
+    assert cors_response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert client.get("/api/admin/meetings").status_code == 401

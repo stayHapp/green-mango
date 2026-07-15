@@ -2,7 +2,7 @@
 
 这里是知会后端项目。
 
-当前已初始化 FastAPI 最小骨架、健康检查接口、SQLAlchemy 数据库基础设施、Alembic 迁移骨架和 pytest 测试。会议管理、报名字段、报名提交等业务功能尚未实现。
+当前已完成三端 MVP 后端：管理员、工作人员和嘉宾安全会话，会议与授权管理，嘉宾动态字段和 Excel 导入，二维码签到、统计导出，以及补充报名审核。
 
 ## 技术栈
 
@@ -52,6 +52,8 @@ python -m pip install ".[dev]"
 
 ```text
 DATABASE_URL=sqlite:///./dev.db
+SESSION_EXPIRE_HOURS=12
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
 可参考 `.env.example` 创建本地 `.env`。`.env` 不提交到版本库。
@@ -70,15 +72,19 @@ GET /api/health
 
 ## 数据库迁移
 
-当前只有 Alembic 骨架，尚未创建业务表迁移。
-
 查看当前迁移状态：
 
 ```bash
 alembic current
 ```
 
-后续创建业务模型后，再生成迁移版本。
+初始化或升级本地数据库：
+
+```bash
+alembic upgrade head
+```
+
+当前迁移头为 `20260715_0004`。
 
 ## 运行测试
 

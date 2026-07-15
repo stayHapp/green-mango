@@ -13,6 +13,7 @@ from app.models.user import utc_now
 
 if TYPE_CHECKING:
     from app.models.access import MeetingAdmin, StaffMeeting
+    from app.models.application import GuestApplication
     from app.models.guest import CheckIn, Guest, GuestField
     from app.models.registration import Registration, RegistrationField
     from app.models.user import User
@@ -56,6 +57,9 @@ class Meeting(Base):
     )
     guests: Mapped[list[Guest]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
     check_ins: Mapped[list[CheckIn]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
+    guest_applications: Mapped[list[GuestApplication]] = relationship(
+        back_populates="meeting", cascade="all, delete-orphan"
+    )
 
 
 class MeetingSetting(Base):
