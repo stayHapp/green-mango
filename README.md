@@ -134,6 +134,16 @@ uvicorn app.main:app --reload
 GET /api/health
 ```
 
+### 启动前端开发服务
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+启动成功后，按终端输出的本地地址在浏览器中访问前端页面。首次运行或依赖变更后执行 `npm install`。
+
 ### 运行检查
 
 在仓库根目录运行：

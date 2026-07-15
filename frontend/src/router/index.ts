@@ -19,11 +19,11 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: HomeView },
     { path: '/login', name: 'login', component: LoginView },
-    { path: '/meetings/:id', name: 'meeting-entry', redirect: (to) => ({ path: '/login', query: { meetingId: to.params.id } }) },
+    { path: '/meetings/:id', name: 'meeting-entry', redirect: (to) => ({ path: '/guest/login', query: { meetingId: to.params.id } }) },
     { path: '/admin/login', redirect: (to) => ({ path: '/login', query: to.query }) },
     { path: '/admin/meetings', name: 'admin-meetings', component: AdminMeetingsView },
     { path: '/admin/meetings/:id', name: 'admin-meeting-detail', component: AdminMeetingDetailView },
-    { path: '/guest/login', redirect: (to) => ({ path: '/login', query: to.query }) },
+    { path: '/guest/login', name: 'guest-login', component: () => import('../views/guest/GuestLoginView.vue') },
     { path: '/guest/meetings', name: 'guest-meetings', component: GuestMeetingsView },
     { path: '/guest/meetings/:id', name: 'guest-meeting-detail', component: GuestMeetingDetailView },
     { path: '/staff/login', redirect: (to) => ({ path: '/login', query: to.query }) },

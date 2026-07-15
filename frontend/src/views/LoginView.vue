@@ -1,225 +1,142 @@
 <template>
   <section class="page narrow-page">
-    <div v-if="meeting" class="guest-meeting-hero">
+    <div class="page-heading">
       <div>
-        <p class="eyebrow">统一登录</p>
-        <h1>{{ meeting.title }}</h1>
-        <p class="lead">{{ meeting.description }}</p>
-        <dl class="compact-info-list">
-          <dt>时间</dt>
-          <dd>{{ formatDate(meeting.startTime) }} - {{ formatDate(meeting.endTime) }}</dd>
-          <dt>地点</dt>
-          <dd>{{ meeting.location }}</dd>
-        </dl>
-      </div>
-      <el-tag type="success">会议入口</el-tag>
-    </div>
-
-    <div v-else class="page-heading">
-      <div>
-        <p class="eyebrow">统一登录</p>
-        <h1>知会登录</h1>
-        <p class="muted">使用姓名和手机号识别身份，登录后进入对应客户端。</p>
+        <p class="eyebrow">管理与签到入口</p>
+        <h1>管理员 / 工作人员登录</h1>
+        <p class="muted">管理员管理会议，工作人员进入现场签到工作台；嘉宾请使用会议专属入口登录。</p>
       </div>
       <el-tag type="info">Mock 登录</el-tag>
     </div>
 
     <el-card shadow="never" class="form-card">
-      <template #header>身份验证</template>
-      <el-form label-position="top" @submit.prevent>
-        <el-form-item label="姓名">
-          <el-input v-model="name" placeholder="请输入姓名" />
-        </el-form-item>
-        <el-form-item label="手机号">
-          <el-input v-model="phone" placeholder="请输入手机号" />
-        </el-form-item>
-        <div class="example-grid">
-          <el-button @click="fillAdminDemo">管理员示例</el-button>
-          <el-button @click="fillStaffDemo">工作人员示例</el-button>
-          <el-button @click="fillGuestDemo">嘉宾示例</el-button>
-        </div>
-        <div class="action-row top-gap">
-          <el-button type="primary" :loading="loading" @click="handleLogin">登录</el-button>
-        </div>
-      </el-form>
+      <el-tabs v-model="loginRole" stretch>
+        <el-tab-pane label="管理员" name="admin">
+          <el-form label-position="top" @submit.prevent>
+            <el-form-item label="姓名"><el-input v-model="adminName" placeholder="请输入管理员姓名" /></el-form-item>
+            <el-form-item label="手机号"><el-input v-model="adminPhone" placeholder="请输入手机号" /></el-form-item>
+            <div class="action-row"><el-button @click="fillAdminDemo">填入示例</el-button><el-button type="primary" :loading="loading" @click="handleAdminLogin">登录管理端</el-button></div>
+          </el-form>
+        </el-tab-pane>
+        <el-tab-pane label="工作人员" name="staff">
+          <el-form label-position="top" @submit.prevent>
+            <el-form-item label="账号"><el-input v-model="staffAccount" placeholder="请输入工作人员账号" /></el-form-item>
+            <div class="action-row"><el-button @click="fillStaffDemo">填入示例</el-button><el-button type="primary" :loading="loading" @click="handleStaffLogin">进入签到工作台</el-button></div>
+          </el-form>
+        </el-tab-pane>
+      </el-tabs>
       <el-alert v-if="errorMessage" class="top-gap" type="error" :closable="false" :title="errorMessage" />
     </el-card>
+
+    <p class="muted login-switch-tip">嘉宾请通过会议入口二维码，或前往 <router-link class="inline-link" to="/guest/login?meetingId=m-edu-2026">嘉宾登录</router-link>。</p>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
-import { getMeeting, loginByIdentity } from '../mock/mockApi'
+import { loginAdmin, loginStaff } from '../mock/mockApi'
 import { useSessionStore } from '../stores/session'
-import type { IdentityLoginResult, Meeting } from '../types'
 
-const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
-const meeting = ref<Meeting>()
-const name = ref('')
-const phone = ref('')
+const loginRole = ref<'admin' | 'staff'>('admin')
+const adminName = ref('')
+const adminPhone = ref('')
+const staffAccount = ref('')
 const loading = ref(false)
 const errorMessage = ref('')
 
 /**
- * 加载统一登录页关联的会议信息。
+ * 切换登录身份时清除上一次的错误提示。
  *
- * 入参：
- *   无；函数从 URL 查询参数读取 meetingId，存在时展示该会议基础信息。
- *
- * 返回值：
- *   Promise<void>：加载完成后更新页面会议展示信息。
- *
- * 异常：
- *   当前 mock API 不主动抛出异常；会议不存在时不展示会议信息。
+ * 入参：role 为当前选择的登录身份，可取 admin 或 staff。
+ * 返回值：void：只更新错误提示状态。
+ * 异常：当前函数不主动抛出异常。
  */
-async function loadMeeting(): Promise<void> {
-  if (!route.query.meetingId) {
-    meeting.value = undefined
-    return
+function resetErrorOnRoleChange(role: 'admin' | 'staff'): void {
+  if (role) {
+    errorMessage.value = ''
   }
-
-  meeting.value = await getMeeting(String(route.query.meetingId))
 }
 
+watch(loginRole, resetErrorOnRoleChange)
+
 /**
- * 填入管理员登录示例。
+ * 填入管理员 Mock 登录示例。
  *
- * 入参：
- *   无。
- *
- * 返回值：
- *   void：只更新登录表单。
- *
- * 异常：
- *   当前函数不主动抛出异常。
+ * 入参：无。
+ * 返回值：void：更新管理员登录表单。
+ * 异常：当前函数不主动抛出异常。
  */
 function fillAdminDemo(): void {
-  name.value = '周敏'
-  phone.value = '13800000001'
+  adminName.value = '周敏'
+  adminPhone.value = '13800000001'
   errorMessage.value = ''
 }
 
 /**
- * 填入工作人员登录示例。
+ * 填入工作人员 Mock 登录示例。
  *
- * 入参：
- *   无。
- *
- * 返回值：
- *   void：只更新登录表单。
- *
- * 异常：
- *   当前函数不主动抛出异常。
+ * 入参：无。
+ * 返回值：void：更新工作人员登录表单。
+ * 异常：当前函数不主动抛出异常。
  */
 function fillStaffDemo(): void {
-  name.value = '现场一组'
-  phone.value = '13700000001'
+  staffAccount.value = 'staff01'
   errorMessage.value = ''
 }
 
 /**
- * 填入嘉宾登录示例。
+ * 完成管理员 Mock 登录并进入会议管理页。
  *
- * 入参：
- *   无。
- *
- * 返回值：
- *   void：只更新登录表单。
- *
- * 异常：
- *   当前函数不主动抛出异常。
+ * 入参：无；函数读取管理员姓名与手机号表单。
+ * 返回值：Promise<void>：登录成功后保存管理员会话并跳转。
+ * 异常：字段缺失或身份未匹配时展示错误提示。
  */
-function fillGuestDemo(): void {
-  name.value = '李文博'
-  phone.value = '13900000001'
+async function handleAdminLogin(): Promise<void> {
   errorMessage.value = ''
-}
-
-/**
- * 执行统一身份登录。
- *
- * 入参：
- *   无；函数从页面表单读取姓名和手机号，两个字段均必填。
- *
- * 返回值：
- *   Promise<void>：登录成功后根据身份进入管理员端、工作人员端或嘉宾端。
- *
- * 异常：
- *   mock API 当前不主动抛出异常；匹配不到身份或会议不匹配时展示页面错误提示。
- */
-async function handleLogin(): Promise<void> {
-  errorMessage.value = ''
-
-  if (!name.value.trim() || !phone.value.trim()) {
-    errorMessage.value = '请填写姓名和手机号。'
+  if (!adminName.value.trim() || !adminPhone.value.trim()) {
+    errorMessage.value = '请填写管理员姓名和手机号。'
     return
   }
 
   loading.value = true
-  const result = await loginByIdentity(name.value.trim(), phone.value.trim())
+  const admin = await loginAdmin(adminName.value.trim(), adminPhone.value.trim())
   loading.value = false
-
-  if (!result) {
-    errorMessage.value = '未找到匹配身份，请检查姓名和手机号。'
+  if (!admin) {
+    errorMessage.value = '未找到匹配的管理员，请检查登录信息。'
     return
   }
 
-  enterClient(result)
+  session.setAdmin(admin)
+  router.push('/admin/meetings')
 }
 
 /**
- * 根据统一登录结果进入对应客户端。
+ * 完成工作人员 Mock 登录并进入负责会议列表。
  *
- * 入参：
- *   result：统一登录结果，必填，包含身份类型和用户对象。
- *
- * 返回值：
- *   void：保存会话后跳转到对应客户端页面。
- *
- * 异常：
- *   当前函数不主动抛出异常；嘉宾会议入口不匹配时展示页面错误提示。
+ * 入参：无；函数读取工作人员账号表单。
+ * 返回值：Promise<void>：登录成功后保存工作人员会话并跳转。
+ * 异常：字段缺失或账号未匹配时展示错误提示。
  */
-function enterClient(result: IdentityLoginResult): void {
-  if (result.role === 'admin') {
-    session.setAdmin(result.user)
-    router.push('/admin/meetings')
+async function handleStaffLogin(): Promise<void> {
+  errorMessage.value = ''
+  if (!staffAccount.value.trim()) {
+    errorMessage.value = '请填写工作人员账号。'
     return
   }
 
-  if (result.role === 'staff') {
-    session.setStaff(result.user)
-    router.push('/staff/meetings')
+  loading.value = true
+  const staff = await loginStaff(staffAccount.value.trim())
+  loading.value = false
+  if (!staff) {
+    errorMessage.value = '未找到匹配的工作人员账号。'
     return
   }
 
-  if (meeting.value && result.user.meetingId !== meeting.value.id) {
-    errorMessage.value = '当前嘉宾不属于该会议，请核对入口二维码。'
-    return
-  }
-
-  session.setGuest(result.user)
-  router.push(`/guest/meetings/${result.user.meetingId}`)
+  session.setStaff(staff)
+  router.push('/staff/meetings')
 }
-
-/**
- * 格式化日期时间展示。
- *
- * 入参：
- *   value：ISO 日期字符串，必填。
- *
- * 返回值：
- *   string：中文本地化日期时间文本。
- *
- * 异常：
- *   当前函数不主动抛出异常；非法日期会按浏览器默认结果展示。
- */
-function formatDate(value: string): string {
-  return new Date(value).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' })
-}
-
-onMounted(loadMeeting)
 </script>

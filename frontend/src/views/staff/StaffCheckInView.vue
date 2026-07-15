@@ -454,7 +454,7 @@ async function handleManualCheckIn(guestId: string): Promise<void> {
 }
 
 /**
- * 跳转到统一登录页。
+ * 跳转到管理与签到登录页。
  *
  * 入参：
  *   无。

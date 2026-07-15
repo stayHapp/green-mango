@@ -11,5 +11,9 @@
       <div class="workflow-step">工作人员扫码完成签到</div>
       <div class="workflow-step">管理员查看签到情况</div>
     </div>
+    <div class="portal-entry-grid">
+      <router-link class="portal-entry-card" to="/login"><strong>管理与签到入口</strong><span>管理员、工作人员登录</span></router-link>
+      <router-link class="portal-entry-card" to="/guest/login?meetingId=m-edu-2026"><strong>嘉宾入口</strong><span>通过会议二维码进入</span></router-link>
+    </div>
   </section>
 </template>

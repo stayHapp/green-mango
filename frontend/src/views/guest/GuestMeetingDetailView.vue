@@ -20,10 +20,11 @@
     <div v-else class="guest-content-stack">
       <el-card shadow="never" class="guest-pass-card">
         <div class="identity-panel">
-          <div>
+          <div class="guest-identity-heading">
             <div class="identity-name">{{ session.guest.name }}</div>
-            <div class="identity-role">{{ session.guest.tag }}</div>
+            <el-tag class="identity-role" type="success" effect="light">{{ session.guest.tag }}</el-tag>
           </div>
+          <el-button type="primary" plain @click="openFeatureDrawer">会议功能</el-button>
         </div>
         <dl class="info-list">
           <dt>电话</dt>
@@ -35,19 +36,20 @@
           <dt>座位</dt>
           <dd>{{ session.guest.seat }}</dd>
         </dl>
-        <div class="qr-token guest-pass-qr">{{ session.guest.qrToken }}</div>
+        <GuestQrCode :token="session.guest.qrToken" />
       </el-card>
 
-      <el-card shadow="never">
-        <div class="feature-menu-grid">
-          <button v-for="item in featureMenus" :key="item.title" class="feature-menu-item" type="button" @click="openFeature(item)">
-            <span class="feature-menu-title">{{ item.title }}</span>
-            <span class="feature-menu-desc">{{ item.description }}</span>
-          </button>
-        </div>
-        <el-alert v-if="featureMessage" class="top-gap" type="info" :closable="false" :title="featureMessage" />
-      </el-card>
     </div>
+
+    <el-drawer v-model="featureDrawerVisible" title="会议功能" direction="rtl" size="min(360px, 88vw)">
+      <div class="feature-drawer-list">
+        <button v-for="item in featureMenus" :key="item.key" class="feature-menu-item" type="button" @click="openFeature(item)">
+          <span class="feature-menu-title">{{ item.title }}</span>
+          <span class="feature-menu-desc">{{ item.description }}</span>
+        </button>
+      </div>
+      <el-alert v-if="featureMessage" class="top-gap" type="info" :closable="false" :title="featureMessage" />
+    </el-drawer>
   </section>
 </template>
 
@@ -58,6 +60,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getMeeting } from '../../mock/mockApi'
 import { useSessionStore } from '../../stores/session'
 import type { Meeting } from '../../types'
+import GuestQrCode from '../../components/GuestQrCode.vue'
 
 interface FeatureMenuItem {
   key: string
@@ -70,6 +73,7 @@ const router = useRouter()
 const session = useSessionStore()
 const meeting = ref<Meeting>()
 const featureMessage = ref('')
+const featureDrawerVisible = ref(false)
 const featureMenus: FeatureMenuItem[] = [
   { key: 'agenda', title: '会议日程', description: '查看当天流程和环节安排' },
   { key: 'manual', title: '会议手册', description: '查看会务资料和注意事项' },
@@ -107,7 +111,7 @@ async function loadDetail(): Promise<void> {
  *   当前函数不主动抛出异常。
  */
 function goLogin(): void {
-  router.push(`/login?meetingId=${String(route.params.id)}`)
+  router.push(`/guest/login?meetingId=${String(route.params.id)}`)
 }
 
 /**
@@ -124,6 +128,18 @@ function goLogin(): void {
  */
 function openFeature(item: FeatureMenuItem): void {
   featureMessage.value = `${item.title} 功能将在后续版本接入正式内容。`
+}
+
+/**
+ * 展开会议功能侧边面板并清除上一次功能提示。
+ *
+ * 入参：无。
+ * 返回值：void：显示右侧会议功能面板。
+ * 异常：当前函数不主动抛出异常。
+ */
+function openFeatureDrawer(): void {
+  featureMessage.value = ''
+  featureDrawerVisible.value = true
 }
 
 /**
