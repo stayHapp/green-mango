@@ -1,10 +1,32 @@
 <template>
   <section class="page guest-portal-page">
+    <div class="guest-portal-page__inner">
+    <el-button
+      v-if="meeting && currentGuest"
+      class="guest-logout-button"
+      :icon="SwitchButton"
+      circle
+      aria-label="退出登录"
+      title="退出登录"
+      :loading="loggingOut"
+      @click="handleGuestLogout"
+    />
+    <div v-if="meeting && currentGuest" class="guest-assistant-toolbar">
+      <div v-show="assistantToolbarExpanded" class="guest-assistant-toolbar__actions">
+        <el-button v-for="item in meetingAssistantFeatureDefinitions" :key="item.key" text @click="openAssistantFeature(item.key)">{{ item.title }}</el-button>
+      </div>
+      <el-button
+        :icon="MenuIcon"
+        circle
+        aria-label="展开会议功能"
+        title="会议功能"
+        :aria-expanded="assistantToolbarExpanded"
+        @click="toggleAssistantToolbar"
+      />
+    </div>
     <div v-if="meeting" class="guest-meeting-hero">
       <div>
-        <p class="eyebrow">嘉宾端</p>
         <h1>{{ meeting.title }}</h1>
-        <p class="lead">{{ meeting.description }}</p>
         <dl class="compact-info-list">
           <dt>时间</dt>
           <dd>{{ formatDate(meeting.startTime) }} - {{ formatDate(meeting.endTime) }}</dd>
@@ -12,11 +34,10 @@
           <dd>{{ meeting.location }}</dd>
         </dl>
       </div>
-      <el-tag type="success">扫码进入</el-tag>
     </div>
     <el-empty v-else description="未找到会议入口" />
 
-    <el-card v-if="meeting && !currentGuest" shadow="never" class="form-card">
+    <el-card v-if="meeting && !currentGuest" shadow="never" class="form-card guest-login-card">
       <template #header>身份验证</template>
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="姓名">
@@ -40,7 +61,6 @@
             <div class="identity-name">{{ currentGuest.name }}</div>
             <el-tag class="identity-role" type="success" effect="light">{{ currentGuest.tag }}</el-tag>
           </div>
-          <el-button type="primary" plain @click="openFeatureDrawer">会议功能</el-button>
         </div>
         <dl class="info-list top-gap">
           <dt>电话</dt>
@@ -56,44 +76,33 @@
       </el-card>
 
     </div>
-
-    <el-drawer v-model="featureDrawerVisible" title="会议功能" direction="rtl" size="min(360px, 88vw)">
-      <div class="feature-drawer-list">
-        <button v-for="item in featureMenus" :key="item.key" class="feature-menu-item" type="button" @click="openFeature(item)">
-          <span class="feature-menu-title">{{ item.title }}</span>
-          <span class="feature-menu-desc">{{ item.description }}</span>
-        </button>
-      </div>
-      <el-alert v-if="featureMessage" class="top-gap" type="info" :closable="false" :title="featureMessage" />
-    </el-drawer>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { Menu as MenuIcon, SwitchButton } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 import { getApiErrorMessage } from '../../api/client'
-import { getPublicMeeting, loginGuest } from '../../api/sessions'
+import { getPublicMeeting, loginGuest, logoutClientSession } from '../../api/sessions'
 import { useSessionStore } from '../../stores/session'
-import type { Guest, Meeting } from '../../types'
+import { meetingAssistantFeatureDefinitions } from '../../mock/meetingAssistant'
+import type { Guest, Meeting, MeetingAssistantFeatureKey } from '../../types'
 import GuestQrCode from '../../components/GuestQrCode.vue'
 
-interface FeatureMenuItem {
-  key: string
-  title: string
-  description: string
-}
-
 const route = useRoute()
+const router = useRouter()
 const session = useSessionStore()
 const meeting = ref<Meeting>()
 const name = ref('')
 const phone = ref('')
 const loading = ref(false)
+const loggingOut = ref(false)
 const errorMessage = ref('')
-const featureMessage = ref('')
-const featureDrawerVisible = ref(false)
+const assistantToolbarExpanded = ref(false)
 const currentGuest = computed(() => {
   if (!meeting.value || session.guest?.meetingId !== meeting.value.id) {
     return undefined
@@ -101,13 +110,6 @@ const currentGuest = computed(() => {
 
   return session.guest
 })
-const featureMenus: FeatureMenuItem[] = [
-  { key: 'agenda', title: '会议日程', description: '查看当天流程和环节安排' },
-  { key: 'manual', title: '会议手册', description: '查看会务资料和注意事项' },
-  { key: 'weather', title: '天气情况', description: '了解到场当天城市天气' },
-  { key: 'route', title: '路线指引', description: '查看会场位置和交通建议' },
-  { key: 'contact', title: '联系我们', description: '联系会务组和现场支持' },
-]
 
 /**
  * 嘉宾会话被清除时同步清空身份表单和功能提示。
@@ -123,8 +125,7 @@ function clearIdentityAfterLogout(guest: Guest | undefined): void {
   name.value = ''
   phone.value = ''
   errorMessage.value = ''
-  featureMessage.value = ''
-  featureDrawerVisible.value = false
+  assistantToolbarExpanded.value = false
 }
 
 watch(() => session.guest, clearIdentityAfterLogout)
@@ -203,7 +204,6 @@ async function handleLogin(): Promise<void> {
   try {
     const result = await loginGuest(meeting.value.id, name.value.trim(), phone.value.trim())
     session.setGuest(result.user, result.access)
-    featureMessage.value = ''
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, '嘉宾登录失败，请检查姓名和手机号。')
   } finally {
@@ -212,31 +212,46 @@ async function handleLogin(): Promise<void> {
 }
 
 /**
- * 打开嘉宾端功能菜单。
+ * 退出当前嘉宾会话并恢复身份验证页面。
  *
- * 入参：
- *   item：功能菜单项，必填，包含功能标识、标题和说明。
- *
- * 返回值：
- *   void：根据菜单项更新当前页面展示状态。
- *
- * 异常：
- *   当前函数不主动抛出异常。
+ * 入参：无；函数使用当前已登录的嘉宾会话。
+ * 返回值：Promise<void>：无论服务端会话是否仍然有效，最终都会清除本地嘉宾状态。
+ * 异常：服务端退出失败时显示说明提示，异常不会继续向外抛出。
  */
-function openFeature(item: FeatureMenuItem): void {
-  featureMessage.value = `${item.title} 功能将在后续版本接入正式内容。`
+async function handleGuestLogout(): Promise<void> {
+  loggingOut.value = true
+  try {
+    await logoutClientSession('guest')
+    ElMessage.success('已退出登录。')
+  } catch {
+    ElMessage.warning('服务端会话可能已失效，本地登录状态已清除。')
+  } finally {
+    session.clearRole('guest')
+    loggingOut.value = false
+  }
 }
 
 /**
- * 展开会议功能侧边面板并清除上一次功能提示。
+ * 展开或收起会议信息上方的单行功能入口。
  *
  * 入参：无。
- * 返回值：void：显示右侧会议功能面板。
+ * 返回值：void：切换五项会议功能入口的可见状态。
  * 异常：当前函数不主动抛出异常。
  */
-function openFeatureDrawer(): void {
-  featureMessage.value = ''
-  featureDrawerVisible.value = true
+function toggleAssistantToolbar(): void {
+  assistantToolbarExpanded.value = !assistantToolbarExpanded.value
+}
+
+/**
+ * 从顶部快捷入口打开指定会议助手功能。
+ *
+ * 入参：key 为会议助手功能标识，必填。
+ * 返回值：Promise<void>：跳转到对应功能独立页面并收起快捷入口。
+ * 异常：路由导航失败时由 Vue Router 抛出异常。
+ */
+async function openAssistantFeature(key: MeetingAssistantFeatureKey): Promise<void> {
+  assistantToolbarExpanded.value = false
+  await router.push(`/guest/meetings/${meeting.value?.id ?? ''}/assistant/${key}`)
 }
 
 /**

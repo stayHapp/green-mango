@@ -1,6 +1,6 @@
 <template>
   <el-container class="app-shell">
-    <el-header class="topbar">
+    <el-header v-if="!isGuestPage" class="topbar">
       <router-link class="brand" to="/">
         <span class="brand-name">知会</span>
         <span class="brand-subtitle">会议与签到原型</span>
@@ -16,7 +16,7 @@
         </template>
       </nav>
     </el-header>
-    <el-main>
+    <el-main :class="{ 'guest-main': isGuestPage }">
       <router-view />
     </el-main>
   </el-container>
@@ -35,6 +35,18 @@ const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const currentClient = computed(clientName)
+const isGuestPage = computed(guestPage)
+
+/**
+ * 判断当前路由是否属于嘉宾端页面。
+ *
+ * 入参：无；函数读取当前路由路径。
+ * 返回值：boolean：路径以 `/guest/` 开头时返回 true，否则返回 false。
+ * 异常：当前函数不主动抛出异常。
+ */
+function guestPage(): boolean {
+  return route.path.startsWith('/guest/')
+}
 
 /**
  * 根据当前路由识别已登录的客户端名称。
