@@ -361,7 +361,7 @@ async function loadGuests(query: string): Promise<void> {
  *   Promise<void>：加载完成后更新签到列表和参会人员状态。
  *
  * 异常：
- *   当前 mock API 不主动抛出异常。
+ *   任一刷新接口失败时向调用方抛出异常，由签到操作流程展示错误提示。
  */
 async function refreshCheckIns(): Promise<void> {
   const meetingId = String(route.params.id)

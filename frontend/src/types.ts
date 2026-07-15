@@ -1,8 +1,4 @@
-/**
- * 前端 mock 原型中使用的共享类型。
- *
- * 这些类型用于约束 JSON 数据和页面交互，不代表最终后端 API 已定稿。
- */
+/** 前端三端页面与 API 适配层使用的共享业务类型。 */
 export type ClientRole = 'admin' | 'guest' | 'staff'
 
 export type MeetingStatus = 'draft' | 'published' | 'ended'
@@ -133,15 +129,6 @@ export interface AdminCheckInSummary {
   checkedInCount: number
   uncheckedCount: number
   records: AdminCheckInRecord[]
-}
-
-export interface MockData {
-  meetings: Meeting[]
-  admins: AdminUser[]
-  guestFields: GuestField[]
-  guests: Guest[]
-  staff: StaffUser[]
-  checkIns: CheckInRecord[]
 }
 
 export type ScanStatus = 'success' | 'already_checked_in' | 'expired' | 'invalid' | 'wrong_meeting'

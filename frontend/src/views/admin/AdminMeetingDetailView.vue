@@ -299,7 +299,7 @@ function resolvePublicAppBaseUrl(): string {
  *
  * 返回值：Promise<void>：加载完成后更新会议、嘉宾、字段、工作人员、签到记录和会议助手配置。
  *
- * 异常：会议身份、权限或网络异常时清空详情并展示后端错误；其他资源本阶段仍使用 Mock。
+ * 异常：会议身份、权限或网络异常时清空详情并展示后端错误；独立资源失败时展示各自错误状态。
  */
 async function loadDetail(): Promise<void> {
   if (!session.admin) {
