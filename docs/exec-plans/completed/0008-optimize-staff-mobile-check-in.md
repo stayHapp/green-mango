@@ -20,7 +20,7 @@
 - `docs/product/staff-workflow.md`
 - `docs/product/feature-map.md`
 - `docs/exec-plans/template.md`
-- `docs/exec-plans/active/0007-refine-staff-check-in-and-admin-export.md`
+- `docs/exec-plans/completed/0007-refine-staff-check-in-and-admin-export.md`
 
 ## 目标
 

@@ -132,4 +132,7 @@ npm run dev -- --host 127.0.0.1
 
 ## 完成记录
 
-待任务完成后填写。
+- 已完成 Vue 3、Vite、TypeScript、Element Plus、Vue Router 和 Pinia 前端骨架。
+- 已使用集中 JSON 样例数据验证管理员、嘉宾和工作人员三端初始交互。
+- 原型验证后已逐页迁移至真实 FastAPI 接口；原始 JSON 数据继续作为只读样例保留。
+- 当前前端生产构建和仓库完整检查均通过。
