@@ -135,17 +135,21 @@ a {
 }
 
 .guest-assistant-toolbar__actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  white-space: nowrap;
+  position: absolute;
+  top: 48px;
+  right: 0;
+  width: min(520px, calc(100vw - 32px));
+  overflow: visible;
+  scrollbar-width: none;
 }
 
 .guest-logout-button.el-button,
 .guest-assistant-toolbar > .el-button {
+  flex: 0 0 40px;
   width: 40px;
+  min-width: 40px;
   height: 40px;
+  min-height: 40px;
   border-color: rgba(255, 255, 255, 0.88);
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 10px 24px rgba(47, 103, 236, 0.18);
@@ -153,17 +157,83 @@ a {
 }
 
 .guest-assistant-toolbar__actions {
-  border: 1px solid rgba(255, 255, 255, 0.88);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 24px rgba(47, 103, 236, 0.14);
-  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 42px rgba(34, 62, 126, 0.2);
+  padding: 14px 12px;
 }
 
-.guest-assistant-toolbar__actions .el-button {
-  margin-left: 0;
-  color: #315fc7;
+.guest-assistant-toolbar__actions::-webkit-scrollbar {
+  display: none;
+}
+
+.assistant-shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.assistant-shortcut-item {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  padding: 8px 2px;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.assistant-shortcut-item:hover {
+  background: #f3f6ff;
+}
+
+.assistant-shortcut-item:focus-visible {
+  outline: 2px solid #4f7df3;
+  outline-offset: 2px;
+}
+
+.assistant-shortcut-item:active {
+  background: #eef3ff;
+}
+
+.assistant-shortcut-item__icon {
+  display: grid;
+  flex: 0 0 48px;
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  min-height: 48px;
+  place-items: center;
+  border-radius: 17px;
+  background: linear-gradient(145deg, #edf3ff, #dfe9ff);
+  box-shadow: 0 8px 18px rgba(55, 94, 180, 0.14);
+  color: #3568e8;
+  font-size: 25px;
+  transform: scale(1);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.assistant-shortcut-item:active .assistant-shortcut-item__icon {
+  box-shadow: 0 4px 10px rgba(55, 94, 180, 0.12);
+  transform: scale(0.94);
+}
+
+.assistant-shortcut-item__label {
+  max-width: 100%;
+  overflow: hidden;
+  color: #334155;
+  font-size: 13px;
   font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hero-grid,
@@ -277,6 +347,11 @@ a {
   box-shadow: 0 18px 42px rgba(57, 75, 126, 0.12);
 }
 
+.guest-login-card.el-card {
+  width: min(420px, 100%);
+  margin: 0 auto;
+}
+
 .guest-login-card .el-card__header {
   border-bottom-color: #e8edff;
   color: #172554;
@@ -284,14 +359,74 @@ a {
   font-weight: 700;
 }
 
+.guest-login-card .el-card__body {
+  padding: 26px 28px 32px;
+}
+
+.guest-login-form .el-form-item {
+  margin-bottom: 22px;
+}
+
+.guest-login-form .el-form-item__label {
+  color: #475569;
+  font-weight: 600;
+}
+
 .guest-login-card .el-input__wrapper {
+  min-height: 48px;
   border-radius: 14px;
-  box-shadow: 0 0 0 1px #dce5fb inset;
+  background: #f5f7fa;
+  box-shadow: none;
+  padding: 0 16px;
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.guest-login-card .el-input__wrapper:hover {
+  background: #f0f3f8;
+}
+
+.guest-login-card .el-input__wrapper.is-focus {
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(52, 103, 232, 0.16);
+}
+
+.guest-login-card .el-input__inner {
+  font-size: 16px;
+}
+
+.guest-login-helper {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -10px;
+}
+
+.guest-demo-link.el-button {
+  height: auto;
+  color: #7c879b;
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.guest-demo-link.el-button:hover,
+.guest-demo-link.el-button:focus-visible {
+  background: transparent;
+  color: #3467e8;
+}
+
+.guest-login-primary-action {
+  padding: 18px 0 4px;
+}
+
+.guest-login-submit.el-button {
+  width: 100%;
+  min-height: 48px;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .guest-login-card .el-button--primary {
   border: 0;
-  border-radius: 12px;
+  border-radius: 14px;
   background: linear-gradient(105deg, #3467e8, #3b8eef);
 }
 
@@ -963,8 +1098,20 @@ h1 {
     border-radius: 22px;
   }
 
+  .guest-login-card .el-card__body {
+    padding: 24px 20px 28px;
+  }
+
   .guest-pass-card .el-card__body {
     padding: 24px 20px;
+  }
+
+  input,
+  textarea,
+  select,
+  .el-input__inner,
+  .el-textarea__inner {
+    font-size: 16px !important;
   }
 
   .assistant-page__header {

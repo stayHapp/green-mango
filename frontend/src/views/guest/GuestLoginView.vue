@@ -13,7 +13,10 @@
     />
     <div v-if="meeting && currentGuest" class="guest-assistant-toolbar">
       <div v-show="assistantToolbarExpanded" class="guest-assistant-toolbar__actions">
-        <el-button v-for="item in meetingAssistantFeatureDefinitions" :key="item.key" text @click="openAssistantFeature(item.key)">{{ item.title }}</el-button>
+        <MeetingAssistantShortcutGrid
+          :meeting-id="meeting.id"
+          @select="assistantToolbarExpanded = false"
+        />
       </div>
       <el-button
         :icon="MenuIcon"
@@ -39,16 +42,25 @@
 
     <el-card v-if="meeting && !currentGuest" shadow="never" class="form-card guest-login-card">
       <template #header>身份验证</template>
-      <el-form label-position="top" @submit.prevent>
+      <el-form class="guest-login-form" label-position="top" @submit.prevent>
         <el-form-item label="姓名">
           <el-input v-model="name" placeholder="请输入嘉宾姓名" />
         </el-form-item>
         <el-form-item label="手机号">
           <el-input v-model="phone" placeholder="请输入手机号" />
         </el-form-item>
-        <div class="action-row">
-          <el-button @click="fillDemoGuest">填入示例</el-button>
-          <el-button type="primary" :loading="loading" @click="handleLogin">登录</el-button>
+        <div class="guest-login-helper">
+          <el-button class="guest-demo-link" text @click="fillDemoGuest">填入示例信息</el-button>
+        </div>
+        <div class="guest-login-primary-action">
+          <el-button
+            class="guest-login-submit"
+            type="primary"
+            :loading="loading"
+            @click="handleLogin"
+          >
+            登录
+          </el-button>
         </div>
       </el-form>
       <el-alert v-if="errorMessage" class="top-gap" type="error" :closable="false" :title="errorMessage" />
@@ -87,11 +99,11 @@ import { Menu as MenuIcon, SwitchButton } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 import { getApiErrorMessage } from '../../api/client'
-import { meetingAssistantFeatureDefinitions } from '../../api/meetingAssistant'
 import { getPublicMeeting, loginGuest, logoutClientSession } from '../../api/sessions'
 import { useSessionStore } from '../../stores/session'
-import type { Guest, Meeting, MeetingAssistantFeatureKey } from '../../types'
+import type { Guest, Meeting } from '../../types'
 import GuestQrCode from '../../components/GuestQrCode.vue'
+import MeetingAssistantShortcutGrid from '../../components/MeetingAssistantShortcutGrid.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -240,18 +252,6 @@ async function handleGuestLogout(): Promise<void> {
  */
 function toggleAssistantToolbar(): void {
   assistantToolbarExpanded.value = !assistantToolbarExpanded.value
-}
-
-/**
- * 从顶部快捷入口打开指定会议助手功能。
- *
- * 入参：key 为会议助手功能标识，必填。
- * 返回值：Promise<void>：跳转到对应功能独立页面并收起快捷入口。
- * 异常：路由导航失败时由 Vue Router 抛出异常。
- */
-async function openAssistantFeature(key: MeetingAssistantFeatureKey): Promise<void> {
-  assistantToolbarExpanded.value = false
-  await router.push(`/guest/meetings/${meeting.value?.id ?? ''}/assistant/${key}`)
 }
 
 /**
