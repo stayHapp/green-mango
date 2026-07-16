@@ -53,7 +53,7 @@
             <span class="weather-forecast-item__date">{{ formatForecastDate(item.date) }}</span>
             <span class="weather-forecast-item__icon">{{ weatherIcon(item.iconCode) }}</span>
             <span class="weather-forecast-item__condition">{{ item.condition }}</span>
-            <span class="weather-forecast-item__rain">💧 {{ item.precipitation }} mm</span>
+            <span class="weather-forecast-item__rain">💧{{ item.precipitation }}mm</span>
             <span class="weather-forecast-item__temperature"><strong>{{ item.high }}°</strong><em>{{ item.low }}°</em></span>
           </article>
         </section>

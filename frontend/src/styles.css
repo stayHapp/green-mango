@@ -801,6 +801,7 @@ h1 {
 
 .weather-forecast-item__rain {
   color: #3b82f6;
+  white-space: nowrap;
 }
 
 .weather-forecast-item__temperature {
@@ -948,10 +949,14 @@ h1 {
   }
 
   .weather-forecast-item {
-    grid-template-columns: 82px 22px minmax(32px, 1fr) 42px 48px;
+    grid-template-columns: 82px 22px minmax(28px, 1fr) 62px 48px;
     gap: 2px;
     font-size: 13px;
     padding: 15px 0;
+  }
+
+  .weather-forecast-item__rain {
+    font-size: 12px;
   }
 
   .weather-forecast-item__icon {
