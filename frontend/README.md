@@ -18,19 +18,21 @@
 
 ```bash
 npm install
-npm run dev
+npm run dev -- --host 0.0.0.0
 ```
 
 启动成功后，按终端输出的本地地址在浏览器中访问。首次运行或 `package.json`、`package-lock.json` 变更后，需要先执行 `npm install`。
 
-默认请求 `http://127.0.0.1:8000/api`。需要修改后端地址时，从 `.env.example` 创建 `.env.local`：
+本地开发默认请求同源 `/api`，由 Vite 代理到 `http://127.0.0.1:8000`。从 `.env.example` 创建 `.env.local`：
 
 ```text
-VITE_API_BASE_URL=http://127.0.0.1:8000/api
+VITE_API_BASE_URL=/api
 VITE_PUBLIC_APP_URL=http://192.168.1.100:5173
 ```
 
 `VITE_PUBLIC_APP_URL` 用于管理员端生成会议入口链接和二维码。本地联调应填写本机局域网 IP，正式环境应填写嘉宾能够访问的域名，不能填写 `localhost`。
+
+完整的双终端启动和手机访问方式见 [`docs/development/local-startup.md`](../docs/development/local-startup.md)。
 
 三端本地演示账号由后端 `python -m app.scripts.seed_dev` 命令创建，具体凭据见后端 README。
 

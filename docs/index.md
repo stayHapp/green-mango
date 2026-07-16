@@ -8,6 +8,7 @@
 - `architecture/`：整体架构、前端规划、后端规划、数据库设计、API 设计和安全原则。
 - `decisions/`：技术和工程决策记录，说明为什么这样选择。
 - `exec-plans/`：复杂任务的执行计划。进行中的计划放在 `active/`，完成后移到 `completed/`。
+- `development/`：本地启动、联调和开发环境操作说明。
 
 ## 推荐阅读顺序
 
@@ -23,6 +24,7 @@
 8. `product/mvp-scope.md`
 9. `architecture/overview.md`
 10. 与任务相关的具体架构文档
+11. `development/local-startup.md`：手动启动前后端和手机访问
 
 如果任务涉及数据库结构，请同步阅读并更新 `architecture/database.md`。
 

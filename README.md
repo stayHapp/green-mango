@@ -124,8 +124,8 @@ python -m pip install ".[dev]"
 
 ```bash
 cd backend
-. .venv/bin/activate
-uvicorn app.main:app --reload
+.venv/bin/alembic upgrade head
+.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 健康检查接口：
@@ -139,10 +139,12 @@ GET /api/health
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev -- --host 0.0.0.0
 ```
 
 启动成功后，按终端输出的本地地址在浏览器中访问前端页面。首次运行或依赖变更后执行 `npm install`。
+
+需要使用两个终端分别保持前后端运行。电脑和手机访问、环境变量、停止服务及故障排查详见[本地手动启动](docs/development/local-startup.md)。
 
 ### 运行检查
 
