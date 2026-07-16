@@ -13,7 +13,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: #f6f7fb;
+  background: #f3f5f9;
 }
 
 a {
@@ -91,6 +91,8 @@ a {
 }
 
 .guest-main {
+  min-height: 100vh;
+  background: #f3f5f9;
   padding: 0;
 }
 
@@ -99,33 +101,37 @@ a {
 }
 
 .guest-portal-page {
-  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
   width: 100%;
   min-height: 100vh;
-  background: linear-gradient(115deg, #3467e8 0%, #3b8eef 64%, #24b4cb 100%);
+  background: #f3f5f9;
   margin: 0;
   padding: 0;
 }
 
-.guest-portal-page__inner {
+.phone-wrapper {
   position: relative;
-  width: min(860px, 100%);
+  width: 100%;
+  max-width: 420px;
   min-height: 100vh;
-  margin: 0 auto;
-  padding: 68px 28px 56px;
+  background: linear-gradient(115deg, #3467e8 0%, #3b8eef 64%, #24b4cb 100%);
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.1);
+  padding: 68px 24px 56px;
 }
 
 .guest-logout-button {
   position: absolute;
   top: 16px;
-  left: 28px;
+  left: 24px;
   z-index: 3;
 }
 
 .guest-assistant-toolbar {
   position: absolute;
   top: 16px;
-  right: 28px;
+  right: 24px;
   z-index: 2;
   display: flex;
   align-items: center;
@@ -138,7 +144,7 @@ a {
   position: absolute;
   top: 48px;
   right: 0;
-  width: min(520px, calc(100vw - 32px));
+  width: min(388px, calc(100vw - 32px));
   overflow: visible;
   scrollbar-width: none;
 }
@@ -348,8 +354,7 @@ a {
 }
 
 .guest-login-card.el-card {
-  width: min(420px, 100%);
-  margin: 0 auto;
+  width: 100%;
 }
 
 .guest-login-card .el-card__header {
@@ -1068,8 +1073,7 @@ h1 {
 }
 
 @media (max-width: 640px) {
-  .guest-portal-page__inner {
-    min-height: 100vh;
+  .phone-wrapper {
     padding: 62px 14px 40px;
   }
 

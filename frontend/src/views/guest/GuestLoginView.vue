@@ -1,93 +1,92 @@
 <template>
   <section class="page guest-portal-page">
-    <div class="guest-portal-page__inner">
-    <el-button
-      v-if="meeting && currentGuest"
-      class="guest-logout-button"
-      :icon="SwitchButton"
-      circle
-      aria-label="退出登录"
-      title="退出登录"
-      :loading="loggingOut"
-      @click="handleGuestLogout"
-    />
-    <div v-if="meeting && currentGuest" class="guest-assistant-toolbar">
-      <div v-show="assistantToolbarExpanded" class="guest-assistant-toolbar__actions">
-        <MeetingAssistantShortcutGrid
-          :meeting-id="meeting.id"
-          @select="assistantToolbarExpanded = false"
+    <div class="phone-wrapper">
+      <el-button
+        v-if="meeting && currentGuest"
+        class="guest-logout-button"
+        :icon="SwitchButton"
+        circle
+        aria-label="退出登录"
+        title="退出登录"
+        :loading="loggingOut"
+        @click="handleGuestLogout"
+      />
+      <div v-if="meeting && currentGuest" class="guest-assistant-toolbar">
+        <div v-show="assistantToolbarExpanded" class="guest-assistant-toolbar__actions">
+          <MeetingAssistantShortcutGrid
+            :meeting-id="meeting.id"
+            @select="assistantToolbarExpanded = false"
+          />
+        </div>
+        <el-button
+          :icon="MenuIcon"
+          circle
+          aria-label="展开会议功能"
+          title="会议功能"
+          :aria-expanded="assistantToolbarExpanded"
+          @click="toggleAssistantToolbar"
         />
       </div>
-      <el-button
-        :icon="MenuIcon"
-        circle
-        aria-label="展开会议功能"
-        title="会议功能"
-        :aria-expanded="assistantToolbarExpanded"
-        @click="toggleAssistantToolbar"
-      />
-    </div>
-    <div v-if="meeting" class="guest-meeting-hero">
-      <div>
-        <h1>{{ meeting.title }}</h1>
-        <dl class="compact-info-list">
-          <dt>时间</dt>
-          <dd>{{ formatDate(meeting.startTime) }} - {{ formatDate(meeting.endTime) }}</dd>
-          <dt>地点</dt>
-          <dd>{{ meeting.location }}</dd>
-        </dl>
+      <div v-if="meeting" class="guest-meeting-hero">
+        <div>
+          <h1>{{ meeting.title }}</h1>
+          <dl class="compact-info-list">
+            <dt>时间</dt>
+            <dd>{{ formatDate(meeting.startTime) }} - {{ formatDate(meeting.endTime) }}</dd>
+            <dt>地点</dt>
+            <dd>{{ meeting.location }}</dd>
+          </dl>
+        </div>
       </div>
-    </div>
-    <el-empty v-else description="未找到会议入口" />
+      <el-empty v-else description="未找到会议入口" />
 
-    <el-card v-if="meeting && !currentGuest" shadow="never" class="form-card guest-login-card">
-      <template #header>身份验证</template>
-      <el-form class="guest-login-form" label-position="top" @submit.prevent>
-        <el-form-item label="姓名">
-          <el-input v-model="name" placeholder="请输入嘉宾姓名" />
-        </el-form-item>
-        <el-form-item label="手机号">
-          <el-input v-model="phone" placeholder="请输入手机号" />
-        </el-form-item>
-        <div class="guest-login-helper">
-          <el-button class="guest-demo-link" text @click="fillDemoGuest">填入示例信息</el-button>
-        </div>
-        <div class="guest-login-primary-action">
-          <el-button
-            class="guest-login-submit"
-            type="primary"
-            :loading="loading"
-            @click="handleLogin"
-          >
-            登录
-          </el-button>
-        </div>
-      </el-form>
-      <el-alert v-if="errorMessage" class="top-gap" type="error" :closable="false" :title="errorMessage" />
-    </el-card>
-
-    <div v-if="meeting && currentGuest" class="guest-content-stack">
-      <el-card shadow="never" class="guest-pass-card">
-        <div class="identity-panel">
-          <div class="guest-identity-heading">
-            <div class="identity-name">{{ currentGuest.name }}</div>
-            <el-tag class="identity-role" type="success" effect="light">{{ currentGuest.tag }}</el-tag>
+      <el-card v-if="meeting && !currentGuest" shadow="never" class="form-card guest-login-card">
+        <template #header>身份验证</template>
+        <el-form class="guest-login-form" label-position="top" @submit.prevent>
+          <el-form-item label="姓名">
+            <el-input v-model="name" placeholder="请输入嘉宾姓名" />
+          </el-form-item>
+          <el-form-item label="手机号">
+            <el-input v-model="phone" placeholder="请输入手机号" />
+          </el-form-item>
+          <div class="guest-login-helper">
+            <el-button class="guest-demo-link" text @click="fillDemoGuest">填入示例信息</el-button>
           </div>
-        </div>
-        <dl class="info-list">
-          <dt>电话</dt>
-          <dd>{{ currentGuest.phone }}</dd>
-          <dt>单位</dt>
-          <dd>{{ currentGuest.organization }}</dd>
-          <dt>职务</dt>
-          <dd>{{ currentGuest.title }}</dd>
-          <dt>座位</dt>
-          <dd>{{ currentGuest.seat }}</dd>
-        </dl>
-        <GuestQrCode :meeting-id="meeting.id" :token="currentGuest.qrToken" />
+          <div class="guest-login-primary-action">
+            <el-button
+              class="guest-login-submit"
+              type="primary"
+              :loading="loading"
+              @click="handleLogin"
+            >
+              登录
+            </el-button>
+          </div>
+        </el-form>
+        <el-alert v-if="errorMessage" class="top-gap" type="error" :closable="false" :title="errorMessage" />
       </el-card>
 
-    </div>
+      <div v-if="meeting && currentGuest" class="guest-content-stack">
+        <el-card shadow="never" class="guest-pass-card">
+          <div class="identity-panel">
+            <div class="guest-identity-heading">
+              <div class="identity-name">{{ currentGuest.name }}</div>
+              <el-tag class="identity-role" type="success" effect="light">{{ currentGuest.tag }}</el-tag>
+            </div>
+          </div>
+          <dl class="info-list">
+            <dt>电话</dt>
+            <dd>{{ currentGuest.phone }}</dd>
+            <dt>单位</dt>
+            <dd>{{ currentGuest.organization }}</dd>
+            <dt>职务</dt>
+            <dd>{{ currentGuest.title }}</dd>
+            <dt>座位</dt>
+            <dd>{{ currentGuest.seat }}</dd>
+          </dl>
+          <GuestQrCode :meeting-id="meeting.id" :token="currentGuest.qrToken" />
+        </el-card>
+      </div>
     </div>
   </section>
 </template>
