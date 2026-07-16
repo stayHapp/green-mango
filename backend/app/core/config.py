@@ -15,6 +15,9 @@ class Settings(BaseSettings):
         database_url：数据库连接地址，默认指向本地 SQLite。
         session_expire_hours：登录会话有效小时数。
         cors_origins：允许跨域访问 API 的前端来源，以英文逗号分隔。
+        qweather_api_host：和风天气控制台分配的专属 API Host。
+        qweather_api_key：和风天气服务端 API KEY，仅从环境变量读取。
+        weather_cache_seconds：天气结果内存缓存秒数。
 
     异常：
         配置值类型不符合声明时，Pydantic 会在实例化配置时抛出校验异常。
@@ -25,6 +28,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./dev.db"
     session_expire_hours: int = 12
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    qweather_api_host: str = ""
+    qweather_api_key: str = ""
+    weather_cache_seconds: int = 1800
 
     def get_cors_origins(self) -> list[str]:
         """解析允许跨域访问的前端来源列表。

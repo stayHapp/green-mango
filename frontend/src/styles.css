@@ -827,6 +827,19 @@ h1 {
   white-space: pre-wrap;
 }
 
+.weather-source {
+  display: block;
+  margin: 18px auto 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.weather-source:hover {
+  color: var(--el-color-primary);
+}
+
 @media (max-width: 640px) {
   .guest-portal-page__inner {
     min-height: 100vh;

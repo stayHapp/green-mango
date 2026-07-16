@@ -9,6 +9,7 @@ from app.schemas.meeting_assistant import (
     MeetingAssistantFeatureResponse,
     MeetingAssistantFeatureUpdate,
 )
+from app.schemas.weather import MeetingWeatherResponse
 from app.services.admin_meetings import get_authorized_meeting
 from app.services.guest_sessions import get_guest_meeting
 from app.services.meeting_assistant import (
@@ -16,6 +17,7 @@ from app.services.meeting_assistant import (
     list_meeting_assistant_features,
     update_meeting_assistant_feature,
 )
+from app.services.weather import get_weather
 
 admin_router = APIRouter(prefix="/admin/meetings")
 guest_router = APIRouter(prefix="/guest/meetings")
@@ -85,3 +87,20 @@ def get_guest_assistant_feature(
         unpublished_message=feature.unpublished_message,
         is_published=feature.is_published,
     )
+
+
+@guest_router.get("/{meeting_id}/weather", response_model=MeetingWeatherResponse)
+def get_guest_weather(meeting_id: int, db: DatabaseSession, guest: CurrentGuest) -> MeetingWeatherResponse:
+    """获取当前嘉宾所属会议的真实天气数据。
+
+    入参：meeting_id 为会议 ID；db 与 guest 由 FastAPI 注入。
+    返回值：MeetingWeatherResponse：和风天气实况、七日预报或可展示的降级信息。
+    异常：跨会议访问或天气功能未发布时返回 404。
+    """
+    meeting = get_guest_meeting(db, guest, meeting_id)
+    if meeting is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会议不存在或无访问权限。")
+    feature = get_meeting_assistant_feature(db, meeting_id, "weather")
+    if not feature.is_published:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="天气情况尚未发布。")
+    return get_weather(meeting.location or "")
