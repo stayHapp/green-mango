@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import gzip
 import re
 from datetime import datetime, timedelta, timezone
 from threading import Lock
@@ -55,7 +56,11 @@ def request_qweather(path: str, params: dict[str, str]) -> dict[str, Any]:
     )
     try:
         with urlopen(request, timeout=8) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            response_body = response.read()
+            # 和风天气可能在未显式请求时仍返回 Gzip 压缩内容，解析前按响应头解压。
+            if response.headers.get("Content-Encoding", "").lower() == "gzip":
+                response_body = gzip.decompress(response_body)
+            payload = json.loads(response_body.decode("utf-8"))
     except Exception as error:
         raise WeatherProviderError("天气服务暂时不可用，请稍后重试。") from error
     if not isinstance(payload, dict) or payload.get("code") != "200":

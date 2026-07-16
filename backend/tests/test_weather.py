@@ -1,6 +1,9 @@
 """和风天气聚合服务与嘉宾天气接口测试。"""
 
+import gzip
+import json
 from typing import Any
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -9,6 +12,26 @@ from app.models.guest import Guest
 from app.services import weather
 from tests.test_admin_meetings import auth_headers, client_and_session
 from tests.test_meeting_assistant import create_meeting
+
+
+def test_request_qweather_decodes_gzip_response(monkeypatch) -> None:
+    """验证供应商返回 Gzip 内容时能够先解压再解析 JSON。
+
+    入参：monkeypatch 为 pytest 注入的替换工具。
+    返回值：None：断言通过表示压缩响应兼容逻辑正确。
+    异常：响应未解压或解析失败时由测试异常报告。
+    """
+    response = MagicMock()
+    response.headers = {"Content-Encoding": "gzip"}
+    response.read.return_value = gzip.compress(json.dumps({"code": "200", "location": []}).encode("utf-8"))
+    response.__enter__.return_value = response
+    monkeypatch.setattr(weather.settings, "qweather_api_host", "test.qweatherapi.com")
+    monkeypatch.setattr(weather.settings, "qweather_api_key", "test-key")
+    monkeypatch.setattr(weather, "urlopen", MagicMock(return_value=response))
+
+    result = weather.request_qweather("/geo/v2/city/lookup", {"location": "杭州"})
+
+    assert result == {"code": "200", "location": []}
 
 
 def fake_qweather_response(path: str, params: dict[str, str]) -> dict[str, Any]:
