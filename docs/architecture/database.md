@@ -15,7 +15,7 @@
 
 - `users`：管理员和工作人员账号、scrypt 密码哈希、角色、手机号和启用状态。
 - `auth_sessions`：三端统一服务端会话，保存 token 摘要、主体、过期和撤销时间。
-- `meetings`、`meeting_settings`：会议基础信息、报名开关和会议级 JSON 配置。
+- `meetings`、`meeting_settings`：会议基础信息、导航名称与高德坐标、报名开关和会议级 JSON 配置。
 - `meeting_admins`：会议与管理员的多对多授权。
 - `staff_meetings`：会议与工作人员的多对多授权。
 - `meeting_assistant_features`：会议助手五项固定功能的正文、未发布提醒和发布状态。
@@ -82,5 +82,7 @@ users --< auth_sessions
 | `updated_at` | datetime with timezone | 最后修改时间 |
 
 数据库唯一约束保证同一会议同一功能只有一条记录；应用服务负责为新会议创建五条默认配置，并在读取历史会议时补齐缺失配置。数据库不保存天气接口响应。
+
+会议表使用 `navigation_name`、`navigation_address`、`navigation_longitude` 和 `navigation_latitude` 保存管理员确认的高德地点。路线页使用坐标生成导航链接，天气服务使用同一坐标查询和风天气；历史会议字段为空时继续按 `location` 文字匹配。
 
 使用唯一约束 `uq_meeting_assistant_features_meeting_id_feature_key` 保证同一会议内功能标识唯一。

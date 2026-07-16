@@ -75,6 +75,33 @@ def test_build_weather_maps_qweather_response(monkeypatch) -> None:
     assert result.daily[0].precipitation == 1.2
 
 
+def test_build_weather_prefers_navigation_coordinates(monkeypatch) -> None:
+    """验证管理员确认坐标存在时天气城市搜索优先使用坐标。
+
+    入参：monkeypatch 为 pytest 注入的替换工具。
+    返回值：None：断言通过表示天气与导航共用同一地点。
+    异常：坐标未传给和风城市搜索时由断言报告。
+    """
+    requested_locations: list[str] = []
+
+    def capture_qweather_response(path: str, params: dict[str, str]) -> dict[str, Any]:
+        """记录城市搜索参数并复用标准测试响应。
+
+        入参：path 为供应商路径；params 为查询参数，均必填。
+        返回值：dict[str, Any]：标准和风天气测试响应。
+        异常：未覆盖路径由标准测试响应函数抛出 AssertionError。
+        """
+        if path == "/geo/v2/city/lookup":
+            requested_locations.append(params["location"])
+        return fake_qweather_response(path, params)
+
+    monkeypatch.setattr(weather, "request_qweather", capture_qweather_response)
+
+    weather.build_weather("文字地点", 120.123456, 30.234567)
+
+    assert requested_locations == ["120.12,30.23"]
+
+
 def test_guest_weather_requires_published_feature_and_returns_data(
     client_and_session: tuple[TestClient, Session], monkeypatch
 ) -> None:
@@ -104,7 +131,10 @@ def test_guest_weather_requires_published_feature_and_returns_data(
         headers=admin_headers,
         json={"content": "注意防暑。", "unpublished_message": "天气待发布。", "is_published": True},
     )
-    monkeypatch.setattr("app.api.routes.meeting_assistant.get_weather", lambda location: weather.build_weather(location))
+    monkeypatch.setattr(
+        "app.api.routes.meeting_assistant.get_weather",
+        lambda location, longitude, latitude: weather.build_weather(location, longitude, latitude),
+    )
     monkeypatch.setattr(weather, "request_qweather", fake_qweather_response)
 
     published = client.get(f"/api/guest/meetings/{meeting_id}/weather", headers=guest_headers)

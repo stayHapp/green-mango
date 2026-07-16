@@ -26,6 +26,10 @@ interface PublicMeetingApiResponse {
   title: string
   description: string | null
   location: string | null
+  navigation_name: string | null
+  navigation_address: string | null
+  navigation_longitude: number | null
+  navigation_latitude: number | null
   start_time: string | null
   end_time: string | null
   status: 'draft' | 'published' | 'ended'
@@ -126,6 +130,10 @@ export async function getPublicMeeting(meetingId: string): Promise<Meeting> {
     title: data.title,
     description: data.description || '',
     location: data.location || '',
+    navigationName: data.navigation_name || '',
+    navigationAddress: data.navigation_address || '',
+    navigationLongitude: data.navigation_longitude ?? undefined,
+    navigationLatitude: data.navigation_latitude ?? undefined,
     startTime: data.start_time || '',
     endTime: data.end_time || '',
     status: data.status,

@@ -103,4 +103,8 @@ def get_guest_weather(meeting_id: int, db: DatabaseSession, guest: CurrentGuest)
     feature = get_meeting_assistant_feature(db, meeting_id, "weather")
     if not feature.is_published:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="天气情况尚未发布。")
-    return get_weather(meeting.location or "")
+    return get_weather(
+        meeting.location or "",
+        meeting.navigation_longitude,
+        meeting.navigation_latitude,
+    )

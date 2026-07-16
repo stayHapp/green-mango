@@ -18,6 +18,7 @@ class Settings(BaseSettings):
         qweather_api_host：和风天气控制台分配的专属 API Host。
         qweather_api_key：和风天气服务端 API KEY，仅从环境变量读取。
         weather_cache_seconds：天气结果内存缓存秒数。
+        amap_web_service_key：高德 Web 服务 API Key，仅用于后端地点搜索。
 
     异常：
         配置值类型不符合声明时，Pydantic 会在实例化配置时抛出校验异常。
@@ -31,6 +32,7 @@ class Settings(BaseSettings):
     qweather_api_host: str = ""
     qweather_api_key: str = ""
     weather_cache_seconds: int = 1800
+    amap_web_service_key: str = ""
 
     def get_cors_origins(self) -> list[str]:
         """解析允许跨域访问的前端来源列表。

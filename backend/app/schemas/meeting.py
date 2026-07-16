@@ -12,6 +12,10 @@ class MeetingCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str | None = None
     location: str | None = Field(default=None, max_length=255)
+    navigation_name: str | None = Field(default=None, max_length=200)
+    navigation_address: str | None = Field(default=None, max_length=255)
+    navigation_longitude: float | None = Field(default=None, ge=-180, le=180)
+    navigation_latitude: float | None = Field(default=None, ge=-90, le=90)
     start_time: datetime | None = None
     end_time: datetime | None = None
     status: Literal["draft", "published", "ended"] = "draft"
@@ -35,6 +39,10 @@ class MeetingUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
     location: str | None = Field(default=None, max_length=255)
+    navigation_name: str | None = Field(default=None, max_length=200)
+    navigation_address: str | None = Field(default=None, max_length=255)
+    navigation_longitude: float | None = Field(default=None, ge=-180, le=180)
+    navigation_latitude: float | None = Field(default=None, ge=-90, le=90)
     start_time: datetime | None = None
     end_time: datetime | None = None
     status: Literal["draft", "published", "ended"] | None = None
@@ -49,9 +57,24 @@ class MeetingResponse(BaseModel):
     title: str
     description: str | None
     location: str | None
+    navigation_name: str | None
+    navigation_address: str | None
+    navigation_longitude: float | None
+    navigation_latitude: float | None
     start_time: datetime | None
     end_time: datetime | None
     status: str
     created_by_id: int
     created_at: datetime
     updated_at: datetime
+
+
+class MeetingLocationOptionResponse(BaseModel):
+    """管理员地点搜索候选项。"""
+
+    poi_id: str
+    name: str
+    address: str
+    district: str
+    longitude: float
+    latitude: float

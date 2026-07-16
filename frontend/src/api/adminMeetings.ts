@@ -8,6 +8,10 @@ interface MeetingApiResponse {
   title: string
   description: string | null
   location: string | null
+  navigation_name: string | null
+  navigation_address: string | null
+  navigation_longitude: number | null
+  navigation_latitude: number | null
   start_time: string | null
   end_time: string | null
   status: MeetingStatus
@@ -20,6 +24,10 @@ export interface MeetingWriteInput {
   title: string
   description: string
   location: string
+  navigationName: string
+  navigationAddress: string
+  navigationLongitude?: number
+  navigationLatitude?: number
   startTime: string
   endTime: string
   status: MeetingStatus
@@ -38,6 +46,10 @@ function mapMeeting(meeting: MeetingApiResponse): Meeting {
     title: meeting.title,
     description: meeting.description || '',
     location: meeting.location || '',
+    navigationName: meeting.navigation_name || '',
+    navigationAddress: meeting.navigation_address || '',
+    navigationLongitude: meeting.navigation_longitude ?? undefined,
+    navigationLatitude: meeting.navigation_latitude ?? undefined,
     startTime: meeting.start_time || '',
     endTime: meeting.end_time || '',
     status: meeting.status,
@@ -58,10 +70,58 @@ function meetingPayload(input: MeetingWriteInput) {
     title: input.title,
     description: input.description || null,
     location: input.location || null,
+    navigation_name: input.navigationName || null,
+    navigation_address: input.navigationAddress || null,
+    navigation_longitude: input.navigationLongitude ?? null,
+    navigation_latitude: input.navigationLatitude ?? null,
     start_time: input.startTime || null,
     end_time: input.endTime || null,
     status: input.status,
   }
+}
+
+export interface MeetingLocationOption {
+  poiId: string
+  name: string
+  address: string
+  district: string
+  longitude: number
+  latitude: number
+}
+
+interface MeetingLocationOptionApiResponse {
+  poi_id: string
+  name: string
+  address: string
+  district: string
+  longitude: number
+  latitude: number
+}
+
+/**
+ * 搜索当前会议可选择的高德导航地点。
+ *
+ * 入参：meetingId 为会议 ID；query 为至少两个字符的地点关键词；city 为可选城市范围。
+ * 返回值：Promise<MeetingLocationOption[]>：最多十条地点名称、地址和坐标。
+ * 异常：高德未配置、会议未授权、关键词无效或网络失败时抛出异常。
+ */
+export async function searchMeetingLocationOptions(
+  meetingId: string,
+  query: string,
+  city = '',
+): Promise<MeetingLocationOption[]> {
+  const { data } = await apiClient.get<MeetingLocationOptionApiResponse[]>(
+    `/admin/meetings/${encodeURIComponent(meetingId)}/location-options`,
+    authorizationConfig('admin', { params: { query, city } }),
+  )
+  return data.map((item) => ({
+    poiId: item.poi_id,
+    name: item.name,
+    address: item.address,
+    district: item.district,
+    longitude: item.longitude,
+    latitude: item.latitude,
+  }))
 }
 
 /**

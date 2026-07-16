@@ -60,6 +60,21 @@
           <el-form-item label="会议地点">
             <el-input v-model="editForm.location" placeholder="请输入会议地点" />
           </el-form-item>
+          <el-form-item label="导航位置">
+            <div class="navigation-location-field">
+              <el-alert
+                v-if="editForm.navigationName"
+                type="success"
+                :closable="false"
+                :title="`${editForm.navigationName}｜${editForm.navigationAddress || '地址以高德地点为准'}`"
+              />
+              <el-alert v-else type="info" :closable="false" title="尚未选择导航位置；天气暂时继续按会议地点文字匹配。" />
+              <div class="action-row">
+                <el-button type="primary" plain @click="openLocationDialog">搜索并选择地点</el-button>
+                <el-button v-if="editForm.navigationName" @click="clearNavigationLocation">清除位置</el-button>
+              </div>
+            </div>
+          </el-form-item>
           <el-form-item label="会议说明">
             <el-input v-model="editForm.description" type="textarea" :rows="3" placeholder="请输入会议说明" />
           </el-form-item>
@@ -77,6 +92,26 @@
           </div>
           <el-alert v-if="saveMessage" class="top-gap" :type="saveMessageType" :closable="false" :title="saveMessage" />
         </el-form>
+        <el-dialog v-model="locationDialogVisible" title="选择导航位置" width="min(680px, calc(100% - 32px))">
+          <div class="action-row">
+            <el-input v-model="locationSearchQuery" placeholder="输入场馆、学校、酒店或详细地址" @keyup.enter="searchLocationOptions" />
+            <el-button type="primary" :loading="locationSearching" @click="searchLocationOptions">搜索</el-button>
+          </div>
+          <el-alert v-if="locationSearchError" class="top-gap" type="error" :closable="false" :title="locationSearchError" />
+          <el-empty v-else-if="!locationSearching && locationOptions.length === 0" description="输入地点关键词后搜索" />
+          <div v-else class="location-option-list">
+            <button
+              v-for="option in locationOptions"
+              :key="option.poiId || `${option.longitude}-${option.latitude}`"
+              type="button"
+              class="location-option-card"
+              @click="selectLocationOption(option)"
+            >
+              <strong>{{ option.name }}</strong>
+              <span>{{ option.district }}{{ option.address }}</span>
+            </button>
+          </div>
+        </el-dialog>
       </el-tab-pane>
       <el-tab-pane label="嘉宾" name="guests">
         <div class="action-row"><el-button @click="guestCreateDialogVisible = true">新增嘉宾</el-button><el-button type="primary" :loading="generatingGuestQr" @click="handleGenerateGuestQrTokens">一键生成嘉宾二维码</el-button></div>
@@ -202,7 +237,12 @@ import {
   listAdminGuestFields,
   listAdminGuests,
 } from '../../api/adminGuests'
-import { getAdminMeeting, updateAdminMeeting } from '../../api/adminMeetings'
+import {
+  getAdminMeeting,
+  searchMeetingLocationOptions,
+  updateAdminMeeting,
+  type MeetingLocationOption,
+} from '../../api/adminMeetings'
 import { listAdminMeetingAssistantFeatures, updateAdminMeetingAssistantFeature } from '../../api/meetingAssistant'
 import { createAdminStaff, listAdminStaff, removeAdminStaffAssignment, updateAdminStaff } from '../../api/adminStaff'
 import { getApiErrorMessage } from '../../api/client'
@@ -259,10 +299,19 @@ const editForm = ref({
   title: '',
   description: '',
   location: '',
+  navigationName: '',
+  navigationAddress: '',
+  navigationLongitude: undefined as number | undefined,
+  navigationLatitude: undefined as number | undefined,
   startTime: '',
   endTime: '',
   status: 'draft' as MeetingStatus,
 })
+const locationDialogVisible = ref(false)
+const locationSearchQuery = ref('')
+const locationSearching = ref(false)
+const locationSearchError = ref('')
+const locationOptions = ref<MeetingLocationOption[]>([])
 
 const checkedCount = computed(() => checkIns.value.length)
 const publicAppBaseUrl = resolvePublicAppBaseUrl()
@@ -458,6 +507,10 @@ function resetEditForm(): void {
     title: meeting.value.title,
     description: meeting.value.description,
     location: meeting.value.location,
+    navigationName: meeting.value.navigationName,
+    navigationAddress: meeting.value.navigationAddress,
+    navigationLongitude: meeting.value.navigationLongitude,
+    navigationLatitude: meeting.value.navigationLatitude,
     startTime: toDateTimeLocalValue(meeting.value.startTime),
     endTime: toDateTimeLocalValue(meeting.value.endTime),
     status: meeting.value.status,
@@ -491,6 +544,10 @@ async function saveMeeting(): Promise<void> {
       title: editForm.value.title.trim(),
       description: editForm.value.description.trim(),
       location: editForm.value.location.trim(),
+      navigationName: editForm.value.navigationName,
+      navigationAddress: editForm.value.navigationAddress,
+      navigationLongitude: editForm.value.navigationLongitude,
+      navigationLatitude: editForm.value.navigationLatitude,
       startTime: toIsoWithChinaTimezone(editForm.value.startTime),
       endTime: toIsoWithChinaTimezone(editForm.value.endTime),
       status: editForm.value.status,
@@ -505,6 +562,81 @@ async function saveMeeting(): Promise<void> {
   } finally {
     saving.value = false
   }
+}
+
+/**
+ * 打开导航地点搜索窗口，并使用当前会议地点作为默认关键词。
+ *
+ * 入参：无。
+ * 返回值：void：初始化搜索状态并显示地点选择窗口。
+ * 异常：当前函数不主动抛出异常。
+ */
+function openLocationDialog(): void {
+  locationSearchQuery.value = editForm.value.navigationName || editForm.value.location
+  locationOptions.value = []
+  locationSearchError.value = ''
+  locationDialogVisible.value = true
+}
+
+/**
+ * 调用后端高德代理搜索导航地点候选项。
+ *
+ * 入参：无；函数读取地点搜索关键词。
+ * 返回值：Promise<void>：成功后更新最多十条候选地点。
+ * 异常：关键词过短、高德未配置、权限或网络异常时展示中文错误。
+ */
+async function searchLocationOptions(): Promise<void> {
+  const query = locationSearchQuery.value.trim()
+  if (query.length < 2) {
+    locationSearchError.value = '请输入至少两个字符的地点关键词。'
+    return
+  }
+  locationSearching.value = true
+  locationSearchError.value = ''
+  try {
+    locationOptions.value = await searchMeetingLocationOptions(String(route.params.id), query)
+    if (!locationOptions.value.length) {
+      locationSearchError.value = '没有找到匹配地点，请补充城市或详细地址后重试。'
+    }
+  } catch (error) {
+    locationOptions.value = []
+    locationSearchError.value = getApiErrorMessage(error, '地点搜索失败，请稍后重试。')
+  } finally {
+    locationSearching.value = false
+  }
+}
+
+/**
+ * 将管理员确认的高德地点写入会议编辑表单。
+ *
+ * 入参：option 为选中的高德地点候选项，必填。
+ * 返回值：void：保存名称、地址和坐标并关闭选择窗口。
+ * 异常：当前函数不主动抛出异常。
+ */
+function selectLocationOption(option: MeetingLocationOption): void {
+  editForm.value.navigationName = option.name
+  editForm.value.navigationAddress = `${option.district}${option.address}`
+  editForm.value.navigationLongitude = option.longitude
+  editForm.value.navigationLatitude = option.latitude
+  locationDialogVisible.value = false
+  saveMessage.value = '导航位置已选择，请点击“保存”写入会议。'
+  saveMessageType.value = 'info'
+}
+
+/**
+ * 清除当前编辑表单中的导航点位。
+ *
+ * 入参：无。
+ * 返回值：void：清空导航名称、地址和坐标，保存会议后生效。
+ * 异常：当前函数不主动抛出异常。
+ */
+function clearNavigationLocation(): void {
+  editForm.value.navigationName = ''
+  editForm.value.navigationAddress = ''
+  editForm.value.navigationLongitude = undefined
+  editForm.value.navigationLatitude = undefined
+  saveMessage.value = '导航位置已清除，请点击“保存”确认。'
+  saveMessageType.value = 'info'
 }
 
 /**

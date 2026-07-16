@@ -8,6 +8,10 @@ export interface Meeting {
   title: string
   description: string
   location: string
+  navigationName: string
+  navigationAddress: string
+  navigationLongitude?: number
+  navigationLatitude?: number
   startTime: string
   endTime: string
   status: MeetingStatus

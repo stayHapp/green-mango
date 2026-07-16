@@ -1,9 +1,10 @@
 """管理员会议管理路由。"""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.dependencies import CurrentAdmin, DatabaseSession
-from app.schemas.meeting import MeetingCreate, MeetingResponse, MeetingUpdate
+from app.schemas.meeting import MeetingCreate, MeetingLocationOptionResponse, MeetingResponse, MeetingUpdate
+from app.services.amap import AmapProviderError, search_amap_places
 from app.services.admin_meetings import create_meeting, get_authorized_meeting, list_authorized_meetings, update_meeting
 
 router = APIRouter(prefix="/admin/meetings")
@@ -64,3 +65,25 @@ def patch_meeting(
         return update_meeting(db, meeting, payload)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+
+
+@router.get("/{meeting_id}/location-options", response_model=list[MeetingLocationOptionResponse])
+def get_location_options(
+    meeting_id: int,
+    db: DatabaseSession,
+    admin: CurrentAdmin,
+    query: str = Query(min_length=2, max_length=80),
+    city: str = Query(default="", max_length=40),
+) -> list[MeetingLocationOptionResponse]:
+    """搜索管理员有权管理会议的导航地点候选项。
+
+    入参：meeting_id 为会议 ID；query 为地点关键词；city 为可选城市；db 与 admin 由 FastAPI 注入。
+    返回值：list[MeetingLocationOptionResponse]：高德返回的地点名称、地址与坐标。
+    异常：会议未授权返回 404；高德未配置或请求失败返回 503。
+    """
+    if get_authorized_meeting(db, admin, meeting_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会议不存在或无访问权限。")
+    try:
+        return search_amap_places(query, city)
+    except AmapProviderError as error:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error

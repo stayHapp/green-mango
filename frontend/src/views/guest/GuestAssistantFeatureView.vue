@@ -64,6 +64,31 @@
         <p v-if="feature.content.trim()" class="weather-supplement">{{ feature.content }}</p>
       </template>
 
+      <template v-else-if="feature?.key === 'route'">
+        <section class="route-navigation-card">
+          <div class="route-navigation-card__icon"><el-icon><LocationIcon /></el-icon></div>
+          <div>
+            <h2>{{ meeting?.navigationName || meeting?.location || '会议地点' }}</h2>
+            <p>{{ meeting?.navigationAddress || meeting?.location || '管理员尚未补充会议地址。' }}</p>
+          </div>
+          <a
+            v-if="navigationUrl"
+            class="route-navigation-button"
+            :href="navigationUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            打开地图导航
+          </a>
+          <el-alert v-else type="warning" :closable="false" title="管理员尚未选择准确的导航位置。" />
+        </section>
+
+        <section class="route-arrival-guide">
+          <h2>到场说明</h2>
+          <article v-for="(block, index) in contentBlocks" :key="`route-${index}`" class="assistant-content-card">{{ block }}</article>
+        </section>
+      </template>
+
       <div v-else-if="feature" class="assistant-content-cards">
         <article v-for="(block, index) in contentBlocks" :key="`${feature.key}-${index}`" class="assistant-content-card">{{ block }}</article>
       </div>
@@ -99,6 +124,7 @@ const errorMessage = ref('')
 const meetingDate = computed(formatMeetingDate)
 const agendaItems = computed(buildAgendaItems)
 const contentBlocks = computed(buildContentBlocks)
+const navigationUrl = computed(buildNavigationUrl)
 
 /**
  * 加载会议基础信息和当前会议助手功能配置。
@@ -198,6 +224,30 @@ function buildAgendaItems(): AgendaDisplayItem[] {
 function buildContentBlocks(): string[] {
   const blocks = feature.value?.content.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean) ?? []
   return blocks.length ? blocks : ['内容待补充。']
+}
+
+/**
+ * 根据管理员确认的高德坐标生成手机导航链接。
+ *
+ * 入参：无；函数读取会议导航名称、经度和纬度。
+ * 返回值：string：可调起高德地图或打开高德 H5 的 URI；坐标缺失时返回空字符串。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildNavigationUrl(): string {
+  const longitude = meeting.value?.navigationLongitude
+  const latitude = meeting.value?.navigationLatitude
+  if (longitude === undefined || latitude === undefined) {
+    return ''
+  }
+  const params = new URLSearchParams({
+    from: '',
+    to: `${longitude},${latitude},${meeting.value?.navigationName || meeting.value?.location || '会议地点'}`,
+    mode: 'car',
+    policy: '0',
+    src: 'zhihui',
+    callnative: '1',
+  })
+  return `https://uri.amap.com/navigation?${params.toString()}`
 }
 
 /**

@@ -33,6 +33,7 @@
 | POST | `/api/admin/meetings` | 创建会议、默认设置和创建人授权 |
 | GET | `/api/admin/meetings/{meeting_id}` | 获取会议详情 |
 | PATCH | `/api/admin/meetings/{meeting_id}` | 修改会议基础信息与状态 |
+| GET | `/api/admin/meetings/{meeting_id}/location-options?query={keyword}` | 通过后端高德代理搜索导航地点候选项 |
 | GET | `/api/admin/meetings/{meeting_id}/admins` | 查询会议管理员 |
 | POST | `/api/admin/meetings/{meeting_id}/admins` | 按账号添加已有管理员 |
 | DELETE | `/api/admin/meetings/{meeting_id}/admins/{user_id}` | 移除非创建人管理员授权 |
@@ -94,7 +95,7 @@
 | GET | `/api/guest/meetings/{meeting_id}/profile` | 查询固定资料与动态字段值 |
 | GET | `/api/guest/meetings/{meeting_id}/check-in-qr` | 获取个人签到二维码 token 与过期时间 |
 | GET | `/api/guest/meetings/{meeting_id}/assistant-features/{feature_key}` | 获取单项会议助手公开内容或未发布提醒 |
-| GET | `/api/guest/meetings/{meeting_id}/weather` | 获取已发布天气功能的和风天气实况与七日预报；未配置或供应商异常时返回降级信息 |
+| GET | `/api/guest/meetings/{meeting_id}/weather` | 获取已发布天气功能的和风天气实况与七日预报；优先使用管理员确认的导航坐标 |
 
 二维码图像由前端把 `qr_token` 编码为二维码；工作人员扫码后只把 token 交给后端校验。二维码在会议结束后失效。
 

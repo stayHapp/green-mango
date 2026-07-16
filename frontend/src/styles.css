@@ -841,6 +841,97 @@ h1 {
   color: var(--el-color-primary);
 }
 
+.route-navigation-card,
+.route-arrival-guide {
+  border: 1px solid rgba(129, 140, 248, 0.14);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 45px rgba(53, 69, 125, 0.08);
+  padding: 28px;
+}
+
+.route-navigation-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+}
+
+.route-navigation-card__icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border-radius: 18px;
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 25px;
+}
+
+.route-navigation-card h2,
+.route-arrival-guide h2 {
+  margin: 0;
+  color: #172554;
+}
+
+.route-navigation-card p {
+  margin: 8px 0 0;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.route-navigation-button {
+  border-radius: 999px;
+  background: linear-gradient(135deg, #3568ef, #20b7cf);
+  color: #fff;
+  font-weight: 700;
+  padding: 12px 20px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.route-arrival-guide {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.navigation-location-field {
+  display: grid;
+  width: 100%;
+  gap: 12px;
+}
+
+.location-option-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.location-option-card {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  color: #334155;
+  padding: 14px 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.location-option-card:hover {
+  border-color: #6366f1;
+  background: #f8faff;
+}
+
+.location-option-card span {
+  color: #64748b;
+  font-size: 13px;
+}
+
 @media (max-width: 640px) {
   .guest-portal-page__inner {
     min-height: 100vh;
@@ -973,6 +1064,17 @@ h1 {
 
   .weather-forecast-item__temperature em {
     font-size: 13px;
+  }
+
+  .route-navigation-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 22px 18px;
+  }
+
+  .route-navigation-button,
+  .route-navigation-card .el-alert {
+    grid-column: 1 / -1;
+    text-align: center;
   }
 }
 

@@ -49,6 +49,10 @@ class GuestMeetingResponse(BaseModel):
     title: str
     description: str | None
     location: str | None
+    navigation_name: str | None
+    navigation_address: str | None
+    navigation_longitude: float | None
+    navigation_latitude: float | None
     start_time: datetime | None
     end_time: datetime | None
     status: str

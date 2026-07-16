@@ -68,14 +68,18 @@ def request_qweather(path: str, params: dict[str, str]) -> dict[str, Any]:
     return payload
 
 
-def build_weather(location: str) -> MeetingWeatherResponse:
+def build_weather(
+    location: str,
+    longitude: float | None = None,
+    latitude: float | None = None,
+) -> MeetingWeatherResponse:
     """查询并聚合会议地点的实时天气与七日预报。
 
-    入参：location 为会议地点文本，必填。
+    入参：location 为会议地点文本；longitude 与 latitude 为管理员确认的高德坐标，可选。
     返回值：MeetingWeatherResponse：包含地点、实况、七日预报和来源信息。
     异常：地点无法匹配或供应商调用异常时抛出 WeatherProviderError。
     """
-    query = extract_weather_query(location)
+    query = f"{longitude:.2f},{latitude:.2f}" if longitude is not None and latitude is not None else extract_weather_query(location)
     lookup = request_qweather("/geo/v2/city/lookup", {"location": query, "range": "cn", "number": "1", "lang": "zh"})
     locations = lookup.get("location") or []
     if not locations:
@@ -112,21 +116,25 @@ def build_weather(location: str) -> MeetingWeatherResponse:
     )
 
 
-def get_weather(location: str) -> MeetingWeatherResponse:
+def get_weather(
+    location: str,
+    longitude: float | None = None,
+    latitude: float | None = None,
+) -> MeetingWeatherResponse:
     """读取会议地点天气并应用进程内短期缓存。
 
-    入参：location 为会议地点文本，必填。
+    入参：location 为会议地点文本；longitude 与 latitude 为管理员确认的坐标，可选。
     返回值：MeetingWeatherResponse：缓存有效时直接返回，否则查询供应商并写入缓存。
     异常：供应商异常时返回 `available=false` 的降级响应，不继续向路由抛出。
     """
-    cache_key = location.strip()
+    cache_key = f"{longitude},{latitude}" if longitude is not None and latitude is not None else location.strip()
     now = datetime.now(timezone.utc)
     with _CACHE_LOCK:
         cached = _CACHE.get(cache_key)
         if cached and cached[0] > now:
             return cached[1]
     try:
-        result = build_weather(location)
+        result = build_weather(location, longitude, latitude)
     except WeatherProviderError as error:
         return MeetingWeatherResponse(available=False, location_name=extract_weather_query(location) if location.strip() else "会议地点", message=str(error))
     expires_at = now + timedelta(seconds=max(settings.weather_cache_seconds, 60))

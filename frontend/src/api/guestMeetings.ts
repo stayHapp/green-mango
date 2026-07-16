@@ -8,6 +8,10 @@ interface GuestMeetingApiResponse {
   title: string
   description: string | null
   location: string | null
+  navigation_name: string | null
+  navigation_address: string | null
+  navigation_longitude: number | null
+  navigation_latitude: number | null
   start_time: string | null
   end_time: string | null
   status: MeetingStatus
@@ -26,6 +30,10 @@ function mapGuestMeeting(meeting: GuestMeetingApiResponse): Meeting {
     title: meeting.title,
     description: meeting.description || '',
     location: meeting.location || '',
+    navigationName: meeting.navigation_name || '',
+    navigationAddress: meeting.navigation_address || '',
+    navigationLongitude: meeting.navigation_longitude ?? undefined,
+    navigationLatitude: meeting.navigation_latitude ?? undefined,
     startTime: meeting.start_time || '',
     endTime: meeting.end_time || '',
     status: meeting.status,
