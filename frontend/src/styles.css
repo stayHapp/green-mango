@@ -579,19 +579,20 @@
 }
 
 .guest-home-summary__meta div {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: start;
+  display: flex;
+  align-items: center;
   gap: 7px;
 }
 
 .guest-home-summary__meta .el-icon {
-  margin-top: 3px;
+  flex: 0 0 18px;
   color: rgba(255, 255, 255, 0.76);
   font-size: 15px;
+  line-height: 1;
 }
 
 .guest-home-summary__meta strong {
+  min-width: 0;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.94);
   font-size: 13px;
@@ -1829,11 +1830,16 @@ h1 {
 
 .weather-location {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
   margin: 0;
   color: #7180a4;
   font-size: 20px;
+}
+
+.weather-location .el-icon {
+  flex: none;
+  line-height: 1;
 }
 
 .weather-current-card__main {
