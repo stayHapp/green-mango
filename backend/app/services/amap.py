@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.core.config import settings
+from app.core.ssl_context import create_external_ssl_context
 from app.schemas.meeting import MeetingLocationOptionResponse
 
 
@@ -34,7 +35,7 @@ def search_amap_places(query: str, city: str = "") -> list[MeetingLocationOption
     }
     request = Request(f"https://restapi.amap.com/v3/place/text?{urlencode(params)}")
     try:
-        with urlopen(request, timeout=8) as response:
+        with urlopen(request, timeout=8, context=create_external_ssl_context()) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except Exception as error:
         raise AmapProviderError("高德地点搜索暂时不可用，请稍后重试。") from error

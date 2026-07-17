@@ -12,6 +12,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.core.config import settings
+from app.core.ssl_context import create_external_ssl_context
 from app.schemas.weather import CurrentWeatherResponse, DailyWeatherResponse, MeetingWeatherResponse
 
 _CACHE: dict[str, tuple[datetime, MeetingWeatherResponse]] = {}
@@ -55,7 +56,7 @@ def request_qweather(path: str, params: dict[str, str]) -> dict[str, Any]:
         headers={"X-QW-Api-Key": api_key},
     )
     try:
-        with urlopen(request, timeout=8) as response:
+        with urlopen(request, timeout=8, context=create_external_ssl_context()) as response:
             response_body = response.read()
             # 和风天气可能在未显式请求时仍返回 Gzip 压缩内容，解析前按响应头解压。
             if response.headers.get("Content-Encoding", "").lower() == "gzip":
