@@ -1,0 +1,16 @@
+[Unit]
+Description=知会测试环境 FastAPI 服务
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/zhihui-demo/app/backend
+EnvironmentFile=/opt/zhihui-demo/shared/backend.env
+ExecStart=/opt/zhihui-demo/app/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
