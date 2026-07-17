@@ -43,7 +43,6 @@
             </el-form-item>
             <div class="action-row">
               <el-button :disabled="!isOnline" @click="startCameraScan">手机扫码</el-button>
-              <el-button @click="fillDemoToken">填入示例</el-button>
               <el-button type="primary" :loading="loading" :disabled="!isOnline" @click="handleScan">确认签到</el-button>
             </div>
           </el-form>
@@ -401,22 +400,6 @@ function alertType(): 'success' | 'warning' | 'error' | 'info' {
   }
 
   return 'error'
-}
-
-/**
- * 填入本地种子数据中的嘉宾二维码 token 示例。
- *
- * 入参：
- *   无。
- *
- * 返回值：
- *   void：只更新当前 token 输入框。
- *
- * 异常：
- *   当前函数不主动抛出异常。
- */
-function fillDemoToken(): void {
-  qrToken.value = 'dev-guest-1-qr-token'
 }
 
 /**

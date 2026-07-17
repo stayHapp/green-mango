@@ -35,6 +35,7 @@ export interface GuestField {
   label: string
   key: string
   type: 'text' | 'phone' | 'tag' | 'seat'
+  required: boolean
   visibleToGuest: boolean
   usedForLogin: boolean
   sortOrder: number

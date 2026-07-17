@@ -49,6 +49,13 @@ export interface AdminGuestDetail extends Guest {
   values: Record<string, string | null>
 }
 
+export interface AdminGuestFieldInput {
+  label: string
+  key: string
+  type: GuestField['type']
+  visibleToGuest: boolean
+}
+
 /**
  * 将后端嘉宾响应转换为现有页面使用的嘉宾类型。
  *
@@ -98,6 +105,7 @@ function mapGuestField(field: GuestFieldApiResponse, loginFields: Set<string>): 
     label: field.label,
     key: field.key,
     type: mapGuestFieldType(field.field_type),
+    required: field.required,
     visibleToGuest: field.visible_to_guest,
     usedForLogin: loginFields.has(field.key),
     sortOrder: field.sort_order,
@@ -190,6 +198,36 @@ export async function listAdminGuestFields(meetingId: string): Promise<GuestFiel
   ])
   const loginFields = new Set(loginFieldResponse.data.fields)
   return fieldResponse.data.map((field) => mapGuestField(field, loginFields))
+}
+
+/**
+ * 全量保存指定会议的动态嘉宾字段。
+ *
+ * 入参：meetingId 为会议 ID；fields 为已按页面顺序排列的字段配置，均必填。
+ * 返回值：Promise<GuestField[]>：后端保存并重新排序后的完整字段列表。
+ * 异常：字段标识重复、已有动态字段值、登录失效、无权限或网络失败时抛出异常，由页面展示。
+ * 使用示例：`await replaceAdminGuestFields('1', [{ label: '饮食偏好', key: 'diet', type: 'text', visibleToGuest: true }])`。
+ */
+export async function replaceAdminGuestFields(
+  meetingId: string,
+  fields: AdminGuestFieldInput[],
+): Promise<GuestField[]> {
+  const { data } = await apiClient.put<GuestFieldApiResponse[]>(
+    `/admin/meetings/${encodeURIComponent(meetingId)}/guest-fields`,
+    {
+      fields: fields.map((field, index) => ({
+        label: field.label.trim(),
+        key: field.key.trim(),
+        field_type: field.type,
+        required: false,
+        visible_to_guest: field.visibleToGuest,
+        sort_order: index,
+        options_json: [],
+      })),
+    },
+    authorizationConfig('admin'),
+  )
+  return data.map((field) => mapGuestField(field, new Set(['name', 'phone'])))
 }
 
 /**

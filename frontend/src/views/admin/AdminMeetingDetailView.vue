@@ -147,11 +147,19 @@
         <el-alert v-if="importMessage" class="top-gap" :type="importMessageType" :closable="false" :title="importMessage" />
       </el-tab-pane>
       <el-tab-pane label="字段" name="fields">
-        <el-table :data="fields" row-key="id">
-          <el-table-column prop="label" label="字段名称" />
-          <el-table-column prop="key" label="字段标识" />
-          <el-table-column label="嘉宾可见"><template #default="{ row }">{{ row.visibleToGuest ? '是' : '否' }}</template></el-table-column>
-          <el-table-column label="登录验证"><template #default="{ row }">{{ row.usedForLogin ? '是' : '否' }}</template></el-table-column>
+        <el-alert type="info" :closable="false" title="第一版登录验证固定使用姓名和手机号；这里配置的扩展字段将进入 Excel 模板，并可选择是否向嘉宾展示。" />
+        <div class="action-row top-gap">
+          <el-button @click="addGuestFieldDraft">新增字段</el-button>
+          <el-button :disabled="!fieldsChanged" @click="resetGuestFieldDrafts(fields)">重置</el-button>
+          <el-button type="primary" :loading="savingGuestFields" :disabled="!fieldsChanged" @click="saveGuestFields">保存字段</el-button>
+        </div>
+        <el-alert v-if="guestFieldMessage" class="top-gap" :type="guestFieldMessageType" :closable="false" :title="guestFieldMessage" />
+        <el-table class="top-gap" :data="guestFieldDrafts" row-key="clientId">
+          <el-table-column label="字段名称" min-width="180"><template #default="{ row }"><el-input v-model="row.label" placeholder="例如：饮食偏好" /></template></el-table-column>
+          <el-table-column label="字段标识" min-width="180"><template #default="{ row }"><el-input v-model="row.key" placeholder="例如：diet_preference" /></template></el-table-column>
+          <el-table-column label="字段类型" width="120"><template #default>文本</template></el-table-column>
+          <el-table-column label="嘉宾可见" width="120"><template #default="{ row }"><el-switch v-model="row.visibleToGuest" /></template></el-table-column>
+          <el-table-column label="操作" width="100"><template #default="{ $index }"><el-button type="danger" link @click="removeGuestFieldDraft($index)">删除</el-button></template></el-table-column>
         </el-table>
       </el-tab-pane>
       <el-tab-pane label="会议助手" name="assistant">
@@ -236,6 +244,8 @@ import {
   getAdminGuest,
   listAdminGuestFields,
   listAdminGuests,
+  replaceAdminGuestFields,
+  type AdminGuestFieldInput,
 } from '../../api/adminGuests'
 import {
   getAdminMeeting,
@@ -257,6 +267,10 @@ const detailLoading = ref(true)
 const detailError = ref('')
 const guests = ref<Guest[]>([])
 const fields = ref<GuestField[]>([])
+const guestFieldDrafts = ref<Array<AdminGuestFieldInput & { clientId: string }>>([])
+const savingGuestFields = ref(false)
+const guestFieldMessage = ref('')
+const guestFieldMessageType = ref<'success' | 'error' | 'info'>('success')
 const staff = ref<StaffUser[]>([])
 const checkIns = ref<AdminCheckInRecord[]>([])
 const checkInLoading = ref(false)
@@ -314,6 +328,12 @@ const locationSearchError = ref('')
 const locationOptions = ref<MeetingLocationOption[]>([])
 
 const checkedCount = computed(() => checkIns.value.length)
+const fieldsChanged = computed(() => JSON.stringify(guestFieldDrafts.value.map(({ clientId: _, ...field }) => field)) !== JSON.stringify(fields.value.map((field) => ({
+  label: field.label,
+  key: field.key,
+  type: field.type,
+  visibleToGuest: field.visibleToGuest,
+}))))
 const publicAppBaseUrl = resolvePublicAppBaseUrl()
 const meetingEntryUrl = computed(() => meeting.value && publicAppBaseUrl ? `${publicAppBaseUrl}/meetings/${meeting.value.id}` : '')
 const meetingQrCode = ref('')
@@ -369,6 +389,7 @@ async function loadDetail(): Promise<void> {
     meeting.value = meetingData
     guests.value = guestData
     fields.value = fieldData
+    resetGuestFieldDrafts(fieldData)
     staff.value = staffData
     totalGuestCount.value = guestData.length
     resetEditForm()
@@ -422,6 +443,124 @@ async function loadCheckInSummary(meetingId: string): Promise<void> {
     checkInError.value = getApiErrorMessage(error, '签到统计加载失败。')
   } finally {
     checkInLoading.value = false
+  }
+}
+
+/**
+ * 同步刷新嘉宾列表与签到统计，保证详情页不同区域使用同一份最新人数状态。
+ *
+ * 入参：meetingId 为会议 ID，必填。
+ * 返回值：Promise<void>：嘉宾列表与签到统计请求结束后更新页面状态。
+ * 异常：嘉宾列表加载失败时向调用方抛出；签到统计失败时由 `loadCheckInSummary` 转换为页面错误提示。
+ * 使用示例：新增或导入嘉宾成功后调用 `await refreshGuestAndCheckInState(meetingId)`。
+ */
+async function refreshGuestAndCheckInState(meetingId: string): Promise<void> {
+  const [guestData] = await Promise.all([
+    listAdminGuests(meetingId),
+    loadCheckInSummary(meetingId),
+  ])
+  guests.value = guestData
+}
+
+/**
+ * 使用已保存字段重建管理员字段编辑草稿。
+ *
+ * 入参：sourceFields 为后端返回的会议动态字段列表，必填。
+ * 返回值：void：按原顺序更新编辑草稿并清除字段操作提示。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resetGuestFieldDrafts(sourceFields: GuestField[]): void {
+  guestFieldDrafts.value = sourceFields.map((field) => ({
+    clientId: field.id,
+    label: field.label,
+    key: field.key,
+    type: field.type,
+    visibleToGuest: field.visibleToGuest,
+  }))
+  guestFieldMessage.value = ''
+}
+
+/**
+ * 在字段编辑表格末尾增加一个空白文本字段。
+ *
+ * 入参：无。
+ * 返回值：void：新增一行带稳定页面标识的字段草稿。
+ * 异常：当前函数不主动抛出异常。
+ */
+function addGuestFieldDraft(): void {
+  guestFieldDrafts.value.push({
+    clientId: `new-${Date.now()}-${guestFieldDrafts.value.length}`,
+    label: '',
+    key: '',
+    type: 'text',
+    visibleToGuest: true,
+  })
+  guestFieldMessage.value = ''
+}
+
+/**
+ * 删除指定位置的字段编辑草稿。
+ *
+ * 入参：index 为字段草稿数组下标，必须处于当前数组范围内。
+ * 返回值：void：移除对应字段草稿；下标无效时保持原状态。
+ * 异常：当前函数不主动抛出异常。
+ */
+function removeGuestFieldDraft(index: number): void {
+  if (index < 0 || index >= guestFieldDrafts.value.length) {
+    return
+  }
+  guestFieldDrafts.value.splice(index, 1)
+  guestFieldMessage.value = ''
+}
+
+/**
+ * 校验并全量保存当前会议的动态嘉宾字段。
+ *
+ * 入参：无；读取当前会议与字段编辑草稿。
+ * 返回值：Promise<void>：保存成功后以服务端返回结果刷新字段表格。
+ * 异常：名称为空、字段标识格式错误或重复时展示本地提示；后端拒绝替换、权限或网络异常时展示后端错误。
+ * 使用示例：新增“饮食偏好 / diet_preference”后点击“保存字段”。
+ */
+async function saveGuestFields(): Promise<void> {
+  if (!meeting.value) {
+    return
+  }
+  const normalizedFields = guestFieldDrafts.value.map(({ label, key, type, visibleToGuest }) => ({
+    label: label.trim(),
+    key: key.trim(),
+    type,
+    visibleToGuest,
+  }))
+  if (normalizedFields.some((field) => !field.label || !field.key)) {
+    guestFieldMessageType.value = 'error'
+    guestFieldMessage.value = '请完整填写每个字段的名称和标识。'
+    return
+  }
+  if (normalizedFields.some((field) => !/^[a-z][a-z0-9_]*$/.test(field.key))) {
+    guestFieldMessageType.value = 'error'
+    guestFieldMessage.value = '字段标识必须以小写字母开头，并且只能包含小写字母、数字和下划线。'
+    return
+  }
+  const fieldKeys = normalizedFields.map((field) => field.key)
+  if (new Set(fieldKeys).size !== fieldKeys.length) {
+    guestFieldMessageType.value = 'error'
+    guestFieldMessage.value = '字段标识不能重复。'
+    return
+  }
+
+  savingGuestFields.value = true
+  guestFieldMessage.value = ''
+  try {
+    const savedFields = await replaceAdminGuestFields(meeting.value.id, normalizedFields)
+    fields.value = savedFields
+    resetGuestFieldDrafts(savedFields)
+    guestFieldMessageType.value = 'success'
+    guestFieldMessage.value = '嘉宾字段已保存。'
+  } catch (error) {
+    guestFieldMessageType.value = 'error'
+    guestFieldMessage.value = getApiErrorMessage(error, '嘉宾字段保存失败。')
+  } finally {
+    savingGuestFields.value = false
   }
 }
 
@@ -704,7 +843,7 @@ async function handleCreateGuest(): Promise<void> {
   creatingGuest.value = true
   try {
     await createAdminGuest(meeting.value.id, guestForm.value)
-    guests.value = await listAdminGuests(meeting.value.id)
+    await refreshGuestAndCheckInState(meeting.value.id)
     guestForm.value = { name: '', phone: '', organization: '', title: '', tag: '', seat: '' }
     guestCreateDialogVisible.value = false
     ElMessage.success('嘉宾已新增，并已生成个人二维码。')
@@ -885,7 +1024,7 @@ async function handleGuestImportFileChange(event: Event): Promise<void> {
 
   try {
     const result = await importAdminGuests(meeting.value.id, file)
-    guests.value = await listAdminGuests(meeting.value.id)
+    await refreshGuestAndCheckInState(meeting.value.id)
     importMessageType.value = result.errors.length ? 'warning' : 'success'
     importMessage.value = result.errors.length
       ? `成功导入 ${result.importedCount} 名嘉宾；${result.errors.map((item) => `第 ${item.rowNumber} 行：${item.message}`).join('；')}`
