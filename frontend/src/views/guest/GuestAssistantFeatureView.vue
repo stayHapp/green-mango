@@ -2,7 +2,7 @@
   <section class="assistant-page">
     <header class="assistant-page__header">
       <el-button :icon="ArrowLeft" circle aria-label="返回" title="返回" @click="goBack" />
-      <h1>{{ feature?.title ?? '会议功能' }}</h1>
+      <h1>{{ feature?.title ?? '会议服务' }}</h1>
       <span class="assistant-page__header-space" />
     </header>
 
@@ -140,7 +140,7 @@ async function loadFeature(): Promise<void> {
   errorMessage.value = ''
   try {
     if (!isMeetingAssistantFeatureKey(featureKey)) {
-      errorMessage.value = '未找到对应的会议功能。'
+      errorMessage.value = '未找到对应的会议服务。'
       return
     }
     const [meetingData, featureData] = await Promise.all([
@@ -153,7 +153,7 @@ async function loadFeature(): Promise<void> {
       weather.value = await getGuestMeetingWeather(meetingId)
     }
   } catch (error) {
-    errorMessage.value = getApiErrorMessage(error, '会议功能加载失败，请稍后重试。')
+    errorMessage.value = getApiErrorMessage(error, '会议服务加载失败，请稍后重试。')
   } finally {
     loading.value = false
   }

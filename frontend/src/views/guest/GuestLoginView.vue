@@ -1,108 +1,67 @@
 <template>
   <section class="page guest-portal-page">
-    <div class="phone-wrapper">
-      <el-button
-        v-if="meeting && currentGuest"
-        class="guest-logout-button"
-        :icon="SwitchButton"
-        circle
-        aria-label="退出登录"
-        title="退出登录"
-        :loading="loggingOut"
-        @click="handleGuestLogout"
-      />
-      <div v-if="meeting && currentGuest" class="guest-assistant-toolbar">
-        <div v-show="assistantToolbarExpanded" class="guest-assistant-toolbar__actions">
-          <MeetingAssistantShortcutGrid
-            :meeting-id="meeting.id"
-            @select="assistantToolbarExpanded = false"
-          />
-        </div>
-        <el-button
-          :icon="MenuIcon"
-          circle
-          aria-label="展开会议功能"
-          title="会议功能"
-          :aria-expanded="assistantToolbarExpanded"
-          @click="toggleAssistantToolbar"
-        />
+    <div class="phone-wrapper guest-login-wrapper">
+      <GuestMeetingSummary v-if="meeting" :meeting="meeting" />
+      <div v-else-if="!loading" class="guest-entry-error">
+        <el-empty description="未找到会议入口" />
+        <el-alert v-if="errorMessage" type="error" :closable="false" :title="errorMessage" />
       </div>
-      <div v-if="meeting" class="guest-meeting-hero">
-        <div>
-          <h1>{{ meeting.title }}</h1>
-          <dl class="compact-info-list">
-            <dt>时间</dt>
-            <dd>{{ formatDate(meeting.startTime) }} - {{ formatDate(meeting.endTime) }}</dd>
-            <dt>地点</dt>
-            <dd>{{ meeting.location }}</dd>
-          </dl>
-        </div>
-      </div>
-      <el-empty v-else description="未找到会议入口" />
 
-      <el-card v-if="meeting && !currentGuest" shadow="never" class="form-card guest-login-card">
-        <template #header>身份验证</template>
-        <el-form class="guest-login-form" label-position="top" @submit.prevent>
-          <el-form-item label="姓名">
-            <el-input v-model="name" placeholder="请输入嘉宾姓名" />
-          </el-form-item>
-          <el-form-item label="手机号">
-            <el-input v-model="phone" placeholder="请输入手机号" />
-          </el-form-item>
-          <div class="guest-login-helper">
-            <el-button class="guest-demo-link" text @click="fillDemoGuest">填入示例信息</el-button>
+      <el-card v-if="meeting" shadow="never" class="form-card guest-login-card">
+        <template #header>
+          <div>
+            <strong>嘉宾身份核验</strong>
+            <p>请输入报名时填写的姓名和手机号</p>
           </div>
+        </template>
+        <el-form class="guest-login-form" label-position="top" @submit.prevent="handleLogin">
+          <el-form-item label="姓名" :error="nameError">
+            <el-input
+              ref="nameInput"
+              v-model="name"
+              autocomplete="name"
+              placeholder="请输入嘉宾姓名"
+              @input="clearNameError"
+            />
+          </el-form-item>
+          <el-form-item label="手机号" :error="phoneError">
+            <el-input
+              ref="phoneInput"
+              v-model="phone"
+              autocomplete="tel"
+              inputmode="tel"
+              placeholder="请输入手机号"
+              @input="clearPhoneError"
+            />
+          </el-form-item>
+          <el-alert
+            v-if="errorMessage"
+            class="guest-login-form-error"
+            type="error"
+            :closable="false"
+            :title="errorMessage"
+          />
           <div class="guest-login-primary-action">
-            <el-button
-              class="guest-login-submit"
-              type="primary"
-              :loading="loading"
-              @click="handleLogin"
-            >
-              登录
+            <el-button class="guest-login-submit" type="primary" native-type="submit" :loading="loading">
+              进入当前会议
             </el-button>
           </div>
         </el-form>
-        <el-alert v-if="errorMessage" class="top-gap" type="error" :closable="false" :title="errorMessage" />
       </el-card>
-
-      <div v-if="meeting && currentGuest" class="guest-content-stack">
-        <el-card shadow="never" class="guest-pass-card">
-          <div class="identity-panel">
-            <div class="guest-identity-heading">
-              <div class="identity-name">{{ currentGuest.name }}</div>
-              <el-tag class="identity-role" type="success" effect="light">{{ currentGuest.tag }}</el-tag>
-            </div>
-          </div>
-          <dl class="info-list">
-            <dt>电话</dt>
-            <dd>{{ currentGuest.phone }}</dd>
-            <dt>单位</dt>
-            <dd>{{ currentGuest.organization }}</dd>
-            <dt>职务</dt>
-            <dd>{{ currentGuest.title }}</dd>
-            <dt>座位</dt>
-            <dd>{{ currentGuest.seat }}</dd>
-          </dl>
-          <GuestQrCode :meeting-id="meeting.id" :token="currentGuest.qrToken" />
-        </el-card>
-      </div>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { nextTick, onMounted, ref } from 'vue'
+import type { InputInstance } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
-import { Menu as MenuIcon, SwitchButton } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 
 import { getApiErrorMessage } from '../../api/client'
-import { getPublicMeeting, loginGuest, logoutClientSession } from '../../api/sessions'
+import { getPublicMeeting, loginGuest } from '../../api/sessions'
+import GuestMeetingSummary from '../../components/GuestMeetingSummary.vue'
 import { useSessionStore } from '../../stores/session'
-import type { Guest, Meeting } from '../../types'
-import GuestQrCode from '../../components/GuestQrCode.vue'
-import MeetingAssistantShortcutGrid from '../../components/MeetingAssistantShortcutGrid.vue'
+import type { Meeting } from '../../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -110,104 +69,108 @@ const session = useSessionStore()
 const meeting = ref<Meeting>()
 const name = ref('')
 const phone = ref('')
+const nameInput = ref<InputInstance>()
+const phoneInput = ref<InputInstance>()
+const nameError = ref('')
+const phoneError = ref('')
 const loading = ref(false)
-const loggingOut = ref(false)
 const errorMessage = ref('')
-const assistantToolbarExpanded = ref(false)
-const currentGuest = computed(() => {
-  if (!meeting.value || session.guest?.meetingId !== meeting.value.id) {
-    return undefined
-  }
-
-  return session.guest
-})
 
 /**
- * 嘉宾会话被清除时同步清空身份表单和功能提示。
+ * 加载会议专属入口信息，并将已有的同会议嘉宾会话直接送回当前会议首页。
  *
- * 入参：guest 为当前 Pinia 嘉宾状态；退出后为 undefined。
- * 返回值：void：只更新当前页面的敏感表单和提示状态。
- * 异常：当前函数不主动抛出异常。
- */
-function clearIdentityAfterLogout(guest: Guest | undefined): void {
-  if (guest) {
-    return
-  }
-  name.value = ''
-  phone.value = ''
-  errorMessage.value = ''
-  assistantToolbarExpanded.value = false
-}
-
-watch(() => session.guest, clearIdentityAfterLogout)
-
-/**
- * 加载扫码入口对应的会议信息。
- *
- * 入参：
- *   无；函数读取 URL 中的 meetingId 参数，并调用公开会议 API。
- *
- * 返回值：
- *   Promise<void>：加载完成后更新页面会议信息。
- *
- * 异常：
- *   会议不存在、尚未发布或后端不可用时清空会议信息并展示错误提示。
+ * 入参：无；函数读取 URL 中的 meetingId 查询参数。
+ * 返回值：Promise<void>：成功后展示登录信息，或跳转至会话所属的当前会议首页。
+ * 异常：会议不存在、尚未发布或网络不可用时捕获异常并展示中文提示。
  */
 async function loadMeeting(): Promise<void> {
   const meetingId = route.query.meetingId ? String(route.query.meetingId) : ''
+  errorMessage.value = ''
 
   if (!meetingId) {
-    errorMessage.value = '缺少会议入口 ID，请通过会议二维码进入。'
+    errorMessage.value = '缺少会议入口 ID，请通过会议专属二维码进入。'
     return
   }
+
+  loading.value = true
   try {
     meeting.value = await getPublicMeeting(meetingId)
+    // 嘉宾身份只属于当前会议，已有同会议会话时不重复展示登录表单。
+    if (session.guest?.meetingId === meetingId) {
+      await router.replace(`/guest/meetings/${meetingId}`)
+    }
   } catch (error) {
     meeting.value = undefined
     errorMessage.value = getApiErrorMessage(error, '会议入口不存在或尚未发布。')
+  } finally {
+    loading.value = false
   }
 }
 
 /**
- * 填入本地联调嘉宾示例。
+ * 清除姓名字段和服务端身份核验错误，允许用户重新输入。
  *
- * 入参：
- *   无。
- *
- * 返回值：
- *   void：只更新当前表单字段。
- *
- * 异常：
- *   当前函数不主动抛出异常。
+ * 入参：无；由姓名输入事件触发。
+ * 返回值：void：清空姓名字段错误与全局核验错误。
+ * 异常：当前函数不主动抛出异常。
  */
-function fillDemoGuest(): void {
-  name.value = '李文博'
-  phone.value = '13900000001'
+function clearNameError(): void {
+  nameError.value = ''
   errorMessage.value = ''
 }
 
 /**
- * 调用后端 API 完成嘉宾登录并读取完整个人资料。
+ * 清除手机号字段和服务端身份核验错误，允许用户重新输入。
  *
- * 入参：
- *   无；函数从页面表单中读取姓名和手机号，两个字段均必填。
+ * 入参：无；由手机号输入事件触发。
+ * 返回值：void：清空手机号字段错误与全局核验错误。
+ * 异常：当前函数不主动抛出异常。
+ */
+function clearPhoneError(): void {
+  phoneError.value = ''
+  errorMessage.value = ''
+}
+
+/**
+ * 校验身份核验表单，并聚焦第一个缺失字段。
  *
- * 返回值：
- *   Promise<void>：登录成功后保存嘉宾会话并跳转到嘉宾会议列表。
+ * 入参：无；函数读取姓名和手机号输入值。
+ * 返回值：Promise<boolean>：两个字段均有有效非空文本时返回 true，否则返回 false。
+ * 异常：当前函数不主动抛出异常。
+ */
+async function validateLoginForm(): Promise<boolean> {
+  nameError.value = name.value.trim() ? '' : '请输入报名时填写的姓名'
+  phoneError.value = phone.value.trim() ? '' : '请输入报名时填写的手机号'
+
+  if (!nameError.value && !phoneError.value) {
+    return true
+  }
+
+  await nextTick()
+  if (nameError.value) {
+    nameInput.value?.focus()
+  } else {
+    phoneInput.value?.focus()
+  }
+  return false
+}
+
+/**
+ * 核验当前会议内的嘉宾身份，并进入唯一的当前会议首页。
  *
- * 异常：
- *   身份不匹配、会议无效或网络异常时展示后端错误提示。
+ * 入参：无；函数读取会议、姓名和手机号表单值，三者均必填。
+ * 返回值：Promise<void>：登录成功后保存嘉宾会话并替换为当前会议详情路由。
+ * 异常：身份不匹配、会议无效或网络异常时捕获错误并展示中文提示。
  */
 async function handleLogin(): Promise<void> {
   errorMessage.value = ''
 
   if (!meeting.value) {
-    errorMessage.value = '当前会议入口无效，无法登录。'
+    errorMessage.value = '当前会议入口无效，无法核验身份。'
     return
   }
 
-  if (!name.value.trim() || !phone.value.trim()) {
-    errorMessage.value = '请填写姓名和手机号。'
+  if (!(await validateLoginForm())) {
     return
   }
 
@@ -215,61 +178,12 @@ async function handleLogin(): Promise<void> {
   try {
     const result = await loginGuest(meeting.value.id, name.value.trim(), phone.value.trim())
     session.setGuest(result.user, result.access)
+    await router.replace(`/guest/meetings/${meeting.value.id}`)
   } catch (error) {
-    errorMessage.value = getApiErrorMessage(error, '嘉宾登录失败，请检查姓名和手机号。')
+    errorMessage.value = getApiErrorMessage(error, '身份核验失败，请检查姓名和手机号。')
   } finally {
     loading.value = false
   }
-}
-
-/**
- * 退出当前嘉宾会话并恢复身份验证页面。
- *
- * 入参：无；函数使用当前已登录的嘉宾会话。
- * 返回值：Promise<void>：无论服务端会话是否仍然有效，最终都会清除本地嘉宾状态。
- * 异常：服务端退出失败时显示说明提示，异常不会继续向外抛出。
- */
-async function handleGuestLogout(): Promise<void> {
-  loggingOut.value = true
-  try {
-    await logoutClientSession('guest')
-    ElMessage.success('已退出登录。')
-  } catch {
-    ElMessage.warning('服务端会话可能已失效，本地登录状态已清除。')
-  } finally {
-    session.clearRole('guest')
-    loggingOut.value = false
-  }
-}
-
-/**
- * 展开或收起会议信息上方的单行功能入口。
- *
- * 入参：无。
- * 返回值：void：切换五项会议功能入口的可见状态。
- * 异常：当前函数不主动抛出异常。
- */
-function toggleAssistantToolbar(): void {
-  assistantToolbarExpanded.value = !assistantToolbarExpanded.value
-}
-
-/**
- * 格式化日期时间展示。
- *
- * 入参：
- *   value：ISO 日期字符串，必填。
- *
- * 返回值：
- *   string：中文本地化日期时间文本。
- *
- * 异常：
- *   当前函数不主动抛出异常；非法日期会按浏览器默认结果展示。
- */
-function formatDate(value: string): string {
-  if (!value) {
-    return '待定'
-  }
-  return new Date(value).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' })
 }
 
 onMounted(loadMeeting)

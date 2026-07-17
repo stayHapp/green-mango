@@ -13,12 +13,27 @@ interface MeetingAssistantFeatureApiResponse {
 }
 
 export const meetingAssistantFeatureDefinitions: Array<Pick<MeetingAssistantFeature, 'key' | 'title' | 'description'>> = [
-  { key: 'agenda', title: '会议日程', description: '查看当天流程和环节安排' },
-  { key: 'manual', title: '会议手册', description: '查看会务资料和注意事项' },
-  { key: 'weather', title: '天气情况', description: '了解到场当天城市天气' },
-  { key: 'route', title: '路线指引', description: '查看会场位置和交通建议' },
-  { key: 'contact', title: '联系我们', description: '联系会务组和现场支持' },
+  { key: 'agenda', title: '会议日程', description: '查看会议流程和环节安排' },
+  { key: 'manual', title: '会议资料', description: '查看参会须知和会务资料' },
+  { key: 'weather', title: '天气提醒', description: '了解会场天气和出行提示' },
+  { key: 'route', title: '路线导航', description: '查看会场位置和到场说明' },
+  { key: 'contact', title: '联系会务', description: '联系会务组和现场支持' },
 ]
+
+/**
+ * 将历史会议手册默认提醒转换为当前“会议资料”产品文案。
+ *
+ * 入参：key 为固定会议服务标识；message 为后端返回的未发布提醒，均必填。
+ * 返回值：string：仅在提醒以历史“会议手册”名称开头时替换产品名称，其他管理员自定义内容保持原样。
+ * 异常：当前函数不主动抛出异常。
+ */
+function normalizeUnpublishedMessage(key: MeetingAssistantFeatureKey, message: string): string {
+  const normalizedMessage = message.trim()
+  if (key === 'manual' && normalizedMessage.startsWith('会议手册')) {
+    return normalizedMessage.replace(/^会议手册(?:尚未发布)?/, '会议资料正在准备中')
+  }
+  return normalizedMessage
+}
 
 /**
  * 判断路由字符串是否为受支持的会议助手功能标识。
@@ -47,7 +62,7 @@ function mapMeetingAssistantFeature(response: MeetingAssistantFeatureApiResponse
     meetingId: String(response.meeting_id),
     ...definition,
     content: response.content ?? '',
-    unpublishedMessage: response.unpublished_message,
+    unpublishedMessage: normalizeUnpublishedMessage(response.feature_key, response.unpublished_message),
     isPublished: response.is_published,
   }
 }
