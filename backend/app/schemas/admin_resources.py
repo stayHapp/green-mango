@@ -45,6 +45,18 @@ class GuestLoginFieldsResponse(BaseModel):
     fields: list[str]
 
 
+class GuestDisplayFieldsRequest(BaseModel):
+    """保存嘉宾端个人信息呈现字段的请求。"""
+
+    fields: list[str]
+
+
+class GuestDisplayFieldsResponse(BaseModel):
+    """会议嘉宾端个人信息呈现字段响应。"""
+
+    fields: list[str]
+
+
 class ImportRowError(BaseModel):
     """Excel 嘉宾导入单行错误。"""
 

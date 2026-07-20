@@ -8,6 +8,7 @@ from app.api.dependencies import CurrentGuest, DatabaseSession
 from app.schemas.guest import GuestProfileResponse
 from app.schemas.guest_session import GuestLoginRequest, GuestMeetingResponse, GuestQrResponse, GuestSessionResponse
 from app.services.admin_guests import get_guest_values
+from app.services.admin_resources import get_guest_display_fields
 from app.services.guest_sessions import get_guest_meeting, list_guest_meetings, login_guest
 from app.services.sessions import create_guest_session as issue_guest_session
 
@@ -109,4 +110,6 @@ def get_my_profile(meeting_id: int, db: DatabaseSession, guest: CurrentGuest) ->
         created_at=guest.created_at,
         updated_at=guest.updated_at,
         values=get_guest_values(db, guest),
+        visible_fields=get_guest_display_fields(meeting),
+        field_labels={field.key: field.label for field in meeting.guest_fields},
     )

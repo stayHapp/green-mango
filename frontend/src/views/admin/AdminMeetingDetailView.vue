@@ -147,18 +147,26 @@
         <el-alert v-if="importMessage" class="top-gap" :type="importMessageType" :closable="false" :title="importMessage" />
       </el-tab-pane>
       <el-tab-pane label="字段" name="fields">
-        <el-alert type="info" :closable="false" title="第一版登录验证固定使用姓名和手机号；这里配置的扩展字段将进入 Excel 模板，并可选择是否向嘉宾展示。" />
+        <el-alert type="info" :closable="false" title="姓名和手机号固定用于身份核验；下方列出全部嘉宾信息，可选择哪些字段在嘉宾端呈现。" />
         <div class="action-row top-gap">
           <el-button @click="addGuestFieldDraft">新增字段</el-button>
-          <el-button :disabled="!fieldsChanged" @click="resetGuestFieldDrafts(fields)">重置</el-button>
+          <el-button :disabled="!fieldsChanged" @click="resetGuestFieldDrafts(fields, savedVisibleGuestFieldKeys)">重置</el-button>
           <el-button type="primary" :loading="savingGuestFields" :disabled="!fieldsChanged" @click="saveGuestFields">保存字段</el-button>
         </div>
         <el-alert v-if="guestFieldMessage" class="top-gap" :type="guestFieldMessageType" :closable="false" :title="guestFieldMessage" />
+        <h3 class="guest-field-section-title">固定嘉宾信息</h3>
+        <el-table :data="fixedGuestFieldDrafts" row-key="key">
+          <el-table-column prop="label" label="字段名称" min-width="180" />
+          <el-table-column prop="key" label="字段标识" min-width="180" />
+          <el-table-column label="用途" min-width="160"><template #default="{ row }">{{ row.loginRequired ? '登录核验、嘉宾资料' : '嘉宾资料' }}</template></el-table-column>
+          <el-table-column label="嘉宾端呈现" width="140"><template #default="{ row }"><el-switch v-model="row.visibleToGuest" /></template></el-table-column>
+        </el-table>
+        <h3 class="guest-field-section-title">扩展嘉宾信息</h3>
         <el-table class="top-gap" :data="guestFieldDrafts" row-key="clientId">
           <el-table-column label="字段名称" min-width="180"><template #default="{ row }"><el-input v-model="row.label" placeholder="例如：饮食偏好" /></template></el-table-column>
           <el-table-column label="字段标识" min-width="180"><template #default="{ row }"><el-input v-model="row.key" placeholder="例如：diet_preference" /></template></el-table-column>
           <el-table-column label="字段类型" width="120"><template #default>文本</template></el-table-column>
-          <el-table-column label="嘉宾可见" width="120"><template #default="{ row }"><el-switch v-model="row.visibleToGuest" /></template></el-table-column>
+          <el-table-column label="嘉宾端呈现" width="140"><template #default="{ row }"><el-switch v-model="row.visibleToGuest" /></template></el-table-column>
           <el-table-column label="操作" width="100"><template #default="{ $index }"><el-button type="danger" link @click="removeGuestFieldDraft($index)">删除</el-button></template></el-table-column>
         </el-table>
       </el-tab-pane>
@@ -241,10 +249,12 @@ import { getAdminCheckInSummary } from '../../api/adminCheckIns'
 import {
   createAdminGuest,
   generateAdminGuestQrTokens,
+  getAdminGuestDisplayFields,
   getAdminGuest,
   listAdminGuestFields,
   listAdminGuests,
   replaceAdminGuestFields,
+  replaceAdminGuestDisplayFields,
   type AdminGuestFieldInput,
 } from '../../api/adminGuests'
 import {
@@ -267,7 +277,16 @@ const detailLoading = ref(true)
 const detailError = ref('')
 const guests = ref<Guest[]>([])
 const fields = ref<GuestField[]>([])
+const fixedGuestFieldDrafts = ref([
+  { key: 'name', label: '姓名', loginRequired: true, visibleToGuest: true },
+  { key: 'phone', label: '手机号', loginRequired: true, visibleToGuest: true },
+  { key: 'organization', label: '单位', loginRequired: false, visibleToGuest: true },
+  { key: 'title', label: '职务', loginRequired: false, visibleToGuest: true },
+  { key: 'tag', label: '身份', loginRequired: false, visibleToGuest: true },
+  { key: 'seat', label: '座位', loginRequired: false, visibleToGuest: true },
+])
 const guestFieldDrafts = ref<Array<AdminGuestFieldInput & { clientId: string }>>([])
+const savedVisibleGuestFieldKeys = ref<string[]>([])
 const savingGuestFields = ref(false)
 const guestFieldMessage = ref('')
 const guestFieldMessageType = ref<'success' | 'error' | 'info'>('success')
@@ -328,12 +347,12 @@ const locationSearchError = ref('')
 const locationOptions = ref<MeetingLocationOption[]>([])
 
 const checkedCount = computed(() => checkIns.value.length)
-const fieldsChanged = computed(() => JSON.stringify(guestFieldDrafts.value.map(({ clientId: _, ...field }) => field)) !== JSON.stringify(fields.value.map((field) => ({
+const guestFieldDefinitionsChanged = computed(() => JSON.stringify(guestFieldDrafts.value.map(({ clientId: _, visibleToGuest: __, ...field }) => field)) !== JSON.stringify(fields.value.map((field) => ({
   label: field.label,
   key: field.key,
   type: field.type,
-  visibleToGuest: field.visibleToGuest,
 }))))
+const fieldsChanged = computed(() => guestFieldDefinitionsChanged.value || JSON.stringify(selectedGuestDisplayFieldKeys()) !== JSON.stringify(savedVisibleGuestFieldKeys.value))
 const publicAppBaseUrl = resolvePublicAppBaseUrl()
 const meetingEntryUrl = computed(() => meeting.value && publicAppBaseUrl ? `${publicAppBaseUrl}/meetings/${meeting.value.id}` : '')
 const meetingQrCode = ref('')
@@ -380,16 +399,18 @@ async function loadDetail(): Promise<void> {
   detailLoading.value = true
   detailError.value = ''
   try {
-    const [meetingData, guestData, fieldData, staffData] = await Promise.all([
+    const [meetingData, guestData, fieldData, displayFieldData, staffData] = await Promise.all([
       getAdminMeeting(meetingId),
       listAdminGuests(meetingId),
       listAdminGuestFields(meetingId),
+      getAdminGuestDisplayFields(meetingId),
       listAdminStaff(meetingId),
     ])
     meeting.value = meetingData
     guests.value = guestData
     fields.value = fieldData
-    resetGuestFieldDrafts(fieldData)
+    savedVisibleGuestFieldKeys.value = displayFieldData
+    resetGuestFieldDrafts(fieldData, displayFieldData)
     staff.value = staffData
     totalGuestCount.value = guestData.length
     resetEditForm()
@@ -465,19 +486,40 @@ async function refreshGuestAndCheckInState(meetingId: string): Promise<void> {
 /**
  * 使用已保存字段重建管理员字段编辑草稿。
  *
- * 入参：sourceFields 为后端返回的会议动态字段列表，必填。
- * 返回值：void：按原顺序更新编辑草稿并清除字段操作提示。
+ * 入参：sourceFields 为后端返回的会议动态字段列表；visibleFieldKeys 为已保存的呈现字段 key，均必填。
+ * 返回值：void：按原顺序更新固定和扩展字段编辑草稿，并清除字段操作提示。
  * 异常：当前函数不主动抛出异常。
  */
-function resetGuestFieldDrafts(sourceFields: GuestField[]): void {
+function resetGuestFieldDrafts(sourceFields: GuestField[], visibleFieldKeys: string[]): void {
+  const visibleFieldSet = new Set(visibleFieldKeys)
+  fixedGuestFieldDrafts.value = fixedGuestFieldDrafts.value.map((field) => ({
+    ...field,
+    visibleToGuest: visibleFieldSet.has(field.key),
+  }))
   guestFieldDrafts.value = sourceFields.map((field) => ({
     clientId: field.id,
     label: field.label,
     key: field.key,
     type: field.type,
-    visibleToGuest: field.visibleToGuest,
+    visibleToGuest: visibleFieldSet.has(field.key),
   }))
   guestFieldMessage.value = ''
+}
+
+/**
+ * 按固定字段与扩展字段的页面顺序汇总当前选中的嘉宾端呈现字段。
+ *
+ * 入参：无；函数读取固定字段和扩展字段编辑草稿。
+ * 返回值：string[]：已启用呈现的字段 key，固定字段排列在扩展字段之前。
+ * 异常：当前函数不主动抛出异常；未填写 key 的新增草稿不会进入返回值。
+ */
+function selectedGuestDisplayFieldKeys(): string[] {
+  return [
+    ...fixedGuestFieldDrafts.value.filter((field) => field.visibleToGuest).map((field) => field.key),
+    ...guestFieldDrafts.value
+      .filter((field) => field.visibleToGuest && field.key.trim())
+      .map((field) => field.key.trim()),
+  ]
 }
 
 /**
@@ -517,8 +559,8 @@ function removeGuestFieldDraft(index: number): void {
  * 校验并全量保存当前会议的动态嘉宾字段。
  *
  * 入参：无；读取当前会议与字段编辑草稿。
- * 返回值：Promise<void>：保存成功后以服务端返回结果刷新字段表格。
- * 异常：名称为空、字段标识格式错误或重复时展示本地提示；后端拒绝替换、权限或网络异常时展示后端错误。
+ * 返回值：Promise<void>：保存成功后以服务端返回结果刷新字段定义和嘉宾端呈现选择。
+ * 异常：名称为空、字段标识格式错误或重复时展示本地提示；字段已有值无法替换、权限或网络异常时展示后端错误。
  * 使用示例：新增“饮食偏好 / diet_preference”后点击“保存字段”。
  */
 async function saveGuestFields(): Promise<void> {
@@ -551,11 +593,20 @@ async function saveGuestFields(): Promise<void> {
   savingGuestFields.value = true
   guestFieldMessage.value = ''
   try {
-    const savedFields = await replaceAdminGuestFields(meeting.value.id, normalizedFields)
+    let savedFields = fields.value
+    // 只切换呈现状态时不替换动态字段，避免已有字段值触发全量替换保护。
+    if (guestFieldDefinitionsChanged.value) {
+      savedFields = await replaceAdminGuestFields(meeting.value.id, normalizedFields)
+    }
+    const savedDisplayFields = await replaceAdminGuestDisplayFields(
+      meeting.value.id,
+      selectedGuestDisplayFieldKeys(),
+    )
     fields.value = savedFields
-    resetGuestFieldDrafts(savedFields)
+    savedVisibleGuestFieldKeys.value = savedDisplayFields
+    resetGuestFieldDrafts(savedFields, savedDisplayFields)
     guestFieldMessageType.value = 'success'
-    guestFieldMessage.value = '嘉宾字段已保存。'
+    guestFieldMessage.value = '嘉宾字段及嘉宾端呈现设置已保存。'
   } catch (error) {
     guestFieldMessageType.value = 'error'
     guestFieldMessage.value = getApiErrorMessage(error, '嘉宾字段保存失败。')

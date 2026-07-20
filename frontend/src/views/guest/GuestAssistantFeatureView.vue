@@ -1,24 +1,40 @@
 <template>
   <section class="assistant-page">
     <header class="assistant-page__header">
-      <el-button :icon="ArrowLeft" circle aria-label="返回" title="返回" @click="goBack" />
-      <h1>{{ feature?.title ?? '会议服务' }}</h1>
-      <span class="assistant-page__header-space" />
+      <button type="button" class="assistant-page__back" aria-label="返回" @click="goBack">
+        <el-icon><ArrowLeft /></el-icon>
+        返回
+      </button>
     </header>
 
     <main class="assistant-page__body">
+      <h1 class="assistant-page__title">{{ feature?.title ?? '会议服务' }}</h1>
       <el-skeleton v-if="loading" :rows="6" animated />
       <el-alert v-else-if="errorMessage" type="error" :closable="false" :title="errorMessage" />
       <el-alert v-else-if="feature && !feature.isPublished" type="info" :closable="false" :title="feature.unpublishedMessage" />
 
       <template v-else-if="feature?.key === 'agenda'">
-        <div class="assistant-date-badge">{{ meetingDate }}</div>
-        <div class="assistant-timeline">
-          <article v-for="item in agendaItems" :key="item.id" class="assistant-timeline-card">
-            <div v-if="item.time" class="assistant-timeline-card__time">{{ item.time }}</div>
-            <h2>{{ item.title }}</h2>
-            <p v-if="item.detail">{{ item.detail }}</p>
-          </article>
+        <div class="assistant-agenda-list">
+          <template v-for="item in agendaItems" :key="item.id">
+            <h2 v-if="item.kind === 'date'" class="assistant-agenda-date">{{ item.title }}</h2>
+            <article v-else class="assistant-agenda-card">
+              <div class="assistant-agenda-card__time">
+                <el-icon><Clock /></el-icon>
+                <strong>{{ item.time || '时间待定' }}</strong>
+              </div>
+              <div class="assistant-agenda-card__content">
+                <h2>{{ item.title }}</h2>
+                <p v-if="item.speaker">
+                  <el-icon><User /></el-icon>
+                  {{ item.speaker }}
+                </p>
+                <p v-if="item.location">
+                  <el-icon><LocationIcon /></el-icon>
+                  {{ item.location }}
+                </p>
+              </div>
+            </article>
+          </template>
         </div>
       </template>
 
@@ -98,7 +114,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ArrowLeft, Location as LocationIcon } from '@element-plus/icons-vue'
+import { ArrowLeft, Clock, Location as LocationIcon, User } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { getApiErrorMessage } from '../../api/client'
@@ -109,9 +125,11 @@ import type { Meeting, MeetingAssistantFeature } from '../../types'
 
 interface AgendaDisplayItem {
   id: string
+  kind: 'date' | 'entry'
   time: string
   title: string
-  detail: string
+  speaker: string
+  location: string
 }
 
 const route = useRoute()
@@ -121,7 +139,6 @@ const feature = ref<MeetingAssistantFeature>()
 const weather = ref<MeetingWeather>()
 const loading = ref(true)
 const errorMessage = ref('')
-const meetingDate = computed(formatMeetingDate)
 const agendaItems = computed(buildAgendaItems)
 const contentBlocks = computed(buildContentBlocks)
 const navigationUrl = computed(buildNavigationUrl)
@@ -160,56 +177,48 @@ async function loadFeature(): Promise<void> {
 }
 
 /**
- * 返回进入当前功能页之前的嘉宾页面。
+ * 返回当前会议的嘉宾首页，并自动展开会议服务列表。
  *
- * 入参：无。
- * 返回值：void：触发浏览器历史返回。
- * 异常：当前函数不主动抛出异常。
+ * 入参：无；函数读取当前路由中的会议 ID。
+ * 返回值：Promise<void>：完成嘉宾首页跳转，并通过查询参数触发会议服务抽屉。
+ * 异常：路由跳转失败时由 Vue Router 抛出异常。
  */
-function goBack(): void {
-  router.back()
+async function goBack(): Promise<void> {
+  await router.push({
+    path: `/guest/meetings/${String(route.params.id)}`,
+    query: { services: 'open' },
+  })
 }
 
 /**
- * 将会议开始日期格式化为日程页日期标签。
+ * 将管理员逐行编辑的日程正文转换为简洁日程卡片。
  *
- * 入参：无；函数读取已加载会议开始时间。
- * 返回值：string：形如 2026-07-18 的日期；会议未加载时返回“会议日程”。
- * 异常：非法日期会返回“会议日程”。
- */
-function formatMeetingDate(): string {
-  if (!meeting.value?.startTime) {
-    return '会议日程'
-  }
-  const date = new Date(meeting.value.startTime)
-  if (Number.isNaN(date.getTime())) {
-    return '会议日程'
-  }
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-/**
- * 将管理员逐行编辑的日程正文转换为时间线卡片。
- *
- * 入参：无；函数读取当前已发布正文，每个非空行生成一张卡片。
- * 返回值：AgendaDisplayItem[]：包含时间、标题和可选说明的日程展示项。
+ * 入参：无；函数读取当前已发布正文，支持日期行、时间段，以及用竖线分隔的标题、讲者和地点。
+ * 返回值：AgendaDisplayItem[]：包含日期分组或时间、标题、可选讲者与地点的日程展示项。
  * 异常：正文为空时返回一条内容待补充提示。
+ * 使用示例：`09:00-09:30 开幕致辞｜主办方代表｜峰会厅`。
  */
 function buildAgendaItems(): AgendaDisplayItem[] {
   const lines = feature.value?.content.split('\n').map((line) => line.trim()).filter(Boolean) ?? []
   if (!lines.length) {
-    return [{ id: 'empty', time: '', title: '日程内容待补充', detail: '' }]
+    return [{ id: 'empty', kind: 'entry', time: '', title: '日程内容待补充', speaker: '', location: '' }]
   }
   return lines.map((line, index) => {
+    const isDateLine = /^(?:\d{4}\s*[年./-]\s*)?\d{1,2}\s*[月./-]\s*\d{1,2}\s*日?$/.test(line)
+    if (isDateLine) {
+      return { id: `agenda-date-${index}`, kind: 'date', time: '', title: line, speaker: '', location: '' }
+    }
+
     const match = line.match(/^(\d{1,2}:\d{2}(?:\s*[-–—]\s*\d{1,2}:\d{2})?)\s*(.*)$/)
+    // 竖线后的两段分别作为讲者和地点；缺失字段不在页面占位。
+    const contentParts = (match?.[2] || line).split(/\s*[|｜]\s*/).map((part) => part.trim()).filter(Boolean)
     return {
       id: `agenda-${index}`,
+      kind: 'entry',
       time: match?.[1] ?? '',
-      title: match?.[2] || line,
-      detail: '',
+      title: contentParts[0] || line,
+      speaker: contentParts[1] || '',
+      location: contentParts[2] || '',
     }
   })
 }

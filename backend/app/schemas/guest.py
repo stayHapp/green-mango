@@ -109,6 +109,8 @@ class GuestProfileResponse(GuestResponse):
     """包含动态字段值的嘉宾个人参会信息响应。"""
 
     values: dict[str, str | None]
+    visible_fields: list[str] = Field(default_factory=list)
+    field_labels: dict[str, str] = Field(default_factory=dict)
 
 
 class GuestLoginFieldsRequest(BaseModel):

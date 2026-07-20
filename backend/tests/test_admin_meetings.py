@@ -313,6 +313,86 @@ def test_guest_field_replace_rejects_duplicate_keys_and_existing_values(
     assert replace_response.status_code == 422
 
 
+def test_admin_configures_guest_display_fields_and_guest_profile_receives_them(
+    client_and_session: tuple[TestClient, Session],
+) -> None:
+    """验证管理员可选择固定与动态嘉宾呈现字段，并由嘉宾资料接口读取。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具。
+    返回值：None：断言通过表示会议级呈现配置保留顺序、校验 key 并传递动态字段标签。
+    异常：当前函数不主动抛出业务异常；断言失败表示管理员配置或嘉宾呈现契约不一致。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-display-fields")
+    meeting = Meeting(title="字段呈现会议", created_by_id=admin.id, status="published")
+    db.add(meeting)
+    db.flush()
+    db.add_all(
+        [
+            MeetingAdmin(meeting_id=meeting.id, user_id=admin.id),
+            MeetingSetting(meeting_id=meeting.id, settings_json={}),
+            GuestField(
+                meeting_id=meeting.id,
+                label="饮食偏好",
+                key="diet_preference",
+                field_type="text",
+                visible_to_guest=True,
+            ),
+        ]
+    )
+    guest = Guest(
+        meeting_id=meeting.id,
+        name="周老师",
+        phone="13900000042",
+        organization="省教育科学研究院",
+        title="研究员",
+        tag="主讲嘉宾",
+        seat="A42",
+        qr_token="display-fields-token",
+    )
+    db.add(guest)
+    db.commit()
+
+    admin_headers = auth_headers(db, admin)
+    default_response = client.get(
+        f"/api/admin/meetings/{meeting.id}/guest-display-fields",
+        headers=admin_headers,
+    )
+    assert default_response.status_code == 200
+    assert default_response.json()["fields"] == [
+        "name",
+        "phone",
+        "organization",
+        "title",
+        "tag",
+        "seat",
+        "diet_preference",
+    ]
+
+    save_response = client.put(
+        f"/api/admin/meetings/{meeting.id}/guest-display-fields",
+        headers=admin_headers,
+        json={"fields": ["name", "organization", "seat", "diet_preference"]},
+    )
+    assert save_response.status_code == 200
+    assert save_response.json()["fields"] == ["name", "organization", "seat", "diet_preference"]
+
+    invalid_response = client.put(
+        f"/api/admin/meetings/{meeting.id}/guest-display-fields",
+        headers=admin_headers,
+        json={"fields": ["unknown_field"]},
+    )
+    assert invalid_response.status_code == 422
+
+    profile_response = client.get(
+        f"/api/guest/meetings/{meeting.id}/profile",
+        headers=auth_headers(db, guest),
+    )
+    assert profile_response.status_code == 200
+    assert profile_response.json()["visible_fields"] == ["name", "organization", "seat", "diet_preference"]
+    assert profile_response.json()["field_labels"] == {"diet_preference": "饮食偏好"}
+
+
 def test_guest_endpoints_reject_unassigned_admin(client_and_session: tuple[TestClient, Session]) -> None:
     """验证未获会议授权的管理员不能访问嘉宾资源。
 

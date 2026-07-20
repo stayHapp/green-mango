@@ -47,6 +47,9 @@ interface GuestProfileApiResponse {
   tag: string | null
   seat: string | null
   qr_token: string
+  values: Record<string, string | null>
+  visible_fields: string[]
+  field_labels: Record<string, string>
 }
 
 interface GuestQrApiResponse {
@@ -137,6 +140,7 @@ export async function getPublicMeeting(meetingId: string): Promise<Meeting> {
     startTime: data.start_time || '',
     endTime: data.end_time || '',
     status: data.status,
+    registrationEnabled: data.registration_enabled,
     adminIds: [],
     staffIds: [],
   }
@@ -183,6 +187,9 @@ export async function loginGuest(
       tag: profile.tag || '嘉宾',
       seat: profile.seat || '',
       qrToken: profile.qr_token,
+      values: profile.values,
+      visibleFields: profile.visible_fields,
+      fieldLabels: profile.field_labels,
     },
   }
 }

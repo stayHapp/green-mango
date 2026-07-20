@@ -8,7 +8,7 @@
       'is-awaiting-check-in': !isCheckedIn && !isExpired && !errorMessage,
     }"
   >
-    <div v-if="!compact || isCheckedIn || isExpired || errorMessage" class="guest-qr-code__status">
+    <div class="guest-qr-code__status">
       <span v-if="compact && isCheckedIn" class="guest-qr-code__status-icon">✓</span>
       <span v-else-if="!compact">{{ statusEyebrow }}</span>
       <strong>{{ statusTitle }}</strong>

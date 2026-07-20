@@ -10,6 +10,8 @@ from app.models.user import User
 from app.schemas.admin_resources import (
     AdminAssignmentRequest,
     AdminResponse,
+    GuestDisplayFieldsRequest,
+    GuestDisplayFieldsResponse,
     GuestLoginFieldsResponse,
     OperationResponse,
     StaffUpdate,
@@ -27,12 +29,14 @@ from app.services.admin_meetings import get_authorized_meeting
 from app.services.admin_resources import (
     add_meeting_admin,
     deactivate_guest,
+    get_guest_display_fields,
     get_login_fields,
     list_meeting_admins,
     regenerate_missing_guest_tokens,
     remove_meeting_admin,
     remove_staff_assignment,
     save_login_fields,
+    save_guest_display_fields,
     update_guest,
     update_staff,
 )
@@ -156,6 +160,39 @@ def put_guest_login_fields(
     """
     fields = save_login_fields(db, load_meeting(db, admin, meeting_id), payload.fields)
     return GuestLoginFieldsResponse(fields=fields)
+
+
+@router.get("/{meeting_id}/guest-display-fields", response_model=GuestDisplayFieldsResponse)
+def get_guest_display_field_settings(
+    meeting_id: int, db: DatabaseSession, admin: CurrentAdmin
+) -> GuestDisplayFieldsResponse:
+    """获取管理员已授权会议的嘉宾端呈现字段。
+
+    入参：meeting_id 为会议 ID；db 与 admin 由 FastAPI 注入。
+    返回值：GuestDisplayFieldsResponse：当前固定和动态呈现字段 key。
+    异常：会议不存在或无权限时返回 404。
+    """
+    return GuestDisplayFieldsResponse(fields=get_guest_display_fields(load_meeting(db, admin, meeting_id)))
+
+
+@router.put("/{meeting_id}/guest-display-fields", response_model=GuestDisplayFieldsResponse)
+def put_guest_display_field_settings(
+    meeting_id: int,
+    payload: GuestDisplayFieldsRequest,
+    db: DatabaseSession,
+    admin: CurrentAdmin,
+) -> GuestDisplayFieldsResponse:
+    """保存管理员已授权会议的嘉宾端呈现字段。
+
+    入参：meeting_id 为会议 ID；payload 为字段 key 列表；db 与 admin 由 FastAPI 注入。
+    返回值：GuestDisplayFieldsResponse：规范化并保存后的呈现字段 key。
+    异常：会议不存在或无权限时返回 404；字段 key 不属于当前会议时返回 422。
+    """
+    try:
+        fields = save_guest_display_fields(db, load_meeting(db, admin, meeting_id), payload.fields)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+    return GuestDisplayFieldsResponse(fields=fields)
 
 
 @router.post("/{meeting_id}/guest-qrcodes/generate", response_model=GuestQrGenerationResponse)

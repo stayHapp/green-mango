@@ -45,6 +45,7 @@
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | GET / PUT | `/api/admin/meetings/{meeting_id}/guest-fields` | 获取或全量保存动态字段配置 |
+| GET / PUT | `/api/admin/meetings/{meeting_id}/guest-display-fields` | 获取或全量保存嘉宾端呈现字段，支持固定字段与动态字段 |
 | GET / PUT | `/api/admin/meetings/{meeting_id}/guest-login-fields` | 获取或确认登录字段，MVP 固定为 `name + phone` |
 | GET / POST | `/api/admin/meetings/{meeting_id}/guests` | 查询或录入单个嘉宾 |
 | GET / PATCH / DELETE | `/api/admin/meetings/{meeting_id}/guests/{guest_id}` | 查询完整资料、修改或软停用嘉宾 |
@@ -52,7 +53,7 @@
 | POST | `/api/admin/meetings/{meeting_id}/guests/import` | 上传 XLSX 并返回成功数和逐行错误 |
 | POST | `/api/admin/meetings/{meeting_id}/guest-qrcodes/generate` | 为缺少凭证的嘉宾补生成二维码 token |
 
-嘉宾固定字段为姓名、手机号、单位、职务、身份和座位号。动态值通过 `values` 对象传递。导入模板还会包含会议配置的动态字段；姓名和手机号必填，文件最大 10MB、单次最多 10,000 行。合法行会导入，错误行不会阻断其他合法行。
+嘉宾固定字段为姓名、手机号、单位、职务、身份和座位号。动态值通过 `values` 对象传递。呈现字段接口使用有序字段 key 数组；固定 key 为 `name`、`phone`、`organization`、`title`、`tag`、`seat`，动态 key 必须属于当前会议。导入模板还会包含会议配置的动态字段；姓名和手机号必填，文件最大 10MB、单次最多 10,000 行。合法行会导入，错误行不会阻断其他合法行。
 
 嘉宾创建和导入时自动生成全局唯一的随机 `qr_token`，其中不包含个人信息。删除操作为软停用，保留历史签到记录。
 
@@ -92,7 +93,7 @@
 | --- | --- | --- |
 | GET | `/api/guest/meetings` | 查询当前嘉宾的会议列表 |
 | GET | `/api/guest/meetings/{meeting_id}` | 查询会议和个人参会概要 |
-| GET | `/api/guest/meetings/{meeting_id}/profile` | 查询固定资料与动态字段值 |
+| GET | `/api/guest/meetings/{meeting_id}/profile` | 查询固定资料、动态字段值、呈现字段 `visible_fields` 与动态标签 `field_labels` |
 | GET | `/api/guest/meetings/{meeting_id}/check-in-qr` | 获取个人签到二维码 token 与过期时间 |
 | GET | `/api/guest/meetings/{meeting_id}/assistant-features/{feature_key}` | 获取单项会议助手公开内容或未发布提醒 |
 | GET | `/api/guest/meetings/{meeting_id}/weather` | 获取已发布天气功能的和风天气实况与七日预报；优先使用管理员确认的导航坐标 |

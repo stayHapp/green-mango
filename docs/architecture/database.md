@@ -9,7 +9,7 @@
 - 迁移工具：Alembic
 - 本地默认数据库：SQLite，`sqlite:///./dev.db`
 - 正式环境数据库：PostgreSQL，通过 `DATABASE_URL` 配置
-- 当前迁移头：`20260716_0005`
+- 当前迁移头：`20260716_0006`
 
 ## 表结构
 
@@ -65,6 +65,7 @@ users --< auth_sessions
 3. `20260715_0003`：安全认证会话表。
 4. `20260715_0004`：嘉宾自主报名申请和审核字段。
 5. `20260716_0005`：会议助手五项固定功能配置、发布状态和唯一约束。
+6. `20260716_0006`：会议导航名称、地址和高德经纬度。
 
 ## 会议助手结构
 
@@ -84,5 +85,7 @@ users --< auth_sessions
 数据库唯一约束保证同一会议同一功能只有一条记录；应用服务负责为新会议创建五条默认配置，并在读取历史会议时补齐缺失配置。数据库不保存天气接口响应。
 
 会议表使用 `navigation_name`、`navigation_address`、`navigation_longitude` 和 `navigation_latitude` 保存管理员确认的高德地点。路线页使用坐标生成导航链接，天气服务使用同一坐标查询和风天气；历史会议字段为空时继续按 `location` 文字匹配。
+
+嘉宾端呈现字段保存在 `meeting_settings.settings_json.guest_visible_fields`，值为固定字段与当前会议动态字段 key 组成的有序数组。该配置复用既有 JSON 字段，不新增数据库迁移；历史会议缺少该键时，服务层默认呈现全部固定字段和原先标记为嘉宾可见的动态字段。
 
 使用唯一约束 `uq_meeting_assistant_features_meeting_id_feature_key` 保证同一会议内功能标识唯一。

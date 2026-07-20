@@ -15,8 +15,23 @@ export interface Meeting {
   startTime: string
   endTime: string
   status: MeetingStatus
+  registrationEnabled?: boolean
   adminIds: string[]
   staffIds: string[]
+}
+
+export interface GuestApplicationInput {
+  name: string
+  phone: string
+  organization?: string
+  title?: string
+}
+
+export interface GuestApplicationResult {
+  id: string
+  meetingId: string
+  status: 'pending' | 'approved' | 'rejected'
+  createdAt: string
 }
 
 export type MeetingUpdateInput = Pick<Meeting, 'title' | 'description' | 'location' | 'startTime' | 'endTime' | 'status'>
@@ -51,6 +66,9 @@ export interface Guest {
   title: string
   seat: string
   qrToken: string
+  visibleFields?: string[]
+  fieldLabels?: Record<string, string>
+  values?: Record<string, string | null>
 }
 
 export interface GuestImportInput {

@@ -1,161 +1,198 @@
 <template>
-  <section class="page staff-check-in-page">
-    <div class="page-heading">
+  <section class="staff-workspace-page">
+    <header class="staff-workspace-header">
       <div>
-        <p class="eyebrow">工作人员端</p>
-        <h1>{{ meeting?.title ?? '会议签到' }}</h1>
-        <dl v-if="meeting" class="compact-info-list">
-          <dt>时间</dt>
-          <dd>{{ formatDate(meeting.startTime) }} - {{ formatDate(meeting.endTime) }}</dd>
-          <dt>地点</dt>
-          <dd>{{ meeting.location }}</dd>
-        </dl>
-        <p v-else class="muted">请先选择会议。</p>
+        <h1>{{ activeModeTitle }}</h1>
+        <p>{{ session.staff?.name || '工作人员' }}</p>
       </div>
-      <div class="heading-actions">
-        <el-button v-if="!session.staff" type="primary" @click="goLogin">去登录</el-button>
-      </div>
-    </div>
+      <button type="button" class="staff-workspace-logout" @click="handleLogout">
+        <el-icon><SwitchButton /></el-icon>
+        退出
+      </button>
+    </header>
 
-    <el-empty v-if="!session.staff" description="暂无工作人员会话" />
-    <el-alert v-else-if="pageError" type="error" :closable="false" :title="pageError" />
-    <el-skeleton v-else-if="pageLoading" :rows="8" animated />
-    <el-empty v-else-if="!meeting" description="未找到会议" />
-    <div v-else class="guest-content-stack">
-      <el-alert
-        v-if="!isOnline"
-        type="error"
-        :closable="false"
-        title="网络连接已断开，暂时无法完成新的签到操作；请恢复网络后重试。"
-      />
-      <div class="stats-grid staff-stats-grid">
-        <el-card shadow="never"><div class="stat-number">{{ guests.length }}</div><div class="muted">参会人员</div></el-card>
-        <el-card shadow="never"><div class="stat-number">{{ checkedCount }}</div><div class="muted">已签到</div></el-card>
-        <el-card shadow="never"><div class="stat-number">{{ uncheckedCount }}</div><div class="muted">未签到</div></el-card>
-      </div>
+    <main class="staff-workspace-content">
+      <el-empty v-if="!session.staff" description="请先登录当前会议工作人员端">
+        <el-button type="primary" @click="goLogin">前往登录</el-button>
+      </el-empty>
+      <el-alert v-else-if="pageError" type="error" :closable="false" :title="pageError" />
+      <el-skeleton v-else-if="pageLoading" :rows="8" animated />
+      <el-empty v-else-if="!meeting" description="未找到会议" />
 
-      <div class="detail-grid staff-detail-grid">
-        <el-card shadow="never" class="form-card">
-          <template #header>扫码签到</template>
-          <el-form label-position="top" @submit.prevent>
-            <el-form-item label="嘉宾二维码 token">
-              <el-input v-model="qrToken" placeholder="请输入或粘贴嘉宾 token" />
-            </el-form-item>
-            <div class="action-row">
-              <el-button :disabled="!isOnline" @click="startCameraScan">手机扫码</el-button>
-              <el-button type="primary" :loading="loading" :disabled="!isOnline" @click="handleScan">确认签到</el-button>
+      <template v-else>
+        <el-alert
+          v-if="!isOnline"
+          class="staff-network-alert"
+          type="error"
+          :closable="false"
+          title="网络连接已断开，暂时无法完成新的签到操作；请恢复网络后重试。"
+        />
+
+        <section class="staff-current-meeting" aria-labelledby="staff-current-meeting-title">
+          <span>当前会议</span>
+          <h2 id="staff-current-meeting-title">{{ meeting.title }}</h2>
+        </section>
+
+        <section v-if="activeMode === 'scan'" class="staff-scan-view">
+          <div class="staff-workspace-stats" aria-label="签到统计">
+            <div><strong>{{ guests.length }}</strong><span>参会人员</span></div>
+            <div><strong>{{ checkedCount }}</strong><span>已签到</span></div>
+            <div><strong>{{ uncheckedCount }}</strong><span>未签到</span></div>
+          </div>
+
+          <div class="staff-scan-stage" :class="{ 'is-scanning': cameraScanning }">
+            <div id="staff-qr-reader" class="staff-scan-camera" />
+            <div v-if="!cameraScanning" class="staff-scan-placeholder">
+              <el-icon><Camera /></el-icon>
+              <span>开启摄像头扫描嘉宾二维码</span>
             </div>
-          </el-form>
-          <div v-if="cameraScanning" id="staff-qr-reader" class="camera-preview" />
-          <el-button v-if="cameraScanning" class="top-gap" @click="stopCameraScan">停止扫码</el-button>
-        </el-card>
+            <i class="staff-scan-corner is-top-left" />
+            <i class="staff-scan-corner is-top-right" />
+            <i class="staff-scan-corner is-bottom-left" />
+            <i class="staff-scan-corner is-bottom-right" />
+            <i v-if="cameraScanning" class="staff-scan-line" />
+          </div>
 
-        <el-card shadow="never">
-          <template #header>签到结果</template>
-          <el-empty v-if="!scanResult" description="等待签到" />
-          <div v-else>
+          <p class="staff-scan-guide">将嘉宾出示的二维码对准扫描框</p>
+          <el-button
+            v-if="!cameraScanning"
+            class="staff-camera-button"
+            type="primary"
+            :loading="cameraStarting"
+            :disabled="!isOnline"
+            @click="startCameraScan"
+          >
+            开启摄像头
+          </el-button>
+          <el-button
+            v-else
+            class="staff-camera-button"
+            plain
+            :disabled="cameraStarting"
+            @click="stopCameraScan"
+          >
+            关闭摄像头
+          </el-button>
+          <button type="button" class="staff-manual-link" @click="switchWorkspaceMode('manual')">
+            无法扫码？手动签到
+          </button>
+
+          <section v-if="scanResult" class="staff-scan-result" aria-live="polite">
             <el-alert :type="resultAlertType" :closable="false" :title="scanResult.message" />
-            <dl v-if="scanResult.guest" class="info-list top-gap">
-              <dt>嘉宾</dt>
-              <dd>{{ scanResult.guest.name }}</dd>
-              <dt>电话</dt>
-              <dd>{{ scanResult.guest.phone }}</dd>
-              <dt>座位</dt>
-              <dd>{{ scanResult.guest.seat }}</dd>
+            <dl v-if="scanResult.guest">
+              <div><dt>嘉宾</dt><dd>{{ scanResult.guest.name }}</dd></div>
+              <div><dt>电话</dt><dd>{{ scanResult.guest.phone }}</dd></div>
+              <div><dt>座位</dt><dd>{{ scanResult.guest.seat || '待分配' }}</dd></div>
             </dl>
-          </div>
-        </el-card>
-      </div>
+          </section>
+        </section>
 
-      <el-tabs model-value="guests" class="section-tabs">
-        <el-tab-pane label="参会人员" name="guests">
-          <el-input v-model="guestQuery" clearable class="table-search" placeholder="搜索姓名、手机号、单位或座位号，核验嘉宾签到状态" />
-          <el-table class="staff-desktop-table" :data="filteredGuestRows" row-key="id">
-            <el-table-column prop="name" label="姓名" width="120" />
-            <el-table-column label="电话" min-width="150">
-              <template #default="{ row }">
-                <a v-if="!row.checkedIn" class="phone-link" :href="`tel:${row.phone}`">{{ row.phone }}</a>
-                <span v-else>{{ row.phone }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="tag" label="身份" width="120" />
-            <el-table-column prop="seat" label="座位" width="100" />
-            <el-table-column label="状态" width="110">
-              <template #default="{ row }">
-                <el-tag :type="row.checkedIn ? 'success' : 'info'">{{ row.checkedIn ? '已签到' : '未签到' }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="140">
-              <template #default="{ row }">
-                <el-button v-if="!row.checkedIn" type="primary" size="small" :loading="manualLoadingId === row.id" :disabled="!isOnline" @click="handleManualCheckIn(row.id)">标记签到</el-button>
-                <span v-else class="muted">已完成</span>
-              </template>
-            </el-table-column>
-          </el-table>
-          <div class="staff-mobile-list">
-            <el-empty v-if="!filteredGuestRows.length" description="未找到匹配嘉宾" :image-size="72" />
-            <article v-for="row in filteredGuestRows" :key="row.id" class="staff-mobile-card">
-              <div class="staff-mobile-card__header">
+        <section v-else-if="activeMode === 'manual'" class="staff-manual-view">
+          <template v-if="selectedManualGuest">
+            <article class="staff-confirm-card">
+              <div class="staff-confirm-card__identity">
+                <span>{{ selectedManualGuest.name.slice(0, 1) }}</span>
                 <div>
-                  <strong>{{ row.name }}</strong>
-                  <p>{{ row.organization }}</p>
+                  <h2>{{ selectedManualGuest.name }}</h2>
+                  <p>{{ selectedManualGuest.phone }}</p>
+                  <el-tag :type="selectedManualGuest.checkedIn ? 'success' : 'info'">
+                    {{ selectedManualGuest.checkedIn ? '已签到' : '待签到' }}
+                  </el-tag>
                 </div>
-                <el-tag :type="row.checkedIn ? 'success' : 'info'">{{ row.checkedIn ? '已签到' : '未签到' }}</el-tag>
               </div>
-              <div class="staff-mobile-card__meta">
-                <span>{{ row.tag }}</span>
-                <span>座位 {{ row.seat }}</span>
-              </div>
-              <a v-if="!row.checkedIn" class="phone-link staff-mobile-card__phone" :href="`tel:${row.phone}`">{{ row.phone }}</a>
-              <span v-else class="staff-mobile-card__phone">{{ row.phone }}</span>
+              <dl class="staff-confirm-card__details">
+                <div><dt>单位</dt><dd>{{ selectedManualGuest.organization || '未填写' }}</dd></div>
+                <div><dt>身份</dt><dd>{{ selectedManualGuest.tag || '嘉宾' }}</dd></div>
+                <div><dt>座位</dt><dd>{{ selectedManualGuest.seat || '待分配' }}</dd></div>
+              </dl>
+            </article>
+            <div class="staff-confirm-tip">
+              <el-icon><InfoFilled /></el-icon>
+              请核对嘉宾信息后确认签到
+            </div>
+            <div class="staff-confirm-actions">
+              <el-button @click="clearManualSelection">下一位</el-button>
               <el-button
-                v-if="!row.checkedIn"
-                class="staff-mobile-card__action"
                 type="primary"
-                :loading="manualLoadingId === row.id"
-                :disabled="!isOnline"
-                @click="handleManualCheckIn(row.id)"
+                :loading="manualLoadingId === selectedManualGuest.id"
+                :disabled="!isOnline || selectedManualGuest.checkedIn"
+                @click="confirmManualCheckIn"
               >
-                确认签到
+                {{ selectedManualGuest.checkedIn ? '已签到' : '确认签到' }}
               </el-button>
-            </article>
-          </div>
-        </el-tab-pane>
-        <el-tab-pane label="签到列表" name="checkins">
-          <el-table class="staff-desktop-table" :data="checkInRows" row-key="id">
-            <el-table-column prop="guestName" label="姓名" width="120" />
-            <el-table-column prop="phone" label="电话" min-width="150" />
-            <el-table-column label="签到时间" min-width="180">
-              <template #default="{ row }">{{ formatDate(row.checkedInAt) }}</template>
-            </el-table-column>
-            <el-table-column label="方式" width="110">
-              <template #default="{ row }">{{ methodText(row.method) }}</template>
-            </el-table-column>
-          </el-table>
-          <div class="staff-mobile-list">
-            <el-empty v-if="!checkInRows.length" description="暂无签到记录" :image-size="72" />
-            <article v-for="row in checkInRows" :key="row.id" class="staff-mobile-card staff-mobile-check-in-card">
-              <div class="staff-mobile-card__header">
-                <strong>{{ row.guestName }}</strong>
-                <el-tag type="success">{{ methodText(row.method) }}</el-tag>
-              </div>
-              <span class="staff-mobile-card__phone">{{ row.phone }}</span>
-              <p class="staff-mobile-card__time">{{ formatDate(row.checkedInAt) }}</p>
-            </article>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-    </div>
+            </div>
+          </template>
+
+          <template v-else>
+            <el-input
+              v-model="guestQuery"
+              clearable
+              class="staff-guest-search"
+              placeholder="搜索姓名、手机号、单位或座位号"
+              :prefix-icon="Search"
+            />
+            <div class="staff-manual-results">
+              <el-empty v-if="!filteredGuestRows.length" description="未找到匹配嘉宾" :image-size="72" />
+              <article v-for="row in filteredGuestRows" :key="row.id" class="staff-guest-row">
+                <span class="staff-guest-row__avatar">{{ row.name.slice(0, 1) }}</span>
+                <div class="staff-guest-row__copy">
+                  <strong>{{ row.name }}</strong>
+                  <p>{{ row.phone }}</p>
+                  <small>{{ row.organization || row.tag }} · 座位 {{ row.seat || '待分配' }}</small>
+                </div>
+                <el-button
+                  v-if="!row.checkedIn"
+                  type="primary"
+                  plain
+                  @click="selectManualGuest(row)"
+                >
+                  核对签到
+                </el-button>
+                <el-tag v-else type="success">已签到</el-tag>
+              </article>
+            </div>
+          </template>
+        </section>
+
+        <section v-else class="staff-records-view">
+          <el-empty v-if="!checkInRows.length" description="暂无签到记录" :image-size="72" />
+          <article v-for="row in checkInRows" :key="row.id" class="staff-record-row">
+            <span>{{ row.guestName.slice(0, 1) }}</span>
+            <div>
+              <strong>{{ row.guestName }}</strong>
+              <p>{{ row.phone }}</p>
+              <small>{{ formatDate(row.checkedInAt) }}</small>
+            </div>
+            <em>{{ methodText(row.method) }}</em>
+          </article>
+        </section>
+      </template>
+    </main>
+
+    <nav v-if="session.staff && meeting" class="staff-workspace-nav" aria-label="签到工作台导航">
+      <button
+        v-for="item in workspaceModes"
+        :key="item.key"
+        type="button"
+        :class="{ 'is-active': activeMode === item.key }"
+        @click="switchWorkspaceMode(item.key)"
+      >
+        <el-icon><component :is="item.icon" /></el-icon>
+        <span>{{ item.label }}</span>
+      </button>
+    </nav>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Camera, InfoFilled, Postcard, Search, SwitchButton, Tickets } from '@element-plus/icons-vue'
 import { Html5Qrcode } from 'html5-qrcode'
 
 import { getApiErrorMessage } from '../../api/client'
+import { logoutClientSession } from '../../api/sessions'
 import {
   listStaffCheckIns,
   listStaffMeetings,
@@ -174,6 +211,14 @@ interface CheckInRow extends CheckInRecord {
 
 interface BarcodeDetectorLike { detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>> }
 
+type StaffWorkspaceMode = 'scan' | 'manual' | 'records'
+
+interface StaffWorkspaceModeItem {
+  key: StaffWorkspaceMode
+  label: string
+  icon: Component
+}
+
 const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
@@ -187,12 +232,17 @@ const loading = ref(false)
 const manualLoadingId = ref('')
 const isOnline = ref(navigator.onLine)
 const cameraScanning = ref(false)
+const cameraStarting = ref(false)
 const pageLoading = ref(false)
 const pageError = ref('')
+const activeMode = ref<StaffWorkspaceMode>('scan')
+const selectedManualGuest = ref<StaffGuest>()
 let guestSearchTimer: number | undefined
 let qrScanner: Html5Qrcode | undefined
+let cameraScanGeneration = 0
 const scanResult = ref<ScanResult>()
 const resultAlertType = computed(alertType)
+const activeModeTitle = computed(currentModeTitle)
 const checkedCount = computed(() => checkIns.value.length)
 const uncheckedCount = computed(() => Math.max(guests.value.length - checkedCount.value, 0))
 const filteredGuestRows = computed(() => displayedGuests.value)
@@ -204,6 +254,106 @@ const checkInRows = computed<CheckInRow[]>(() => checkIns.value.map((record) => 
     phone: guest?.phone ?? '-',
   }
 }))
+const workspaceModes: StaffWorkspaceModeItem[] = [
+  { key: 'scan', label: '扫码签到', icon: Camera },
+  { key: 'manual', label: '手动签到', icon: Postcard },
+  { key: 'records', label: '签到记录', icon: Tickets },
+]
+
+/**
+ * 根据当前工作台模式返回页面标题。
+ *
+ * 入参：无；函数读取 activeMode 当前值。
+ * 返回值：string：扫码签到、手动签到或签到记录标题。
+ * 异常：当前函数不主动抛出异常。
+ */
+function currentModeTitle(): string {
+  const titleMap: Record<StaffWorkspaceMode, string> = {
+    scan: '扫码签到',
+    manual: selectedManualGuest.value ? '确认嘉宾' : '手动签到',
+    records: '签到记录',
+  }
+  return titleMap[activeMode.value]
+}
+
+/**
+ * 切换工作人员签到工作台模式，并在离开扫码页时释放摄像头。
+ *
+ * 入参：mode 为目标模式，必填，可取 scan、manual 或 records。
+ * 返回值：Promise<void>：完成必要资源清理后更新当前模式。
+ * 异常：摄像头清理异常由 stopCameraScan 内部吸收。
+ */
+async function switchWorkspaceMode(mode: StaffWorkspaceMode): Promise<void> {
+  if (activeMode.value === 'scan' && mode !== 'scan') {
+    await stopCameraScan()
+  }
+  activeMode.value = mode
+  if (mode !== 'manual') {
+    selectedManualGuest.value = undefined
+  }
+}
+
+/**
+ * 选择手动签到搜索结果，进入嘉宾资料核对状态。
+ *
+ * 入参：guest 为需要核对的嘉宾，必填。
+ * 返回值：void：保存选中嘉宾并更新页面标题。
+ * 异常：当前函数不主动抛出异常。
+ */
+function selectManualGuest(guest: StaffGuest): void {
+  selectedManualGuest.value = guest
+}
+
+/**
+ * 清除当前手动签到嘉宾，返回搜索结果列表。
+ *
+ * 入参：无。
+ * 返回值：void：清空当前选中嘉宾。
+ * 异常：当前函数不主动抛出异常。
+ */
+function clearManualSelection(): void {
+  selectedManualGuest.value = undefined
+}
+
+/**
+ * 对核对后的当前嘉宾执行人工签到。
+ *
+ * 入参：无；函数读取 selectedManualGuest 当前值。
+ * 返回值：Promise<void>：签到成功后刷新数据、提示结果并返回搜索列表。
+ * 异常：没有选中嘉宾时直接结束；业务异常由 handleManualCheckIn 转换为签到结果。
+ */
+async function confirmManualCheckIn(): Promise<void> {
+  if (!selectedManualGuest.value) {
+    return
+  }
+  await handleManualCheckIn(selectedManualGuest.value.id)
+  if (scanResult.value?.status === 'success') {
+    ElMessage.success('人工签到成功。')
+    selectedManualGuest.value = undefined
+  } else if (scanResult.value?.message) {
+    ElMessage.warning(scanResult.value.message)
+  }
+}
+
+/**
+ * 退出工作人员会话并返回当前会议专属登录入口。
+ *
+ * 入参：无；函数读取当前路由会议 ID 和工作人员会话。
+ * 返回值：Promise<void>：无论服务端撤销是否成功，均清理本地会话并完成路由跳转。
+ * 异常：服务端撤销失败时显示警告但不向外抛出。
+ */
+async function handleLogout(): Promise<void> {
+  const meetingId = String(route.params.id)
+  try {
+    await logoutClientSession('staff')
+  } catch {
+    ElMessage.warning('服务端会话可能已失效，本地登录状态已清除。')
+  } finally {
+    await stopCameraScan()
+    session.clearStaff()
+    await router.replace(`/meetings/${meetingId}/staff/login`)
+  }
+}
 
 /**
  * 延迟触发服务端嘉宾搜索，避免连续输入产生过多请求。
@@ -278,25 +428,105 @@ function stopNetworkMonitoring(): void {
  * 异常：摄像头权限被拒绝或浏览器不支持扫码能力时展示提示。
  */
 async function startCameraScan(): Promise<void> {
+  if (cameraScanning.value) {
+    return
+  }
+
+  const scanGeneration = ++cameraScanGeneration
   try {
+    cameraStarting.value = true
     cameraScanning.value = true
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    qrScanner = new Html5Qrcode('staff-qr-reader')
-    await qrScanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 240, height: 240 } }, async (decodedText) => { qrToken.value = decodedText; await stopCameraScan(); await handleScan() }, () => undefined)
-  } catch { stopCameraScan(); ElMessage.error('无法打开摄像头，请检查权限后重试。') }
+    if (scanGeneration !== cameraScanGeneration) {
+      return
+    }
+
+    const scanner = new Html5Qrcode('staff-qr-reader')
+    qrScanner = scanner
+    await scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 240, height: 240 } },
+      (decodedText) => { void handleCameraDecoded(decodedText, scanGeneration) },
+      ignoreCameraDecodeError,
+    )
+    if (scanGeneration !== cameraScanGeneration) {
+      await releaseQrScanner(scanner)
+      return
+    }
+    cameraStarting.value = false
+  } catch {
+    if (scanGeneration === cameraScanGeneration) {
+      await stopCameraScan()
+      ElMessage.error('无法打开摄像头，请检查权限后重试。')
+    }
+  }
+}
+
+/**
+ * 处理摄像头成功识别出的嘉宾二维码。
+ *
+ * 入参：decodedText 为二维码文本；scanGeneration 为启动本轮扫码时的代次编号，均必填。
+ * 返回值：Promise<void>：当前扫码仍有效时关闭摄像头并提交签到。
+ * 异常：签到业务异常由 handleScan 转换为页面结果；过期扫码回调会被忽略。
+ */
+async function handleCameraDecoded(decodedText: string, scanGeneration: number): Promise<void> {
+  if (scanGeneration !== cameraScanGeneration) {
+    return
+  }
+  qrToken.value = decodedText
+  await stopCameraScan()
+  await handleScan()
+}
+
+/**
+ * 忽略单帧未识别二维码的错误，让摄像头继续扫描后续画面。
+ *
+ * 入参：无；二维码库可能传入错误文本，但当前流程不需要使用。
+ * 返回值：void：不修改页面状态。
+ * 异常：当前函数不主动抛出异常。
+ */
+function ignoreCameraDecodeError(): void {
+  // 单帧没有识别到二维码属于正常扫描过程，不向工作人员展示错误。
+}
+
+/**
+ * 停止并清理一个二维码扫描器实例，释放摄像头媒体轨道和页面资源。
+ *
+ * 入参：scanner 为需要释放的 Html5Qrcode 实例，必填。
+ * 返回值：Promise<void>：无论库方法是否报错，最终都会尝试清理实例。
+ * 异常：停止或清理异常会在函数内部吸收，避免关闭操作阻断页面离开。
+ */
+async function releaseQrScanner(scanner: Html5Qrcode): Promise<void> {
+  try {
+    if (scanner.isScanning) {
+      await scanner.stop()
+    }
+  } catch {
+    // 浏览器可能在媒体轨道已结束时再次抛错，此时继续执行资源清理。
+  }
+  try {
+    scanner.clear()
+  } catch {
+    // 扫描容器已卸载时清理可能失败，不影响摄像头关闭结果。
+  }
 }
 
 /**
  * 停止摄像头扫码并释放媒体设备资源。
  *
  * 入参：无。
- * 返回值：void：关闭视频轨道和扫描循环。
- * 异常：当前函数不主动抛出异常。
+ * 返回值：Promise<void>：立即退出扫码界面，并停止视频轨道和扫描循环。
+ * 异常：二维码库停止或清理异常由 releaseQrScanner 吸收。
  */
 async function stopCameraScan(): Promise<void> {
-  if (qrScanner?.isScanning) await qrScanner.stop()
+  cameraScanGeneration += 1
+  const scanner = qrScanner
   qrScanner = undefined
+  cameraStarting.value = false
   cameraScanning.value = false
+  if (scanner) {
+    await releaseQrScanner(scanner)
+  }
 }
 
 /**
@@ -492,19 +722,18 @@ async function handleManualCheckIn(guestId: string): Promise<void> {
 }
 
 /**
- * 跳转到管理与签到登录页。
+ * 跳转到当前会议专属工作人员登录页。
  *
  * 入参：
  *   无。
  *
- * 返回值：
- *   void：只触发前端路由跳转。
+ * 返回值：Promise<void>：完成当前会议工作人员登录页跳转。
  *
  * 异常：
  *   当前函数不主动抛出异常。
  */
-function goLogin(): void {
-  router.push('/login')
+async function goLogin(): Promise<void> {
+  await router.push(`/meetings/${String(route.params.id)}/staff/login`)
 }
 
 /**

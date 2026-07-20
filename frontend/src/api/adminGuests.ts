@@ -40,6 +40,10 @@ interface GuestLoginFieldsApiResponse {
   fields: string[]
 }
 
+interface GuestDisplayFieldsApiResponse {
+  fields: string[]
+}
+
 interface GuestQrGenerationApiResponse {
   generated_count: number
   existing_count: number
@@ -228,6 +232,38 @@ export async function replaceAdminGuestFields(
     authorizationConfig('admin'),
   )
   return data.map((field) => mapGuestField(field, new Set(['name', 'phone'])))
+}
+
+/**
+ * 获取会议嘉宾端当前呈现的固定与动态字段 key。
+ *
+ * 入参：meetingId 为会议 ID，必填。
+ * 返回值：Promise<string[]>：按管理员配置顺序返回呈现字段 key。
+ * 异常：登录失效、会议无权限或网络失败时抛出异常，由页面展示。
+ */
+export async function getAdminGuestDisplayFields(meetingId: string): Promise<string[]> {
+  const { data } = await apiClient.get<GuestDisplayFieldsApiResponse>(
+    `/admin/meetings/${encodeURIComponent(meetingId)}/guest-display-fields`,
+    authorizationConfig('admin'),
+  )
+  return data.fields
+}
+
+/**
+ * 保存会议嘉宾端需要呈现的固定与动态字段 key。
+ *
+ * 入参：meetingId 为会议 ID；fields 为按呈现顺序排列的字段 key，均必填。
+ * 返回值：Promise<string[]>：服务端规范化并保存后的字段 key。
+ * 异常：字段不属于当前会议、登录失效、无权限或网络失败时抛出异常，由页面展示。
+ * 使用示例：`await replaceAdminGuestDisplayFields('1', ['name', 'organization', 'seat'])`。
+ */
+export async function replaceAdminGuestDisplayFields(meetingId: string, fields: string[]): Promise<string[]> {
+  const { data } = await apiClient.put<GuestDisplayFieldsApiResponse>(
+    `/admin/meetings/${encodeURIComponent(meetingId)}/guest-display-fields`,
+    { fields },
+    authorizationConfig('admin'),
+  )
+  return data.fields
 }
 
 /**

@@ -14,52 +14,116 @@
         </div>
 
         <template v-else-if="meeting">
-          <GuestMeetingSummary :meeting="meeting" />
+          <div class="guest-home-toolbar">
+            <button
+              type="button"
+              class="guest-home-menu-button"
+              aria-label="打开会议服务"
+              @click="openServiceDrawer"
+            >
+              <svg class="guest-home-menu-button__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 7h14M5 12h14M5 17h14" />
+              </svg>
+            </button>
+            <el-button
+              class="guest-home-logout-button"
+              :loading="loggingOut"
+              @click="handleGuestLogout"
+            >
+              <svg class="guest-home-logout-button__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M18 12H9" />
+              </svg>
+              退出
+            </el-button>
+          </div>
 
-          <section class="guest-home-card guest-pass-card" aria-labelledby="guest-identity-title">
+          <GuestMeetingSummary :meeting="meeting" compact />
+
+          <section class="guest-home-card guest-pass-card guest-profile-card" aria-labelledby="guest-identity-title">
+            <div class="guest-profile-card__avatar" aria-hidden="true">
+              {{ (isGuestFieldVisible('name') ? session.guest.name : '嘉宾').slice(0, 1) }}
+            </div>
             <div class="guest-pass-card__identity">
               <div class="guest-pass-card__name-row">
-                <h2 id="guest-identity-title">{{ session.guest.name }}</h2>
-                <el-tag class="identity-role" type="success" effect="light">
+                <h2 id="guest-identity-title">{{ isGuestFieldVisible('name') ? session.guest.name : '参会嘉宾' }}</h2>
+                <el-tag v-if="isGuestFieldVisible('tag') && session.guest.tag" class="identity-role" type="success" effect="light">
                   {{ session.guest.tag || '嘉宾' }}
                 </el-tag>
               </div>
               <dl class="guest-pass-card__details">
-                <div v-if="session.guest.organization">
+                <div v-if="isGuestFieldVisible('organization') && session.guest.organization">
                   <dt>单位</dt>
                   <dd>{{ session.guest.organization }}</dd>
                 </div>
-                <div v-if="session.guest.title">
+                <div v-if="isGuestFieldVisible('title') && session.guest.title">
                   <dt>职位</dt>
                   <dd>{{ session.guest.title }}</dd>
                 </div>
-                <div v-if="maskedPhone">
+                <div v-if="isGuestFieldVisible('phone') && maskedPhone">
                   <dt>电话</dt>
                   <dd>{{ maskedPhone }}</dd>
+                </div>
+                <div v-for="item in visibleDynamicDetails" :key="item.key">
+                  <dt>{{ item.label }}</dt>
+                  <dd>{{ item.value }}</dd>
                 </div>
               </dl>
             </div>
 
-            <div v-if="session.guest.seat" class="guest-pass-card__seat">
+            <div v-if="isGuestFieldVisible('seat') && session.guest.seat" class="guest-pass-card__seat">
               <span>座位</span>
               <strong>{{ session.guest.seat }}</strong>
             </div>
 
-            <div class="guest-pass-card__check-in" aria-label="签到">
-              <GuestQrCode :meeting-id="meeting.id" :token="session.guest.qrToken" compact />
-            </div>
           </section>
 
-          <section class="guest-service-card" aria-labelledby="guest-service-title">
-            <h2 id="guest-service-title">会议服务</h2>
-            <MeetingAssistantShortcutGrid :meeting-id="meeting.id" />
+          <section class="guest-home-card guest-check-in-card" aria-label="签到凭证">
+            <GuestQrCode :meeting-id="meeting.id" :token="session.guest.qrToken" compact />
           </section>
 
-          <footer class="guest-home-footer">
-            <el-button text :loading="loggingOut" @click="handleGuestLogout">退出登录</el-button>
-          </footer>
         </template>
       </main>
+
+      <el-drawer
+        v-if="meeting"
+        v-model="serviceDrawerVisible"
+        class="guest-service-drawer-shell"
+        direction="ltr"
+        size="min(420px, 88vw)"
+        title="会议服务"
+        :show-close="false"
+        :with-header="false"
+        append-to-body
+        destroy-on-close
+        @closed="handleServiceDrawerClosed"
+      >
+        <aside class="guest-service-drawer" aria-label="会议服务菜单">
+          <header class="guest-service-drawer__header">
+            <div>
+              <h2>{{ meeting.title }}</h2>
+              <p>会议服务</p>
+            </div>
+            <button type="button" aria-label="关闭会议服务" @click="closeServiceDrawer">
+              <el-icon><Close /></el-icon>
+            </button>
+          </header>
+
+          <div class="guest-service-drawer__content">
+            <MeetingAssistantShortcutGrid
+              :meeting-id="meeting.id"
+              variant="drawer"
+              @select="handleServiceSelected"
+            />
+          </div>
+
+          <footer class="guest-service-drawer__footer">
+            <button type="button" @click="returnToMeetingEntry">
+              <el-icon><House /></el-icon>
+              返回活动首页
+            </button>
+          </footer>
+        </aside>
+      </el-drawer>
     </div>
   </section>
 </template>
@@ -67,6 +131,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Close, House } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { getApiErrorMessage } from '../../api/client'
@@ -76,7 +141,7 @@ import GuestQrCode from '../../components/GuestQrCode.vue'
 import GuestMeetingSummary from '../../components/GuestMeetingSummary.vue'
 import MeetingAssistantShortcutGrid from '../../components/MeetingAssistantShortcutGrid.vue'
 import { useSessionStore } from '../../stores/session'
-import type { Meeting } from '../../types'
+import type { Meeting, MeetingAssistantFeatureKey } from '../../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -84,8 +149,108 @@ const session = useSessionStore()
 const meeting = ref<Meeting>()
 const loading = ref(false)
 const loggingOut = ref(false)
+const serviceDrawerVisible = ref(route.query.services === 'open')
 const errorMessage = ref('')
 const maskedPhone = computed(maskGuestPhone)
+const visibleGuestFieldSet = computed(() => new Set(session.guest?.visibleFields ?? ['name', 'phone', 'organization', 'title', 'tag', 'seat']))
+const visibleDynamicDetails = computed(buildVisibleDynamicDetails)
+
+interface GuestDynamicDetail {
+  key: string
+  label: string
+  value: string
+}
+
+/**
+ * 打开嘉宾首页左侧会议服务抽屉。
+ *
+ * 入参：无；由左上角菜单按钮触发。
+ * 返回值：void：将抽屉可见状态设置为 true。
+ * 异常：当前函数不主动抛出异常。
+ */
+function openServiceDrawer(): void {
+  serviceDrawerVisible.value = true
+}
+
+/**
+ * 关闭嘉宾首页左侧会议服务抽屉。
+ *
+ * 入参：无；由抽屉关闭按钮触发。
+ * 返回值：void：将抽屉可见状态设置为 false。
+ * 异常：当前函数不主动抛出异常。
+ */
+function closeServiceDrawer(): void {
+  serviceDrawerVisible.value = false
+}
+
+/**
+ * 在会议服务抽屉完全关闭后清理路由中的自动打开标记。
+ *
+ * 入参：无；函数读取当前路由的 services 查询参数。
+ * 返回值：Promise<void>：存在自动打开标记时完成无历史记录的路由替换，否则直接结束。
+ * 异常：路由替换失败时由 Vue Router 抛出异常。
+ */
+async function handleServiceDrawerClosed(): Promise<void> {
+  if (route.query.services !== 'open') {
+    return
+  }
+
+  await router.replace({ path: route.path })
+}
+
+/**
+ * 在选择会议服务后收起抽屉，让服务组件继续完成详情页跳转。
+ *
+ * 入参：key 为已选择的会议服务标识，必填；当前仅用于保持事件契约清晰。
+ * 返回值：void：关闭当前抽屉。
+ * 异常：当前函数不主动抛出异常。
+ */
+function handleServiceSelected(key: MeetingAssistantFeatureKey): void {
+  // 保留服务标识参数，便于后续按服务记录访问行为时直接扩展。
+  void key
+  serviceDrawerVisible.value = false
+}
+
+/**
+ * 从会议服务抽屉返回当前会议的公开活动首页。
+ *
+ * 入参：无；函数读取已加载会议的 ID。
+ * 返回值：Promise<void>：关闭抽屉并完成活动首页路由跳转。
+ * 异常：会议尚未加载时直接结束；路由跳转失败时由 Vue Router 抛出异常。
+ */
+async function returnToMeetingEntry(): Promise<void> {
+  if (!meeting.value) {
+    return
+  }
+  serviceDrawerVisible.value = false
+  await router.push(`/meetings/${meeting.value.id}`)
+}
+
+/**
+ * 判断一个固定或扩展嘉宾字段是否允许在嘉宾端呈现。
+ *
+ * 入参：fieldKey 为字段 key，必填。
+ * 返回值：boolean：管理员选择呈现时返回 true，否则返回 false。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isGuestFieldVisible(fieldKey: string): boolean {
+  return visibleGuestFieldSet.value.has(fieldKey)
+}
+
+/**
+ * 生成嘉宾首页需要呈现的非空动态字段列表。
+ *
+ * 入参：无；函数读取当前嘉宾的动态值、字段标签和会议呈现配置。
+ * 返回值：GuestDynamicDetail[]：按资料响应顺序返回可见且有值的扩展字段。
+ * 异常：当前函数不主动抛出异常；缺少标签时使用字段 key 作为兜底标题。
+ */
+function buildVisibleDynamicDetails(): GuestDynamicDetail[] {
+  const values = session.guest?.values ?? {}
+  const labels = session.guest?.fieldLabels ?? {}
+  return Object.entries(values)
+    .filter(([key, value]) => isGuestFieldVisible(key) && Boolean(value?.trim()))
+    .map(([key, value]) => ({ key, label: labels[key] || key, value: value?.trim() || '' }))
+}
 
 /**
  * 加载会话所属的当前会议详情，并阻止会议级嘉宾身份访问其他会议。
@@ -111,6 +276,7 @@ async function loadDetail(): Promise<void> {
   errorMessage.value = ''
   try {
     meeting.value = await getGuestMeeting(routeMeetingId)
+    serviceDrawerVisible.value = route.query.services === 'open'
   } catch (error) {
     meeting.value = undefined
     errorMessage.value = getApiErrorMessage(error, '当前会议信息加载失败，请稍后重试。')

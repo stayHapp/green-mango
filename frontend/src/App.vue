@@ -1,13 +1,13 @@
 <template>
-  <el-container class="app-shell">
-    <el-header v-if="!isGuestPage" class="topbar">
+  <el-container class="app-shell" :class="{ 'staff-app-shell': isStaffPage }">
+    <el-header v-if="!isGuestPage && !isStaffWorkspace" class="topbar" :class="{ 'staff-topbar': isStaffPage }">
       <router-link class="brand" to="/">
         <span class="brand-name">知会</span>
         <span class="brand-subtitle">会议与签到原型</span>
       </router-link>
       <nav class="topnav">
         <template v-if="currentClient">
-          <span class="current-client">{{ currentClient }}</span>
+          <span v-if="!isStaffPage" class="current-client">{{ currentClient }}</span>
           <el-button text type="primary" @click="handleLogout">退出登录</el-button>
         </template>
         <template v-else>
@@ -16,7 +16,7 @@
         </template>
       </nav>
     </el-header>
-    <el-main :class="{ 'guest-main': isGuestPage }">
+    <el-main :class="{ 'guest-main': isGuestPage, 'staff-main': isStaffPage }">
       <router-view />
     </el-main>
   </el-container>
@@ -36,16 +36,40 @@ const router = useRouter()
 const session = useSessionStore()
 const currentClient = computed(clientName)
 const isGuestPage = computed(guestPage)
+const isStaffPage = computed(staffPage)
+const isStaffWorkspace = computed(staffWorkspace)
 
 /**
  * 判断当前路由是否属于嘉宾端页面。
  *
  * 入参：无；函数读取当前路由路径。
- * 返回值：boolean：路径以 `/guest/` 开头时返回 true，否则返回 false。
+ * 返回值：boolean：嘉宾登录、会议公开入口或报名页面返回 true，否则返回 false。
  * 异常：当前函数不主动抛出异常。
  */
 function guestPage(): boolean {
-  return route.path.startsWith('/guest/')
+  return route.path.startsWith('/guest/') || route.path.startsWith('/meetings/')
+}
+
+/**
+ * 判断当前路由是否属于工作人员端页面。
+ *
+ * 入参：无；函数读取当前路由路径。
+ * 返回值：boolean：路径以 `/staff/` 开头时返回 true，否则返回 false。
+ * 异常：当前函数不主动抛出异常。
+ */
+function staffPage(): boolean {
+  return route.path.startsWith('/staff/')
+}
+
+/**
+ * 判断当前路由是否为采用独立移动端顶栏的工作人员签到工作台。
+ *
+ * 入参：无；函数读取当前路由名称。
+ * 返回值：boolean：工作人员签到路由返回 true，否则返回 false。
+ * 异常：当前函数不主动抛出异常。
+ */
+function staffWorkspace(): boolean {
+  return route.name === 'staff-check-in'
 }
 
 /**

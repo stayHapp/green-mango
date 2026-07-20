@@ -1,5 +1,13 @@
 <template>
-  <section class="guest-home-summary" aria-labelledby="guest-meeting-title">
+  <section
+    class="guest-home-summary"
+    :class="{ 'is-compact': compact, 'has-description': showDescription && meeting.description }"
+    aria-labelledby="guest-meeting-title"
+  >
+    <div v-if="!compact" class="guest-home-summary__brand" aria-label="知会">
+      <span>知</span>
+      <small>知 会</small>
+    </div>
     <h1 id="guest-meeting-title">{{ meeting.title }}</h1>
     <div class="guest-home-summary__meta">
       <div>
@@ -10,16 +18,23 @@
         <el-icon><Location /></el-icon>
         <strong>{{ meeting.location || '待会务确认' }}</strong>
       </div>
+      <div v-if="showDescription && meeting.description" class="guest-home-summary__description">
+        <el-icon><Document /></el-icon>
+        <strong>{{ meeting.description }}</strong>
+      </div>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { Calendar, Location } from '@element-plus/icons-vue'
+import { Calendar, Document, Location } from '@element-plus/icons-vue'
 
 import type { Meeting } from '../types'
 
-defineProps<{ meeting: Meeting }>()
+withDefaults(defineProps<{ meeting: Meeting; compact?: boolean; showDescription?: boolean }>(), {
+  compact: false,
+  showDescription: false,
+})
 
 /**
  * 将会议起止时间格式化为正式中文范围。

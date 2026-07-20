@@ -1,5 +1,8 @@
 <template>
-  <div class="assistant-shortcut-shell" :class="{ 'has-more': canScrollForward }">
+  <div
+    class="assistant-shortcut-shell"
+    :class="{ 'has-more': canScrollForward, 'is-drawer': props.variant === 'drawer' }"
+  >
     <div ref="shortcutScroller" class="assistant-shortcut-grid" @scroll="updateScrollState">
       <button
         v-for="item in shortcutItems"
@@ -12,7 +15,11 @@
         <span class="assistant-shortcut-item__icon">
           <el-icon><component :is="item.icon" /></el-icon>
         </span>
-        <strong>{{ item.title }}</strong>
+        <span class="assistant-shortcut-item__copy">
+          <strong>{{ item.title }}</strong>
+          <small>{{ item.description }}</small>
+        </span>
+        <el-icon class="assistant-shortcut-item__arrow"><ArrowRight /></el-icon>
       </button>
     </div>
   </div>
@@ -20,7 +27,7 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, type Component } from 'vue'
-import { Calendar, Location, PhoneFilled, Reading, Sunny } from '@element-plus/icons-vue'
+import { ArrowRight, Calendar, Location, PhoneFilled, Reading, Sunny } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 
 import { meetingAssistantFeatureDefinitions } from '../api/meetingAssistant'
@@ -29,10 +36,13 @@ import type { MeetingAssistantFeatureKey } from '../types'
 interface AssistantShortcutItem {
   key: MeetingAssistantFeatureKey
   title: string
+  description: string
   icon: Component
 }
 
-const props = defineProps<{ meetingId: string }>()
+const props = withDefaults(defineProps<{ meetingId: string; variant?: 'default' | 'drawer' }>(), {
+  variant: 'default',
+})
 const emit = defineEmits<{ select: [key: MeetingAssistantFeatureKey] }>()
 const router = useRouter()
 const shortcutScroller = ref<HTMLElement>()
@@ -47,6 +57,7 @@ const icons: Record<MeetingAssistantFeatureKey, Component> = {
 const shortcutItems: AssistantShortcutItem[] = meetingAssistantFeatureDefinitions.map((item) => ({
   key: item.key,
   title: item.title,
+  description: item.description,
   icon: icons[item.key],
 }))
 

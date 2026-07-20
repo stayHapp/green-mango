@@ -1,8 +1,7 @@
 <template>
-  <section class="page">
+  <section class="page staff-meetings-page">
     <div class="page-heading">
       <div>
-        <p class="eyebrow">工作人员端</p>
         <h1>负责会议</h1>
         <p class="muted">{{ session.staff ? `${session.staff.name} 的签到任务` : '请先完成工作人员登录。' }}</p>
       </div>
