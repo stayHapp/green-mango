@@ -71,6 +71,8 @@ def update_meeting_assistant_feature(
     feature.content = payload.content
     feature.unpublished_message = payload.unpublished_message
     feature.is_published = payload.is_published
+    if payload.contacts is not None:
+        feature.contacts = [contact.model_dump() for contact in payload.contacts]
     db.commit()
     db.refresh(feature)
     return feature

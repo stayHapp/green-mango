@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.api.dependencies import CurrentAdmin, CurrentGuest, DatabaseSession
 from app.schemas.meeting_assistant import (
+    ContactPerson,
     GuestMeetingAssistantFeatureResponse,
     MeetingAssistantFeatureKey,
     MeetingAssistantFeatureResponse,
@@ -86,6 +87,7 @@ def get_guest_assistant_feature(
         content=feature.content if feature.is_published else None,
         unpublished_message=feature.unpublished_message,
         is_published=feature.is_published,
+        contacts=[ContactPerson(**item) for item in (feature.contacts or [])],
     )
 
 

@@ -107,6 +107,7 @@ class MeetingAssistantFeature(Base):
     content: Mapped[str] = mapped_column(Text, default="", nullable=False)
     unpublished_message: Mapped[str] = mapped_column(String(500), nullable=False)
     is_published: Mapped[bool] = mapped_column(default=False, nullable=False)
+    contacts: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False

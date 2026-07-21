@@ -15,7 +15,7 @@
         </div>
 
         <template v-else-if="meeting">
-          <GuestMeetingSummary :meeting="meeting" />
+          <GuestMeetingSummary :meeting="meeting" compact />
 
           <section v-if="submitted" class="guest-register-success" aria-live="polite">
             <span class="guest-register-success__icon"><el-icon><CircleCheckFilled /></el-icon></span>

@@ -106,6 +106,14 @@
   background:
     radial-gradient(circle at 12% 0%, rgba(59, 130, 246, 0.12), transparent 34%),
     #eef2f8;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.guest-home-page::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .guest-home-shell {
@@ -156,7 +164,7 @@
 .guest-home-content {
   display: grid;
   gap: 16px;
-  padding: 20px 20px 48px;
+  padding: 8px 20px 48px;
 }
 
 .guest-home-loading {
@@ -305,16 +313,16 @@
 
 .guest-service-card .assistant-shortcut-item {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 18px;
+  grid-template-columns: 36px minmax(0, 1fr) 16px;
   align-items: center;
   justify-items: stretch;
-  gap: 12px;
-  min-height: 88px;
+  gap: 10px;
+  min-height: 64px;
   border: 1px solid #e5eaf3;
-  border-radius: 18px;
+  border-radius: 14px;
   background: #f9fbff;
   color: #334155;
-  padding: 15px;
+  padding: 10px 12px;
   text-align: left;
 }
 
@@ -324,35 +332,36 @@
 }
 
 .guest-service-card .assistant-shortcut-item__icon {
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
-  min-height: 44px;
-  border-radius: 14px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  border-radius: 12px;
   box-shadow: none;
-  font-size: 22px;
+  font-size: 18px;
 }
 
 .assistant-shortcut-item__copy {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
 .assistant-shortcut-item__copy strong {
   color: #243859;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.35;
 }
 
 .assistant-shortcut-item__copy small {
   color: #7a879c;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
 .assistant-shortcut-item__arrow {
   color: #9aa8bd;
+  font-size: 14px;
 }
 
 .guest-service-card .assistant-shortcut-item:last-child:nth-child(odd) {
@@ -521,17 +530,17 @@
   }
 
   .guest-service-card .assistant-shortcut-item {
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: 34px minmax(0, 1fr);
     gap: 10px;
-    min-height: 92px;
-    padding: 12px;
+    min-height: 68px;
+    padding: 10px 12px;
   }
 
   .guest-service-card .assistant-shortcut-item__icon {
-    width: 40px;
-    min-width: 40px;
-    height: 40px;
-    min-height: 40px;
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    min-height: 34px;
   }
 
   .guest-service-card .assistant-shortcut-item__arrow {
@@ -1117,6 +1126,77 @@
   padding: 0;
 }
 
+.admin-contact-table-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.admin-contact-table-panel__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #1c3026;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.admin-contact-table.el-table {
+  --el-table-border-color: transparent;
+  --el-table-header-bg-color: transparent;
+  --el-table-row-hover-bg-color: #f7faf8;
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  border: 0;
+  background: transparent;
+}
+
+.admin-contact-table::before,
+.admin-contact-table .el-table__inner-wrapper::before,
+.admin-contact-table .el-table__border-left-patch {
+  display: none;
+}
+
+.admin-contact-table .el-table__header-wrapper th.el-table__cell {
+  border-bottom: 1px solid #e7eee9;
+  color: #65776d;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 0 8px;
+}
+
+.admin-contact-table .el-table__body-wrapper td.el-table__cell {
+  border-bottom: 1px solid #eef3f0;
+  padding: 6px 0;
+}
+
+.admin-contact-table .el-table__body-wrapper tr:last-child td.el-table__cell {
+  border-bottom: 0;
+}
+
+.admin-contact-table .admin-contact-input .el-input__wrapper {
+  min-height: 34px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0 2px;
+}
+
+.admin-contact-table .admin-contact-input .el-input__wrapper:hover {
+  background: transparent;
+  box-shadow: none;
+}
+
+.admin-contact-table .admin-contact-input .el-input__wrapper.is-focus {
+  background: transparent;
+  box-shadow: none;
+}
+
+.admin-contact-table .admin-contact-input .el-input__inner {
+  font-size: 13px;
+}
+
 .admin-application-panel,
 .admin-guest-list-panel {
   margin-bottom: 20px;
@@ -1415,6 +1495,25 @@
   text-underline-offset: 4px;
 }
 
+.guest-entry-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 4px 6px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(0, 81, 59, 0.06);
+  color: #4d655c;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.guest-entry-hint .el-icon {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: var(--guest-primary);
+}
+
 /* 工作人员端登录：复用嘉宾端墨绿色、浅绿白背景和舒展移动端排版。 */
 .staff-login-page {
   min-height: 100vh;
@@ -1542,13 +1641,13 @@
   top: 0;
   z-index: 12;
   display: flex;
-  min-height: 76px;
+  min-height: 60px;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   border-bottom: 1px solid rgba(225, 232, 227, 0.9);
   background: rgba(249, 252, 250, 0.96);
-  padding: 14px 20px;
+  padding: 10px 20px;
   backdrop-filter: blur(16px);
 }
 
@@ -1583,15 +1682,15 @@
 
 .staff-workspace-content {
   min-height: calc(100vh - 76px);
-  padding: 18px 20px 112px;
+  padding: 14px 20px 96px;
 }
 
 .staff-network-alert {
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .staff-current-meeting {
-  margin-bottom: 15px;
+  margin-bottom: 12px;
 }
 
 .staff-current-meeting > span {
@@ -1605,17 +1704,25 @@
 }
 
 .staff-current-meeting h2 {
-  margin: 7px 0 0;
+  margin: 6px 0 0;
   color: var(--staff-ink);
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 720;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 .staff-workspace-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 0 18px;
+}
+
+.staff-records-view .staff-workspace-stats {
+  margin: 0 0 4px;
+  border: 1px solid var(--staff-border);
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 4px 0;
 }
 
 .staff-workspace-stats > div {
@@ -1645,8 +1752,8 @@
 .staff-scan-stage {
   position: relative;
   overflow: hidden;
-  height: 326px;
-  border-radius: 24px;
+  height: 260px;
+  border-radius: 22px;
   background: #202322;
   box-shadow: 0 14px 32px rgba(16, 37, 30, 0.12);
 }
@@ -1732,7 +1839,7 @@
 }
 
 .staff-scan-guide {
-  margin: 17px 0 0;
+  margin: 12px 0 0;
   color: var(--staff-muted);
   font-size: 13px;
   text-align: center;
@@ -1740,8 +1847,8 @@
 
 .staff-camera-button.el-button {
   width: 100%;
-  min-height: 48px;
-  margin: 18px 0 0;
+  min-height: 44px;
+  margin: 12px 0 0;
   border-color: var(--staff-primary);
   border-radius: 14px;
   background: var(--staff-primary);
@@ -1755,7 +1862,7 @@
 
 .staff-manual-link {
   display: block;
-  margin: 14px auto 0;
+  margin: 10px auto 0;
   border: 0;
   background: transparent;
   color: var(--staff-primary);
@@ -1809,8 +1916,8 @@
 .staff-manual-results,
 .staff-records-view {
   display: grid;
-  gap: 11px;
-  margin-top: 14px;
+  gap: 12px;
+  margin-top: 4px;
 }
 
 .staff-guest-row,
@@ -2513,6 +2620,23 @@
   box-sizing: border-box;
 }
 
+html, body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+html {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -2594,10 +2718,30 @@ a {
   padding: 32px 16px 48px;
 }
 
-.guest-main {
+.guest-main,
+.guest-main.el-main {
+  --el-main-padding: 0;
   min-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   background: #f3f5f9;
   padding: 0;
+}
+
+.guest-main::-webkit-scrollbar,
+.guest-main *::-webkit-scrollbar,
+.guest-main.el-main::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.guest-main *,
+.guest-main.el-main * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .narrow-page {
@@ -3618,154 +3762,512 @@ h1 {
   white-space: pre-wrap;
 }
 
-.weather-current-card,
-.weather-forecast-card {
-  border: 1px solid rgba(255, 255, 255, 0.86);
-  border-radius: 17px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 24px rgba(57, 75, 126, 0.1);
-}
-
-.weather-current-card {
+/* 联系会务：结构化联系人列表，与嘉宾端其他服务卡片统一。 */
+.contact-person-list {
   display: grid;
-  justify-items: center;
-  padding: 20px;
-}
-
-.weather-location {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  margin: 0;
-  color: #7180a4;
-  font-size: 15px;
-}
-
-.weather-location .el-icon {
-  flex: none;
-  line-height: 1;
-}
-
-.weather-current-card__main {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-top: 12px;
-}
-
-.weather-current-card__icon {
-  font-size: 50px;
-  line-height: 1;
-}
-
-.weather-current-card__temperature {
-  color: #172554;
-  font-size: 44px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.weather-current-card__temperature small {
-  color: #8a94ae;
-  font-size: 20px;
-}
-
-.weather-current-card__main strong {
-  display: block;
-  margin-top: 10px;
-  color: #34416b;
-  font-size: 17px;
-  text-align: center;
-}
-
-.weather-current-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
   gap: 12px;
-  margin-top: 16px;
-  color: #667493;
-  font-size: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.weather-location-alert {
-  margin: 18px 0;
-}
-
-.weather-forecast-card {
-  padding: 18px;
-}
-
-.weather-forecast-card h2 {
-  display: flex;
+.contact-person-card {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 42px;
   align-items: center;
-  gap: 10px;
-  margin: 0 0 12px;
-  color: #172554;
+  gap: 12px;
+  border: 1px solid var(--guest-border);
+  border-radius: 16px;
+  background: var(--guest-surface);
+  box-shadow: 0 8px 20px rgba(20, 58, 46, 0.06);
+  padding: 12px 14px;
+}
+
+.contact-person-card__avatar {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--guest-soft);
+  color: var(--guest-primary);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.contact-person-card__info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.contact-person-card__info strong {
+  color: var(--guest-ink);
+  font-size: 15px;
+  font-weight: 680;
+  line-height: 1.3;
+}
+
+.contact-person-card__info small {
+  color: var(--guest-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.contact-person-card__call {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--guest-primary);
+  color: #ffffff;
+  text-decoration: none;
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.contact-person-card__call:hover {
+  background: #003f2f;
+  transform: scale(1.04);
+}
+
+.contact-person-card__call.is-disabled {
+  background: #d7e0db;
+  color: #8a9890;
+  pointer-events: none;
+}
+
+.contact-person-card__call .el-icon {
   font-size: 18px;
 }
 
-.weather-forecast-card h2 span {
-  width: 6px;
-  height: 24px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #7c5cf5, #ec3ca3);
+/* 天气主卡：当前实况 + 预报 合并为同一张大卡，嘉宾无需在两块卡片之间切换。 */
+.weather-card {
+  border: 1px solid var(--guest-border);
+  border-radius: 18px;
+  background: var(--guest-surface);
+  box-shadow: 0 10px 26px rgba(20, 58, 46, 0.08);
+  overflow: hidden;
 }
 
-.weather-forecast-item {
-  display: grid;
-  grid-template-columns: 82px 28px minmax(0, 1fr) 58px 74px;
+.weather-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px 0;
+  color: var(--guest-muted);
+}
+
+.weather-card__location,
+.weather-card__updated {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  border-top: 1px solid #edf0f7;
-  color: #667493;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.weather-card__location .el-icon,
+.weather-card__updated .el-icon {
+  flex: none;
   font-size: 13px;
-  padding: 12px 0;
+  color: var(--guest-primary);
+}
+
+.weather-tips {
+  border-top: 1px dashed rgba(0, 81, 59, 0.18);
+  padding: 8px 18px 12px;
+}
+
+.weather-tips h3 {
+  position: relative;
+  margin: 0 0 6px;
+  padding-left: 12px;
+  color: var(--guest-ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.weather-tips h3::before {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--guest-primary);
+  content: '';
+}
+
+.weather-tips ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weather-tips li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--guest-text);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.weather-tips li::before {
+  content: '·';
+  flex: none;
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  color: var(--guest-primary);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.weather-card__now {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 10px 18px 12px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.weather-card__now:hover {
+  background: rgba(0, 81, 59, 0.04);
+}
+
+.weather-card__now.is-expanded {
+  background: rgba(0, 81, 59, 0.04);
+}
+
+.weather-card__now:focus-visible {
+  outline: 2px solid rgba(0, 81, 59, 0.32);
+  outline-offset: -2px;
+}
+
+.weather-card__now-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--guest-soft);
+  color: var(--guest-primary);
+  font-size: 12px;
+  transition: transform 200ms ease;
+}
+
+.weather-card__now.is-expanded .weather-card__now-toggle {
+  transform: rotate(180deg);
+}
+
+.weather-card__now-toggle .el-icon {
+  font-size: 12px;
+}
+
+.weather-card__hourly {
+  border-top: 1px dashed rgba(0, 81, 59, 0.18);
+  padding: 14px 18px 16px;
+}
+
+.weather-card__hourly ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weather-card__hourly li {
+  display: grid;
+  grid-template-columns: 86px 24px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  color: var(--guest-text);
+  font-size: 12px;
+  padding: 6px 4px;
+}
+
+.weather-hourly-item__time {
+  color: var(--guest-ink);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.weather-hourly-item__icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.weather-hourly-item__condition {
+  color: var(--guest-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.weather-hourly-item__temp strong {
+  color: var(--guest-ink);
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.weather-hourly-item__pop {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #3b82f6;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.weather-hourly-item__pop .el-icon {
+  flex: none;
+  font-size: 12px;
+}
+
+.weather-card__now-icon {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.weather-card__now-temp {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.weather-card__now-temp strong {
+  color: var(--guest-ink);
+  font-family: inherit;
+  font-size: 38px;
+  font-weight: 760;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.weather-card__now-temp strong small {
+  margin-left: 1px;
+  color: var(--guest-muted);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.weather-card__now-temp span {
+  color: var(--guest-text);
+  font-size: 14px;
+  font-weight: 560;
+}
+
+.weather-card__now-meta {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.weather-card__now-meta div {
+  display: grid;
+  grid-template-columns: auto;
+  justify-items: end;
+  margin: 0;
+}
+
+.weather-card__now-meta dt {
+  color: var(--guest-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.weather-card__now-meta dd {
+  margin: 0;
+  color: var(--guest-ink);
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.weather-card__forecast {
+  border-top: 1px solid var(--guest-border);
+  padding: 12px 18px 16px;
+}
+
+.weather-card__forecast h2 {
+  position: relative;
+  margin: 0 0 12px;
+  padding-left: 12px;
+  color: var(--guest-ink);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.weather-card__forecast h2::before {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--guest-primary);
+  content: '';
+}
+
+.weather-card__forecast ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weather-card__forecast li {
+  display: grid;
+  grid-template-columns: 64px 28px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  color: var(--guest-text);
+  font-size: 12px;
+  padding: 8px 6px;
+}
+
+.weather-card__forecast li.is-today {
+  background: var(--guest-soft);
+  color: var(--guest-primary);
+  font-weight: 600;
+}
+
+.weather-card__forecast li.is-today .weather-forecast-item__condition {
+  color: var(--guest-primary);
+  font-weight: 600;
 }
 
 .weather-forecast-item__date {
-  color: #425071;
-  font-weight: 700;
+  display: grid;
+  gap: 1px;
+}
+
+.weather-forecast-item__date strong {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.weather-forecast-item__date small {
+  color: var(--guest-muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
 }
 
 .weather-forecast-item__icon {
   font-size: 18px;
+  line-height: 1;
+}
+
+.weather-forecast-item__condition {
+  color: var(--guest-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .weather-forecast-item__rain {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   color: #3b82f6;
+  font-size: 11px;
   white-space: nowrap;
 }
 
+.weather-forecast-item__rain .el-icon {
+  flex: none;
+  font-size: 12px;
+}
+
 .weather-forecast-item__temperature {
-  display: flex;
-  justify-content: flex-end;
-  gap: 2px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .weather-forecast-item__temperature strong {
-  color: #172554;
-  font-size: 16px;
+  color: var(--guest-ink);
+  font-size: 14px;
+  font-weight: 720;
 }
 
 .weather-forecast-item__temperature em {
-  color: #8a94ae;
-  font-size: 13px;
+  color: var(--guest-muted);
+  font-size: 12px;
   font-style: normal;
 }
 
-.weather-supplement {
-  margin: 18px 0 0;
-  color: #5f6d8d;
-  line-height: 1.8;
-  white-space: pre-wrap;
+.weather-empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 48px 20px;
+  border: 1px solid var(--guest-border);
+  border-radius: 18px;
+  background: var(--guest-surface);
+  text-align: center;
+}
+
+.weather-empty__icon {
+  font-size: 38px;
+  color: var(--guest-primary);
+}
+
+.weather-empty__title {
+  margin: 0;
+  color: var(--guest-ink);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.weather-empty__desc {
+  margin: 0;
+  color: var(--guest-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.weather-empty__action.el-button {
+  margin-top: 8px;
+  border-color: var(--guest-primary);
+  border-radius: 999px;
+  color: var(--guest-primary);
 }
 
 .weather-source {
   display: block;
-  margin: 18px auto 0;
-  color: var(--el-text-color-secondary);
-  font-size: 13px;
+  margin: 16px auto 0;
+  color: var(--guest-muted);
+  font-size: 11px;
   text-align: center;
   text-decoration: none;
 }
@@ -4244,9 +4746,24 @@ h1 {
   --guest-muted: #718078;
   --guest-shadow: 0 12px 30px rgba(20, 58, 46, 0.08);
 
+  --el-main-padding: 0;
   padding: 0;
   background: #f6f8f7;
   color: var(--guest-text);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.guest-main::-webkit-scrollbar,
+.guest-main *::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.guest-main * {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .guest-home-page,
@@ -4291,7 +4808,7 @@ h1 {
 .phone-wrapper.guest-login-wrapper {
   display: grid;
   gap: 16px;
-  padding: 28px 20px 42px;
+  padding: 10px 20px 42px;
 }
 
 .guest-home-summary {
@@ -4302,12 +4819,12 @@ h1 {
   background: transparent;
   box-shadow: none;
   color: var(--guest-text);
-  padding: 40px 0 0;
+  padding: 8px 0 0;
 }
 
 .guest-home-summary__brand {
   position: absolute;
-  top: 0;
+  top: -22px;
   left: 0;
   display: grid;
   justify-items: center;
@@ -4333,12 +4850,12 @@ h1 {
   display: block;
   overflow: visible;
   max-width: 310px;
-  margin: 0 auto 24px;
+  margin: 0 auto 10px;
   color: var(--guest-ink);
   font-family: STSong, SimSun, "Noto Serif SC", serif;
-  font-size: clamp(25px, 7.2vw, 32px);
+  font-size: clamp(17px, 4.8vw, 20px);
   font-weight: 700;
-  line-height: 1.35;
+  line-height: 1.32;
   text-align: center;
   text-wrap: balance;
   -webkit-line-clamp: unset;
@@ -4361,7 +4878,6 @@ h1 {
   align-items: center;
   gap: 12px;
   min-height: 55px;
-  border-bottom: 1px solid #edf0eb;
 }
 
 .guest-home-summary__meta div:last-child {
@@ -4389,11 +4905,19 @@ h1 {
   white-space: normal;
 }
 
-.guest-home-summary__description strong {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+.guest-home-summary__description {
+  display: block;
+  width: 100%;
+  margin: 4px 0 0;
+  padding: 4px 0 0;
+  border-top: 1px dashed rgba(0, 81, 59, 0.18);
+  color: #4f7a6b;
+  font-size: 13px;
+  font-weight: 420;
+  line-height: 1.7;
+  letter-spacing: 0.01em;
+  white-space: pre-line;
+  word-break: break-word;
 }
 
 .guest-home-summary.is-compact {
@@ -4402,9 +4926,9 @@ h1 {
 
 .guest-home-summary.is-compact h1 {
   max-width: 310px;
-  margin: 0 auto 24px;
-  font-size: clamp(25px, 7.2vw, 32px);
-  line-height: 1.35;
+  margin: 0 auto 10px;
+  font-size: clamp(17px, 4.8vw, 20px);
+  line-height: 1.32;
 }
 
 .guest-home-summary.is-compact .guest-home-summary__meta {
@@ -4456,13 +4980,13 @@ h1 {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  padding: 2px 0 0;
+  padding: 8px 0 0;
 }
 
 .guest-entry-section-heading h2,
 .guest-service-card h2 {
   position: relative;
-  margin: 0 0 10px;
+  margin: 0 0 18px;
   color: var(--guest-ink);
   font-size: 17px;
   font-weight: 760;
@@ -4831,7 +5355,7 @@ h1 {
 
   .guest-home-summary h1 {
     max-width: 276px;
-    font-size: 25px;
+    font-size: 17px;
   }
 
   .guest-profile-card {
@@ -5056,8 +5580,9 @@ h1 {
 .guest-register-submit.el-button {
   width: 100%;
   min-height: 46px;
+  margin-top: 4px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #245dd8, #328bea);
+  background: var(--guest-primary);
   font-weight: 700;
 }
 
@@ -5254,13 +5779,13 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  min-height: 48px;
+  min-height: 36px;
 }
 
 .guest-home-menu-button {
   display: grid;
-  width: 46px;
-  height: 46px;
+  width: 38px;
+  height: 38px;
   place-items: center;
   border: 1px solid #d9e1dc;
   border-radius: 50%;
@@ -5273,12 +5798,12 @@ h1 {
 }
 
 .guest-home-menu-button .el-icon {
-  font-size: 22px;
+  font-size: 18px;
 }
 
 .guest-home-menu-button__icon {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -5307,6 +5832,13 @@ h1 {
 .guest-service-drawer-shell .el-drawer__body {
   overflow: hidden;
   padding: 0;
+  scrollbar-width: none;
+}
+
+.guest-service-drawer-shell .el-drawer__body::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .guest-service-drawer {
@@ -5382,6 +5914,13 @@ h1 {
 .guest-service-drawer__content {
   overflow-y: auto;
   padding: 28px 20px;
+  scrollbar-width: none;
+}
+
+.guest-service-drawer__content::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .guest-service-drawer .assistant-shortcut-shell.is-drawer::after {
@@ -5489,12 +6028,12 @@ h1 {
 
 @media (max-width: 380px) {
   .guest-home-toolbar {
-    min-height: 44px;
+    min-height: 32px;
   }
 
   .guest-home-menu-button {
-    width: 42px;
-    height: 42px;
+    width: 34px;
+    height: 34px;
   }
 
   .guest-service-drawer__header {
@@ -5541,25 +6080,25 @@ h1 {
   --el-button-hover-bg-color: #ffffff;
   --el-button-hover-text-color: #00513b;
 
-  min-width: 76px;
-  min-height: 44px;
+  min-width: 64px;
+  min-height: 6px;
   margin: 0;
   border: 1px solid #d9e1dc;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.86);
   color: #52665e;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 
 .guest-home-logout-button.el-button .el-icon {
-  font-size: 17px;
+  font-size: 14px;
 }
 
 .guest-home-logout-button__icon {
-  width: 19px;
-  height: 19px;
-  margin-right: 6px;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -5737,13 +6276,13 @@ h1 {
 }
 
 .assistant-page__title {
-  margin: 0 0 28px;
+  margin: 0 0 10px;
   color: var(--assistant-ink);
   font-family: inherit;
-  font-size: 30px;
-  font-weight: 760;
+  font-size: 17px;
+  font-weight: 680;
   line-height: 1.3;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .assistant-page .el-alert--info.is-light {
@@ -5937,4 +6476,200 @@ h1 {
   .assistant-agenda-card__content p {
     font-size: 13px;
   }
+}
+
+/* 管理端登录窗口：简洁的桌面居中卡片，与嘉宾移动端登录保持视觉区分。 */
+.login-portal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 0px);
+  padding: 32px 16px;
+  background: linear-gradient(135deg, #eef2f8 0%, #dde6f4 100%);
+}
+
+.login-portal__card {
+  width: min(420px, 100%);
+  padding: 36px 32px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18px 42px rgba(30, 58, 138, 0.12);
+}
+
+.login-portal__header {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin-bottom: 22px;
+  text-align: center;
+}
+
+.login-portal__brand {
+  display: grid;
+  justify-items: center;
+  margin-bottom: 6px;
+  color: #173a7a;
+}
+
+.login-portal__brand > span {
+  font-family: STSong, SimSun, serif;
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.login-portal__brand > small {
+  margin-top: 2px;
+  font-family: STSong, SimSun, serif;
+  font-size: 10px;
+  letter-spacing: 0.38em;
+  transform: translateX(0.18em);
+}
+
+.login-portal__header h1 {
+  margin: 0;
+  color: #14213d;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.login-portal__header p {
+  margin: 4px 0 0;
+  color: #5b6b85;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.login-portal__form .el-form-item {
+  margin-bottom: 18px;
+}
+
+.login-portal__form .el-form-item__label {
+  color: #475569;
+  font-weight: 600;
+}
+
+.login-portal__form .el-input__wrapper {
+  min-height: 44px;
+  border-radius: 12px;
+  background: #f5f7fa;
+  box-shadow: none;
+  padding: 0 14px;
+}
+
+.login-portal__form .el-input__wrapper:hover {
+  background: #f0f3f8;
+}
+
+.login-portal__form .el-input__wrapper.is-focus {
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(52, 103, 232, 0.18);
+}
+
+.login-portal__form .el-input__inner {
+  font-size: 15px;
+}
+
+.login-portal__actions {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.login-portal__actions .el-button {
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.login-portal__alert {
+  margin-top: 16px;
+}
+
+.login-portal__footer {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px dashed #e2e8f0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.login-portal__footer p {
+  margin: 4px 0;
+}
+
+.login-portal__footer .inline-link,
+.login-portal__footer a {
+  color: #3467e8;
+  text-decoration: none;
+}
+
+.login-portal__footer .inline-link:hover,
+.login-portal__footer a:hover {
+  text-decoration: underline;
+}
+
+.staff-login-portal {
+  background: linear-gradient(135deg, #f6f8f7 0%, #e6ede8 100%);
+}
+
+.staff-login-portal__card .login-portal__brand {
+  color: #00513b;
+}
+
+.staff-login-portal__form .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 2px rgba(0, 81, 59, 0.18);
+}
+
+.staff-login-portal__footer a {
+  color: #00513b;
+}
+
+/* 会议服务登录提示弹窗：与嘉宾端墨绿色主题一致。 */
+.guest-service-prompt.el-message-box {
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(30, 58, 138, 0.14);
+}
+
+.guest-service-prompt .el-message-box__title {
+  color: #1c3026;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.guest-service-prompt .el-message-box__content {
+  color: #4d655c;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.guest-service-prompt__confirm.el-button.el-button--primary {
+  border: 0;
+  border-radius: 999px;
+  background: #00513b;
+  color: #ffffff;
+  font-weight: 600;
+  min-width: 84px;
+  min-height: 36px;
+}
+
+.guest-service-prompt__confirm.el-button.el-button--primary:hover {
+  background: #003f2f;
+}
+
+.guest-service-prompt__cancel.el-button {
+  border-radius: 999px;
+  background: transparent;
+  color: #6b7d76;
+  font-weight: 600;
+  min-width: 84px;
+  min-height: 36px;
+}
+
+.guest-service-prompt__cancel.el-button:hover {
+  color: #1c3026;
 }

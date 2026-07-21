@@ -11,8 +11,7 @@
           <el-button text type="primary" @click="handleLogout">退出登录</el-button>
         </template>
         <template v-else>
-          <router-link to="/login">管理与签到登录</router-link>
-          <router-link to="/guest/login">嘉宾登录</router-link>
+          <router-link to="/login">管理员登录</router-link>
         </template>
       </nav>
     </el-header>

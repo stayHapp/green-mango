@@ -4,6 +4,7 @@ import { apiClient, authorizationConfig } from './client'
 
 export interface MeetingCurrentWeather {
   observedAt: string
+  updatedAt?: string
   temperature: number
   condition: string
   iconCode: string
@@ -28,6 +29,17 @@ export interface MeetingWeather {
   sourceUrl: string
   current?: MeetingCurrentWeather
   daily: MeetingDailyWeather[]
+  hourly: MeetingHourlyWeather[]
+  tips: string[]
+}
+
+interface MeetingHourlyWeather {
+  forecastAt: string
+  condition: string
+  iconCode: string
+  temperature: number
+  precipitationProbability: number
+  precipitation: number
 }
 
 interface MeetingWeatherApiResponse {
@@ -38,6 +50,7 @@ interface MeetingWeatherApiResponse {
   source_url: string
   current: null | {
     observed_at: string
+    updated_at?: string
     temperature: number
     condition: string
     icon_code: string
@@ -52,6 +65,15 @@ interface MeetingWeatherApiResponse {
     high: number
     low: number
   }>
+  hourly: Array<{
+    forecast_at: string
+    condition: string
+    icon_code: string
+    temperature: number
+    precipitation_probability: number
+    precipitation: number
+  }>
+  tips: string[]
 }
 
 /**
@@ -75,6 +97,7 @@ export async function getGuestMeetingWeather(meetingId: string): Promise<Meeting
     current: data.current
       ? {
           observedAt: data.current.observed_at,
+          updatedAt: data.current.updated_at,
           temperature: data.current.temperature,
           condition: data.current.condition,
           iconCode: data.current.icon_code,
@@ -90,5 +113,14 @@ export async function getGuestMeetingWeather(meetingId: string): Promise<Meeting
       high: item.high,
       low: item.low,
     })),
+    hourly: (data.hourly ?? []).map((item) => ({
+      forecastAt: item.forecast_at,
+      condition: item.condition,
+      iconCode: item.icon_code,
+      temperature: item.temperature,
+      precipitationProbability: item.precipitation_probability,
+      precipitation: item.precipitation,
+    })),
+    tips: data.tips ?? [],
   }
 }

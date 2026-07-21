@@ -24,10 +24,8 @@ class AdminResponse(BaseModel):
 
 
 class StaffUpdate(BaseModel):
-    """管理员修改工作人员资料和启用状态的请求。"""
+    """管理员修改工作人员启用状态和密码的请求。"""
 
-    display_name: str | None = Field(default=None, min_length=1, max_length=100)
-    phone: str | None = Field(default=None, max_length=30)
     is_active: bool | None = None
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
 

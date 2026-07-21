@@ -10,6 +10,11 @@
         </div>
 
         <template v-else-if="meeting">
+          <p v-if="!hasCurrentSession" class="guest-entry-hint">
+            <el-icon><InfoFilled /></el-icon>
+            <span>首次浏览会议服务前，请先完成身份核验。</span>
+          </p>
+
           <GuestMeetingSummary :meeting="meeting" show-description />
 
           <section class="guest-entry-actions" aria-label="参会操作">
@@ -31,7 +36,12 @@
               <h2 id="guest-entry-services-title">会议服务</h2>
             </div>
             <div class="guest-entry-service-grid">
-              <button v-for="item in serviceItems" :key="item.title" type="button" @click="openGuestAccess">
+              <button
+                v-for="item in serviceItems"
+                :key="item.featureKey"
+                type="button"
+                @click="openServiceItem(item.featureKey)"
+              >
                 <span><el-icon><component :is="item.icon" /></el-icon></span>
                 <span class="guest-entry-service-grid__copy">
                   <strong>{{ item.title }}</strong>
@@ -53,19 +63,21 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, type Component } from 'vue'
-import { ArrowRight, Calendar, Location, PhoneFilled, Reading, Sunny } from '@element-plus/icons-vue'
+import { ArrowRight, Calendar, InfoFilled, Location, PhoneFilled, Reading, Sunny } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { ElMessageBox } from 'element-plus'
 import { getApiErrorMessage } from '../../api/client'
 import { getPublicMeeting } from '../../api/sessions'
 import GuestMeetingSummary from '../../components/GuestMeetingSummary.vue'
 import { useSessionStore } from '../../stores/session'
-import type { Meeting } from '../../types'
+import type { Meeting, MeetingAssistantFeatureKey } from '../../types'
 
 interface GuestEntryServiceItem {
   title: string
   description: string
   icon: Component
+  featureKey: MeetingAssistantFeatureKey
 }
 
 const route = useRoute()
@@ -77,11 +89,11 @@ const errorMessage = ref('')
 const meetingId = computed(readMeetingId)
 const hasCurrentSession = computed(hasCurrentGuestSession)
 const serviceItems: GuestEntryServiceItem[] = [
-  { title: '会议日程', description: '掌握活动安排', icon: Calendar },
-  { title: '会议资料', description: '查看参会须知', icon: Reading },
-  { title: '天气提醒', description: '提前规划行程', icon: Sunny },
-  { title: '路线导航', description: '快速抵达会场', icon: Location },
-  { title: '联系会务', description: '及时获得帮助', icon: PhoneFilled },
+  { title: '会议日程', description: '掌握活动安排', icon: Calendar, featureKey: 'agenda' },
+  { title: '会议资料', description: '查看参会须知', icon: Reading, featureKey: 'manual' },
+  { title: '天气提醒', description: '提前规划行程', icon: Sunny, featureKey: 'weather' },
+  { title: '路线导航', description: '快速抵达会场', icon: Location, featureKey: 'route' },
+  { title: '联系会务', description: '及时获得帮助', icon: PhoneFilled, featureKey: 'contact' },
 ]
 
 /**
@@ -155,6 +167,37 @@ async function openGuestAccess(): Promise<void> {
  */
 async function openRegistration(): Promise<void> {
   await router.push(`/meetings/${meetingId.value}/register`)
+}
+
+/**
+ * 跳转到指定会议服务功能详情页。
+ *
+ * 入参：featureKey 为目标会议服务的英文标识，必填。
+ * 返回值：Promise<void>：已登录时直接跳转到详情页；未登录时弹出友好提示框，确认后跳转到嘉宾登录页，取消则保留在入口页。
+ * 异常：路由跳转失败时由 Vue Router 抛出异常；弹窗被关闭时直接返回。
+ */
+async function openServiceItem(featureKey: MeetingAssistantFeatureKey): Promise<void> {
+  if (hasCurrentSession.value) {
+    await router.push(`/guest/meetings/${meetingId.value}/assistant/${featureKey}`)
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      '查看会议服务内容需要先核验您的参会身份。完成登录后即可浏览会议日程、资料、天气、路线和会务联系信息。',
+      '请先完成身份核验',
+      {
+        confirmButtonText: '立即登录',
+        cancelButtonText: '稍后再看',
+        type: 'info',
+        customClass: 'guest-service-prompt',
+        confirmButtonClass: 'guest-service-prompt__confirm',
+        cancelButtonClass: 'guest-service-prompt__cancel',
+      },
+    )
+    await router.push({ path: '/guest/login', query: { meetingId: meetingId.value } })
+  } catch {
+    // 用户取消弹窗，停留在当前页面。
+  }
 }
 
 onMounted(loadMeeting)

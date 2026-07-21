@@ -39,45 +39,108 @@
       </template>
 
       <template v-else-if="feature?.key === 'weather'">
-        <el-alert v-if="!weather?.available || !weather.current" type="warning" :closable="false" :title="weather?.message || '天气数据暂时不可用。'" />
-        <template v-else>
-        <section class="weather-current-card">
-          <p class="weather-location"><el-icon><LocationIcon /></el-icon>{{ weather.locationName }}</p>
-          <div class="weather-current-card__main">
-            <span class="weather-current-card__icon">{{ weatherIcon(weather.current.iconCode) }}</span>
-            <div>
-              <div class="weather-current-card__temperature">{{ weather.current.temperature }}<small>°C</small></div>
-              <strong>{{ weather.current.condition }}</strong>
-            </div>
-          </div>
-          <div class="weather-current-card__meta">
-            <span>💧 湿度 {{ weather.current.humidity }}%</span>
-            <span>🌬 风速 {{ weather.current.windSpeed }} km/h</span>
-          </div>
-        </section>
-
-        <el-alert
-          class="weather-location-alert"
-          type="warning"
-          :closable="false"
-          :title="weather.message"
-        />
-
-        <section class="weather-forecast-card">
-          <h2><span />近期预报</h2>
-          <article v-for="item in weather.daily" :key="item.date" class="weather-forecast-item">
-            <span class="weather-forecast-item__date">{{ formatForecastDate(item.date) }}</span>
-            <span class="weather-forecast-item__icon">{{ weatherIcon(item.iconCode) }}</span>
-            <span class="weather-forecast-item__condition">{{ item.condition }}</span>
-            <span class="weather-forecast-item__rain">💧{{ item.precipitation }}mm</span>
-            <span class="weather-forecast-item__temperature"><strong>{{ item.high }}°</strong><em>{{ item.low }}°</em></span>
-          </article>
-        </section>
-
-        <a class="weather-source" :href="weather.sourceUrl" target="_blank" rel="noopener noreferrer">天气数据由 {{ weather.sourceName }} 提供</a>
+        <template v-if="!weather?.available || !weather.current">
+          <section class="weather-empty" aria-live="polite">
+            <el-icon class="weather-empty__icon"><Sunny /></el-icon>
+            <p class="weather-empty__title">天气数据暂时不可用</p>
+            <p class="weather-empty__desc">{{ weather?.message || '请稍后再试。' }}</p>
+            <el-button class="weather-empty__action" type="primary" plain @click="loadFeature">重新加载</el-button>
+          </section>
         </template>
 
-        <p v-if="feature.content.trim()" class="weather-supplement">{{ feature.content }}</p>
+        <template v-else>
+          <section class="weather-card">
+            <header class="weather-card__head">
+              <p class="weather-card__location">
+                <el-icon><LocationIcon /></el-icon>
+                <span>{{ weather.locationName }}</span>
+              </p>
+            </header>
+
+            <button
+              type="button"
+              class="weather-card__now"
+              :class="{ 'is-expanded': hourlyExpanded }"
+              :aria-expanded="hourlyExpanded"
+              aria-controls="weather-hourly-section"
+              @click="hourlyExpanded = !hourlyExpanded"
+            >
+              <span class="weather-card__now-icon" aria-hidden="true">{{ weatherIcon(weather.current.iconCode) }}</span>
+              <div class="weather-card__now-temp">
+                <strong>{{ weather.current.temperature }}<small>°</small></strong>
+                <span>{{ weather.current.condition }}</span>
+              </div>
+              <dl class="weather-card__now-meta">
+                <div>
+                  <dt>湿度</dt>
+                  <dd>{{ weather.current.humidity }}%</dd>
+                </div>
+                <div>
+                  <dt>风速</dt>
+                  <dd>{{ weather.current.windSpeed }} km/h</dd>
+                </div>
+              </dl>
+              <span class="weather-card__now-toggle" aria-hidden="true">
+                <el-icon><ArrowDown v-if="!hourlyExpanded" /><ArrowUp v-else /></el-icon>
+              </span>
+            </button>
+
+            <section
+              v-if="hourlyExpanded && weather.hourly.length"
+              id="weather-hourly-section"
+              class="weather-card__hourly"
+              aria-label="未来几小时预报"
+            >
+              <ul>
+                <li v-for="item in weather.hourly" :key="item.forecastAt">
+                  <span class="weather-hourly-item__time">{{ formatHourlyTime(item.forecastAt) }}</span>
+                  <span class="weather-hourly-item__icon" aria-hidden="true">{{ weatherIcon(item.iconCode) }}</span>
+                  <span class="weather-hourly-item__condition">{{ item.condition }}</span>
+                  <span class="weather-hourly-item__temp"><strong>{{ item.temperature }}°</strong></span>
+                  <span v-if="item.precipitationProbability > 0" class="weather-hourly-item__pop">
+                    <el-icon><Umbrella /></el-icon>{{ item.precipitationProbability }}%
+                  </span>
+                </li>
+              </ul>
+            </section>
+
+            <section v-if="weather.tips.length" class="weather-tips" aria-label="温馨提示">
+              <h3>温馨提示</h3>
+              <ul>
+                <li v-for="(tip, index) in weather.tips" :key="index">{{ tip }}</li>
+              </ul>
+            </section>
+
+            <section class="weather-card__forecast" aria-label="近期预报">
+              <h2>近期预报</h2>
+              <ul>
+                <li
+                  v-for="item in upcomingForecast"
+                  :key="item.date"
+                  :class="{ 'is-today': item.date === todayKey }"
+                >
+                  <span class="weather-forecast-item__date">
+                    <strong>{{ formatForecastShort(item.date) }}</strong>
+                    <small>{{ isToday(item.date) ? '今天' : formatWeekday(item.date) }}</small>
+                  </span>
+                  <span class="weather-forecast-item__icon" aria-hidden="true">{{ weatherIcon(item.iconCode) }}</span>
+                  <span class="weather-forecast-item__condition">{{ item.condition }}</span>
+                  <span v-if="item.precipitation > 0" class="weather-forecast-item__rain">
+                    <el-icon><Umbrella /></el-icon>{{ item.precipitation }}mm
+                  </span>
+                  <span class="weather-forecast-item__temperature">
+                    <strong>{{ item.high }}°</strong>
+                    <em>{{ item.low }}°</em>
+                  </span>
+                </li>
+              </ul>
+            </section>
+          </section>
+
+          <a class="weather-source" :href="weather.sourceUrl" target="_blank" rel="noopener noreferrer">
+            数据由 {{ weather.sourceName }} 提供
+          </a>
+        </template>
       </template>
 
       <template v-else-if="feature?.key === 'route'">
@@ -105,6 +168,32 @@
         </section>
       </template>
 
+      <template v-else-if="feature?.key === 'contact'">
+        <div v-if="!contactPersons.length" class="assistant-content-cards">
+          <article class="assistant-content-card">联系人信息待补充</article>
+        </div>
+        <ul v-else class="contact-person-list">
+          <li v-for="(person, index) in contactPersons" :key="`${person.name}-${index}`" class="contact-person-card">
+            <span class="contact-person-card__avatar" aria-hidden="true">{{ person.name.slice(0, 1) }}</span>
+            <div class="contact-person-card__info">
+              <strong>{{ person.name }}</strong>
+              <small v-if="person.role">{{ person.role }}</small>
+            </div>
+            <a
+              v-if="person.phone"
+              class="contact-person-card__call"
+              :href="`tel:${person.phone}`"
+              :aria-label="`拨打 ${person.name}`"
+            >
+              <el-icon><Phone /></el-icon>
+            </a>
+            <span v-else class="contact-person-card__call is-disabled" aria-hidden="true">
+              <el-icon><Phone /></el-icon>
+            </span>
+          </li>
+        </ul>
+      </template>
+
       <div v-else-if="feature" class="assistant-content-cards">
         <article v-for="(block, index) in contentBlocks" :key="`${feature.key}-${index}`" class="assistant-content-card">{{ block }}</article>
       </div>
@@ -114,7 +203,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ArrowLeft, Clock, Location as LocationIcon, User } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, ArrowUp, Location as LocationIcon, Phone, Sunny, Umbrella, User } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { getApiErrorMessage } from '../../api/client'
@@ -138,10 +227,35 @@ const meeting = ref<Meeting>()
 const feature = ref<MeetingAssistantFeature>()
 const weather = ref<MeetingWeather>()
 const loading = ref(true)
+const hourlyExpanded = ref(false)
 const errorMessage = ref('')
 const agendaItems = computed(buildAgendaItems)
 const contentBlocks = computed(buildContentBlocks)
 const navigationUrl = computed(buildNavigationUrl)
+const upcomingForecast = computed(buildUpcomingForecast)
+const contactPersons = computed(buildContactPersons)
+
+/**
+ * 返回 7 日预报中从明天开始的列表，跳过与实时卡片重复的"今天"项。
+ *
+ * 入参：无；函数读取 weather.daily。
+ * 返回值：MeetingDailyWeather[]：去掉了今天条目的预报列表；若 daily 为空则返回空数组。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildUpcomingForecast(): NonNullable<typeof weather.value>['daily'] {
+  return weather.value?.daily.slice(1) ?? []
+}
+
+/**
+ * 将联系会务配置转换为嘉宾端可拨号的联系人列表。
+ *
+ * 入参：无；函数读取当前 feature 的 contacts 字段。
+ * 返回值：Array<{name, role, phone}>：已清理空白后的联系人列表；缺失时返回空数组。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildContactPersons(): Array<{ name: string; role: string; phone: string }> {
+  return feature.value?.contacts ?? []
+}
 
 /**
  * 加载会议基础信息和当前会议助手功能配置。
@@ -288,6 +402,101 @@ function formatForecastDate(value: string): string {
   if (Number.isNaN(date.getTime())) return value
   const weekdayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
   return `${date.getMonth() + 1}月${date.getDate()}日 ${weekdayNames[date.getDay()]}`
+}
+
+/**
+ * 返回当前本地日期对应的和风日期键（yyyy-MM-dd），用于当日预报标记。
+ *
+ * 入参：无。
+ * 返回值：string：当前日期字符串，与和风天气返回的 daily.date 字段格式一致。
+ * 异常：当前函数不主动抛出异常。
+ */
+const todayKey = computed(computeTodayKey)
+
+function computeTodayKey(): string {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
+/**
+ * 判断给定的和风日期键是否为今天。
+ *
+ * 入参：value 为日期键，必填。
+ * 返回值：boolean：与今日日期一致返回 true，否则返回 false。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isToday(value: string): boolean {
+  return value === todayKey.value
+}
+
+/**
+ * 将日期键简化为"7/16"格式。
+ *
+ * 入参：value 为 yyyy-MM-dd 格式的日期键，必填。
+ * 返回值：string：形如"7/16"的短日期；日期无效时返回原文本。
+ * 异常：当前函数不主动抛出异常。
+ */
+function formatForecastShort(value: string): string {
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return value
+  return `${date.getMonth() + 1}/${date.getDate()}`
+}
+
+/**
+ * 从日期键返回中文星期文本。
+ *
+ * 入参：value 为 yyyy-MM-dd 格式的日期键，必填。
+ * 返回值：string：周一至周日；日期无效时返回空字符串。
+ * 异常：当前函数不主动抛出异常。
+ */
+function formatWeekday(value: string): string {
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return ''
+  return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()]
+}
+
+/**
+ * 把和风天气 obsTime 字段（ISO 字符串）转换为当日"HH:mm"。
+ *
+ * 入参：value 为 ISO 时间字符串（如 2026-07-16T12:00+08:00），必填。
+ * 返回值：string：形如"12:30"的简短时间；解析失败时返回原始字符串。
+ * 异常：当前函数不主动抛出异常。
+ */
+function formatObservedAt(value: string): string {
+  const normalized = value.includes('T') && !value.includes('+') && !value.includes('Z') ? `${value}+08:00` : value
+  const date = new Date(normalized)
+  if (Number.isNaN(date.getTime())) return value
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+/**
+ * 把和风天气 fxTime 字段（ISO 字符串）转换为"周X HH:mm"，便于展示未来几小时。
+ *
+ * 入参：value 为 ISO 时间字符串，必填。
+ * 返回值：string：形如"今天 14:00"或"周二 14:00"；解析失败时返回原始字符串。
+ * 异常：当前函数不主动抛出异常。
+ */
+function formatHourlyTime(value: string): string {
+  const normalized = value.includes('T') && !value.includes('+') && !value.includes('Z') ? `${value}+08:00` : value
+  const date = new Date(normalized)
+  if (Number.isNaN(date.getTime())) return value
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const time = `${hours}:${minutes}`
+  const now = new Date()
+  if (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  ) {
+    return `今天 ${time}`
+  }
+  const weekdayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  return `${weekdayNames[date.getDay()]} ${time}`
 }
 
 onMounted(loadFeature)

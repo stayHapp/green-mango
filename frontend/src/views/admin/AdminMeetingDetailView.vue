@@ -312,7 +312,44 @@
         <el-dialog v-model="assistantEditDialogVisible" :title="`编辑${selectedAssistantFeature?.title ?? '会议助手'}`" width="min(620px, calc(100% - 32px))">
           <el-form label-position="top" @submit.prevent>
             <el-form-item label="发布状态"><el-switch v-model="assistantEditForm.isPublished" active-text="已发布" inactive-text="未发布" /></el-form-item>
-            <el-form-item label="功能内容"><el-input v-model="assistantEditForm.content" type="textarea" :rows="7" placeholder="请输入发布后向嘉宾展示的内容" /></el-form-item>
+            <template v-if="selectedAssistantFeature?.key === 'contact'">
+              <div class="admin-contact-table-panel">
+                <div class="admin-contact-table-panel__heading">
+                  <span>会务联系人</span>
+                  <el-button type="primary" plain size="small" @click="addContactPerson">添加联系人</el-button>
+                </div>
+                <el-table
+                  :data="assistantEditForm.contacts"
+                  class="admin-contact-table"
+                  row-key="__rowKey"
+                  :show-header="true"
+                  :border="false"
+                  empty-text="暂无联系人，请点击上方添加"
+                >
+                  <el-table-column label="姓名" min-width="140">
+                    <template #default="{ row }">
+                      <el-input v-model="row.name" class="admin-contact-input" placeholder="王会务" />
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="职责" min-width="160">
+                    <template #default="{ row }">
+                      <el-input v-model="row.role" class="admin-contact-input" placeholder="会务总协调" />
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="电话" min-width="160">
+                    <template #default="{ row }">
+                      <el-input v-model="row.phone" class="admin-contact-input" placeholder="13800000000" />
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="72" align="center">
+                    <template #default="{ $index }">
+                      <el-button type="danger" link size="small" @click="removeContactPerson($index)">删除</el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </div>
+            </template>
+            <el-form-item v-else label="功能内容"><el-input v-model="assistantEditForm.content" type="textarea" :rows="7" placeholder="请输入发布后向嘉宾展示的内容" /></el-form-item>
             <el-form-item label="未发布提醒"><el-input v-model="assistantEditForm.unpublishedMessage" type="textarea" :rows="3" placeholder="请输入功能尚未发布时向嘉宾展示的提醒" /></el-form-item>
             <div class="action-row"><el-button type="primary" :loading="savingAssistantFeature" @click="saveAssistantFeature">保存配置</el-button></div>
           </el-form>
@@ -320,25 +357,18 @@
       </el-tab-pane>
       <el-tab-pane class="admin-tab-panel" label="工作人员" name="staff">
         <el-form class="edit-form" label-position="top" @submit.prevent>
-          <div class="form-grid">
-            <el-form-item label="姓名"><el-input v-model="staffForm.name" placeholder="请输入姓名" /></el-form-item>
-            <el-form-item label="手机号"><el-input v-model="staffForm.phone" placeholder="请输入手机号" /></el-form-item>
-          </div>
-          <el-form-item label="登录账号"><el-input v-model="staffForm.account" placeholder="请输入工作人员账号" /></el-form-item>
+          <el-form-item label="登录账号"><el-input v-model="staffForm.account" placeholder="请输入工作人员账号（字母开头，3-100 位）" /></el-form-item>
           <el-form-item label="初始密码"><el-input v-model="staffForm.initialPassword" type="password" show-password placeholder="至少 8 位" /></el-form-item>
           <div class="action-row"><el-button type="primary" :loading="creatingStaff" @click="handleCreateStaff">创建并授权当前会议</el-button></div>
           <el-alert v-if="staffMessage" class="top-gap" :type="staffMessageType" :closable="false" :title="staffMessage" />
         </el-form>
         <el-table :data="staff" row-key="id">
-          <el-table-column prop="name" label="姓名" />
           <el-table-column prop="account" label="账号" />
-          <el-table-column prop="phone" label="手机号" />
           <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="row.isActive ? 'success' : 'info'">{{ row.isActive ? '启用' : '停用' }}</el-tag></template></el-table-column>
           <el-table-column label="操作" width="180"><template #default="{ row }"><el-button size="small" @click="openStaffEditDialog(row)">编辑</el-button><el-button size="small" type="danger" plain @click="handleRemoveStaff(row)">解除授权</el-button></template></el-table-column>
         </el-table>
         <el-dialog v-model="staffEditDialogVisible" title="编辑工作人员" width="min(520px, calc(100% - 32px))">
           <el-form label-position="top" @submit.prevent>
-            <div class="form-grid"><el-form-item label="姓名"><el-input v-model="staffEditForm.name" /></el-form-item><el-form-item label="手机号"><el-input v-model="staffEditForm.phone" /></el-form-item></div>
             <el-form-item label="账号状态"><el-switch v-model="staffEditForm.isActive" active-text="启用" inactive-text="停用" /></el-form-item>
             <el-form-item label="重置密码"><el-input v-model="staffEditForm.newPassword" type="password" show-password placeholder="不修改请留空；新密码至少 8 位" /></el-form-item>
             <div class="action-row"><el-button type="primary" :loading="savingStaff" @click="handleUpdateStaff">保存</el-button></div>
@@ -489,13 +519,50 @@ const guestEditForm = ref<GuestFormState>(createGuestFormState())
 const guestImportDialogVisible = ref(false)
 const staffMessage = ref('')
 const staffMessageType = ref<'success' | 'error'>('success')
-const staffForm = ref({ name: '', phone: '', account: '', initialPassword: '' })
+const staffForm = ref({ account: '', initialPassword: '' })
 const selectedStaff = ref<StaffUser>()
 const staffEditDialogVisible = ref(false)
-const staffEditForm = ref({ name: '', phone: '', isActive: true, newPassword: '' })
+const staffEditForm = ref({ isActive: true, newPassword: '' })
 const selectedAssistantFeature = ref<MeetingAssistantFeature>()
 const assistantEditDialogVisible = ref(false)
-const assistantEditForm = ref({ content: '', unpublishedMessage: '', isPublished: false })
+const assistantEditForm = ref({
+  content: '',
+  unpublishedMessage: '',
+  isPublished: false,
+  contacts: [] as Array<{ __rowKey: string; name: string; role: string; phone: string }>,
+})
+
+/**
+ * 生成联系人表格行的稳定键。
+ *
+ * 入参：无。
+ * 返回值：string：用于 el-table row-key 的唯一字符串。
+ * 异常：当前函数不主动抛出异常。
+ */
+function createContactRowKey(): string {
+  return `contact-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+/**
+ * 创建一行可编辑的空联系人。
+ *
+ * 入参：partial 为可选初始值。
+ * 返回值：包含 rowKey 的联系人对象。
+ * 异常：当前函数不主动抛出异常。
+ */
+function createContactRow(partial?: { name?: string; role?: string; phone?: string }): {
+  __rowKey: string
+  name: string
+  role: string
+  phone: string
+} {
+  return {
+    __rowKey: createContactRowKey(),
+    name: partial?.name ?? '',
+    role: partial?.role ?? '',
+    phone: partial?.phone ?? '',
+  }
+}
 const guestImportInput = ref<HTMLInputElement>()
 const importMessage = ref('')
 const importMessageType = ref<'success' | 'warning' | 'error' | 'info'>('success')
@@ -1141,8 +1208,37 @@ function openAssistantEditDialog(feature: MeetingAssistantFeature): void {
     content: feature.content,
     unpublishedMessage: feature.unpublishedMessage,
     isPublished: feature.isPublished,
+    contacts: feature.contacts.length
+      ? feature.contacts.map((item) => createContactRow(item))
+      : [createContactRow()],
   }
   assistantEditDialogVisible.value = true
+}
+
+/**
+ * 在联系会务编辑表单中添加一个空联系人行。
+ *
+ * 入参：无。
+ * 返回值：void：向 contacts 追加空白行。
+ * 异常：当前函数不主动抛出异常。
+ */
+function addContactPerson(): void {
+  assistantEditForm.value.contacts.push(createContactRow())
+}
+
+/**
+ * 从联系会务编辑表单中删除指定联系人。
+ *
+ * 入参：index 为待删除联系人的索引，必填。
+ * 返回值：void：更新 contacts 列表；至少保留一行。
+ * 异常：当前函数不主动抛出异常。
+ */
+function removeContactPerson(index: number): void {
+  if (assistantEditForm.value.contacts.length <= 1) {
+    assistantEditForm.value.contacts = [createContactRow()]
+    return
+  }
+  assistantEditForm.value.contacts.splice(index, 1)
 }
 
 /**
@@ -1158,11 +1254,23 @@ async function saveAssistantFeature(): Promise<void> {
   }
   const content = assistantEditForm.value.content.trim()
   const unpublishedMessage = assistantEditForm.value.unpublishedMessage.trim()
+  const contacts = assistantEditForm.value.contacts
+    .map((item) => ({
+      name: item.name.trim(),
+      role: item.role.trim(),
+      phone: item.phone.trim(),
+    }))
+    .filter((item) => item.name)
   if (!unpublishedMessage) {
     ElMessage.warning('请填写未发布时向嘉宾展示的提醒。')
     return
   }
-  if (assistantEditForm.value.isPublished && !content) {
+  if (selectedAssistantFeature.value.key === 'contact') {
+    if (assistantEditForm.value.isPublished && contacts.length === 0) {
+      ElMessage.warning('发布前请至少添加一位联系人。')
+      return
+    }
+  } else if (assistantEditForm.value.isPublished && !content) {
     ElMessage.warning('发布前请填写功能内容。')
     return
   }
@@ -1173,9 +1281,10 @@ async function saveAssistantFeature(): Promise<void> {
       meeting.value.id,
       selectedAssistantFeature.value.key,
       {
-        content,
+        content: selectedAssistantFeature.value.key === 'contact' ? '' : content,
         unpublishedMessage,
         isPublished: assistantEditForm.value.isPublished,
+        contacts: selectedAssistantFeature.value.key === 'contact' ? contacts : [],
       },
     )
     assistantFeatures.value = await listAdminMeetingAssistantFeatures(meeting.value.id)
@@ -1575,22 +1684,20 @@ async function handleCreateGuest(): Promise<void> {
  * 异常：必填字段缺失、会议不存在或账号重复时展示错误提示。
  */
 async function handleCreateStaff(): Promise<void> {
-  if (!meeting.value || !staffForm.value.name.trim() || !staffForm.value.account.trim() || staffForm.value.initialPassword.length < 8) {
+  if (!meeting.value || !staffForm.value.account.trim() || staffForm.value.initialPassword.length < 8) {
     staffMessageType.value = 'error'
-    staffMessage.value = '请填写姓名、登录账号和至少 8 位初始密码。'
+    staffMessage.value = '请填写登录账号和至少 8 位初始密码。'
     return
   }
   creatingStaff.value = true
   staffMessage.value = ''
   try {
     await createAdminStaff(meeting.value.id, {
-      displayName: staffForm.value.name.trim(),
-      phone: staffForm.value.phone.trim(),
       username: staffForm.value.account.trim(),
       initialPassword: staffForm.value.initialPassword,
     })
     staff.value = await listAdminStaff(meeting.value.id)
-    staffForm.value = { name: '', phone: '', account: '', initialPassword: '' }
+    staffForm.value = { account: '', initialPassword: '' }
     staffMessageType.value = 'success'
     staffMessage.value = '工作人员已创建或复用，并授权当前会议。'
   } catch (error) {
@@ -1611,8 +1718,6 @@ async function handleCreateStaff(): Promise<void> {
 function openStaffEditDialog(currentStaff: StaffUser): void {
   selectedStaff.value = currentStaff
   staffEditForm.value = {
-    name: currentStaff.name,
-    phone: currentStaff.phone,
     isActive: currentStaff.isActive !== false,
     newPassword: '',
   }
@@ -1627,8 +1732,7 @@ function openStaffEditDialog(currentStaff: StaffUser): void {
  * 异常：姓名为空、新密码不足 8 位、权限或网络异常时展示页面提示。
  */
 async function handleUpdateStaff(): Promise<void> {
-  if (!meeting.value || !selectedStaff.value || !staffEditForm.value.name.trim()) {
-    ElMessage.warning('工作人员姓名不能为空。')
+  if (!meeting.value || !selectedStaff.value) {
     return
   }
   if (staffEditForm.value.newPassword && staffEditForm.value.newPassword.length < 8) {
@@ -1638,8 +1742,6 @@ async function handleUpdateStaff(): Promise<void> {
   savingStaff.value = true
   try {
     await updateAdminStaff(meeting.value.id, selectedStaff.value.id, {
-      displayName: staffEditForm.value.name.trim(),
-      phone: staffEditForm.value.phone.trim(),
       isActive: staffEditForm.value.isActive,
       newPassword: staffEditForm.value.newPassword || undefined,
     })

@@ -3,9 +3,28 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MeetingAssistantFeatureKey = Literal["agenda", "manual", "weather", "route", "contact"]
+
+
+class ContactPerson(BaseModel):
+    """联系会务的单条联系人记录。"""
+
+    name: str = Field(min_length=1, max_length=50)
+    role: str = Field(default="", max_length=50)
+    phone: str = Field(default="", max_length=50)
+
+    @field_validator("name", "role", "phone")
+    @classmethod
+    def strip_whitespace(cls, value: str) -> str:
+        """统一去除首尾空白，避免保存后出现空姓名。
+
+        入参：value 为待处理的字符串，必填。
+        返回值：str：去除首尾空白后的字符串。
+        异常：当前函数不主动抛出异常。
+        """
+        return value.strip()
 
 
 class MeetingAssistantFeatureUpdate(BaseModel):
@@ -14,6 +33,7 @@ class MeetingAssistantFeatureUpdate(BaseModel):
     content: str = Field(max_length=20_000)
     unpublished_message: str = Field(min_length=1, max_length=500)
     is_published: bool
+    contacts: list[ContactPerson] | None = None
 
 
 class MeetingAssistantFeatureResponse(BaseModel):
@@ -27,6 +47,7 @@ class MeetingAssistantFeatureResponse(BaseModel):
     unpublished_message: str
     is_published: bool
     updated_at: datetime
+    contacts: list[ContactPerson] = Field(default_factory=list)
 
 
 class GuestMeetingAssistantFeatureResponse(BaseModel):
@@ -37,3 +58,4 @@ class GuestMeetingAssistantFeatureResponse(BaseModel):
     content: str | None
     unpublished_message: str
     is_published: bool
+    contacts: list[ContactPerson] = Field(default_factory=list)

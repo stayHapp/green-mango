@@ -18,16 +18,15 @@
         <el-icon><Location /></el-icon>
         <strong>{{ meeting.location || '待会务确认' }}</strong>
       </div>
-      <div v-if="showDescription && meeting.description" class="guest-home-summary__description">
-        <el-icon><Document /></el-icon>
-        <strong>{{ meeting.description }}</strong>
-      </div>
+      <p v-if="showDescription && meeting.description" class="guest-home-summary__description">
+        {{ meeting.description }}
+      </p>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { Calendar, Document, Location } from '@element-plus/icons-vue'
+import { Calendar, Location } from '@element-plus/icons-vue'
 
 import type { Meeting } from '../types'
 

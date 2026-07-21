@@ -9,6 +9,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.guest import Guest
+from app.models.access import MeetingAdmin
+from app.models.meeting import Meeting
+from app.models.user import User
 from app.services import weather
 from tests.test_meeting_assistant import create_meeting
 
@@ -46,12 +49,22 @@ def fake_qweather_response(path: str, params: dict[str, str]) -> dict[str, Any]:
     if path == "/v7/weather/now":
         return {
             "code": "200",
+            "updateTime": "2026-07-16T12:00+08:00",
             "now": {"obsTime": "2026-07-16T12:00+08:00", "temp": "28", "text": "多云", "icon": "101", "humidity": "81", "windSpeed": "14"},
         }
     if path == "/v7/weather/7d":
         return {
             "code": "200",
             "daily": [{"fxDate": "2026-07-16", "textDay": "多云", "iconDay": "101", "precip": "1.2", "tempMax": "30", "tempMin": "24"}],
+        }
+    if path == "/v7/weather/24h":
+        return {
+            "code": "200",
+            "hourly": [
+                {"fxTime": "2026-07-16T13:00+08:00", "temp": "29", "text": "多云", "icon": "101", "pop": "10", "precip": "0.0"},
+            {"fxTime": "2026-07-16T14:00+08:00", "temp": "30", "text": "多云", "icon": "101", "pop": "15", "precip": "0.0"},
+            {"fxTime": "2026-07-16T15:00+08:00", "temp": "30", "text": "多云", "icon": "101", "pop": "20", "precip": "0.0"},
+                ],
         }
     raise AssertionError(f"未覆盖的天气路径：{path}")
 
@@ -141,3 +154,98 @@ def test_guest_weather_requires_published_feature_and_returns_data(
     assert published.status_code == 200
     assert published.json()["source_name"] == "和风天气"
     assert published.json()["current"]["condition"] == "多云"
+    assert isinstance(published.json()["tips"], list)
+    if published.json()["current"]:
+        # updated_at 是可选字段；后端若填则必须能解析为可比较字符串。
+        assert published.json()["current"]["updated_at"] in (None,) or isinstance(published.json()["current"]["updated_at"], str)
+
+
+def test_build_weather_emits_tips_for_hot_and_rainy_day(monkeypatch) -> None:
+    """验证高温并且当日降雨时自动生成对应温馨提示。"""
+
+    def fake_qweather_response(path: str, params: dict[str, str]) -> dict[str, Any]:
+        if path == "/geo/v2/city/lookup":
+            return {"code": "200", "location": [{"id": "101010100", "name": "杭州", "adm2": "杭州"}]}
+        if path == "/v7/weather/now":
+            return {
+                "code": "200",
+                "now": {
+                    "obsTime": "2026-07-16T12:00+08:00",
+                    "temp": "34",
+                    "text": "多云",
+                    "icon": "101",
+                    "humidity": "60",
+                    "windSpeed": "12",
+                },
+            }
+        if path == "/v7/weather/7d":
+            return {
+                "code": "200",
+                "daily": [
+                    {"fxDate": "2026-07-16", "textDay": "中雨", "iconDay": "305", "precip": "12.0", "tempMax": "34", "tempMin": "26"},
+                ],
+            }
+        if path == "/v7/weather/24h":
+            return {
+                "code": "200",
+                "hourly": [
+                    {"fxTime": "2026-07-16T14:00+08:00", "temp": "34", "text": "中雨", "icon": "305", "pop": "60", "precip": "2.0"},
+                ],
+            }
+        raise AssertionError(f"未覆盖的天气路径：{path}")
+
+    monkeypatch.setattr(weather, "request_qweather", fake_qweather_response)
+
+    result = weather.build_weather("杭州市")
+
+    assert result.available is True
+    joined_tips = " ".join(result.tips)
+    assert "气温较高" in joined_tips
+    assert "降雨" in joined_tips
+
+
+def test_build_weather_emits_no_warning_tips_in_mild_conditions(monkeypatch) -> None:
+    """验证天气舒适时不发出任何高温、降雨或防风的警告提示。"""
+
+    def fake_qweather_response(path: str, params: dict[str, str]) -> dict[str, Any]:
+        if path == "/geo/v2/city/lookup":
+            return {"code": "200", "location": [{"id": "101010100", "name": "杭州", "adm2": "杭州"}]}
+        if path == "/v7/weather/now":
+            return {
+                "code": "200",
+                "now": {
+                    "obsTime": "2026-07-16T12:00+08:00",
+                    "temp": "22",
+                    "text": "晴",
+                    "icon": "100",
+                    "humidity": "55",
+                    "windSpeed": "8",
+                },
+            }
+        if path == "/v7/weather/7d":
+            return {
+                "code": "200",
+                "daily": [
+                    {"fxDate": "2026-07-16", "textDay": "晴", "iconDay": "100", "precip": "0", "tempMax": "24", "tempMin": "18"},
+                ],
+            }
+        if path == "/v7/weather/24h":
+            return {
+                "code": "200",
+                "hourly": [
+                    {"fxTime": "2026-07-16T13:00+08:00", "temp": "23", "text": "晴", "icon": "100", "pop": "0", "precip": "0"},
+                ],
+            }
+        raise AssertionError(f"未覆盖的天气路径：{path}")
+
+    monkeypatch.setattr(weather, "request_qweather", fake_qweather_response)
+
+    result = weather.build_weather("杭州市")
+
+    assert result.available is True
+    joined_tips = " ".join(result.tips)
+    assert "气温较高" not in joined_tips
+    assert "降雨" not in joined_tips
+    assert "风力" not in joined_tips
+    assert "保暖" not in joined_tips
+    assert "湿度" not in joined_tips

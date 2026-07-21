@@ -6,21 +6,15 @@ import { apiClient, authorizationConfig } from './client'
 interface StaffResponse {
   id: number
   username: string
-  display_name: string | null
-  phone: string | null
   is_active: boolean
 }
 
 export interface AdminStaffCreateInput {
   username: string
-  displayName: string
-  phone: string
   initialPassword: string
 }
 
 export interface AdminStaffUpdateInput {
-  displayName?: string
-  phone?: string
   isActive?: boolean
   newPassword?: string
 }
@@ -29,14 +23,14 @@ export interface AdminStaffUpdateInput {
  * 将后端工作人员响应转换为前端共享结构。
  *
  * 入参：staff 为后端工作人员响应，必填；meetingId 为当前授权会议 ID，必填。
- * 返回值：StaffUser：包含当前会议授权和启用状态的工作人员。
+ * 返回值：StaffUser：仅包含账号、授权和启用状态的工作人员。
  * 异常：当前函数不主动抛出异常。
  */
 function mapStaff(staff: StaffResponse, meetingId: string): StaffUser {
   return {
     id: String(staff.id),
-    name: staff.display_name || staff.username,
-    phone: staff.phone || '',
+    name: staff.username,
+    phone: '',
     account: staff.username,
     meetingIds: [meetingId],
     isActive: staff.is_active,
@@ -61,7 +55,7 @@ export async function listAdminStaff(meetingId: string): Promise<StaffUser[]> {
 /**
  * 创建工作人员账号或复用同名工作人员，并授权当前会议。
  *
- * 入参：meetingId 为会议 ID；input 为账号、姓名、手机号和初始密码，均必填。
+ * 入参：meetingId 为会议 ID；input 为账号和初始密码，均必填。
  * 返回值：Promise<StaffUser>：已创建或已授权的工作人员。
  * 异常：字段校验、账号角色冲突、权限或网络异常时抛出 Axios 异常。
  */
@@ -70,8 +64,6 @@ export async function createAdminStaff(meetingId: string, input: AdminStaffCreat
     `/admin/meetings/${meetingId}/staff`,
     {
       username: input.username,
-      display_name: input.displayName,
-      phone: input.phone || null,
       initial_password: input.initialPassword,
     },
     authorizationConfig('admin'),
@@ -80,7 +72,7 @@ export async function createAdminStaff(meetingId: string, input: AdminStaffCreat
 }
 
 /**
- * 修改工作人员资料、启用状态或登录密码。
+ * 修改工作人员启用状态或登录密码。
  *
  * 入参：meetingId、staffId 为资源 ID；input 为需要修改的字段，均必填。
  * 返回值：Promise<StaffUser>：修改后的工作人员。
@@ -92,8 +84,6 @@ export async function updateAdminStaff(
   input: AdminStaffUpdateInput,
 ): Promise<StaffUser> {
   const payload: Record<string, string | boolean> = {}
-  if (input.displayName !== undefined) payload.display_name = input.displayName
-  if (input.phone !== undefined) payload.phone = input.phone
   if (input.isActive !== undefined) payload.is_active = input.isActive
   if (input.newPassword) payload.new_password = input.newPassword
   const { data } = await apiClient.patch<StaffResponse>(

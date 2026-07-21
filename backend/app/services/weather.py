@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import json
 import gzip
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import Any
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from app.core.config import settings
 from app.core.ssl_context import create_external_ssl_context
-from app.schemas.weather import CurrentWeatherResponse, DailyWeatherResponse, MeetingWeatherResponse
+from app.schemas.weather import CurrentWeatherResponse, DailyWeatherResponse, HourlyWeatherResponse, MeetingWeatherResponse
+
+logger = logging.getLogger(__name__)
 
 _CACHE: dict[str, tuple[datetime, MeetingWeatherResponse]] = {}
 _CACHE_LOCK = Lock()
@@ -62,10 +66,35 @@ def request_qweather(path: str, params: dict[str, str]) -> dict[str, Any]:
             if response.headers.get("Content-Encoding", "").lower() == "gzip":
                 response_body = gzip.decompress(response_body)
             payload = json.loads(response_body.decode("utf-8"))
+    except HTTPError as error:
+        logger.warning(
+            "和风天气接口返回 HTTP %s，路径=%s，参数=%s，错误=%s",
+            error.code, path, params, error.reason,
+        )
+        raise WeatherProviderError(f"天气服务返回 HTTP {error.code}，请稍后重试。") from error
+    except (URLError, TimeoutError, OSError) as error:
+        logger.warning(
+            "和风天气网络异常，路径=%s，参数=%s，错误=%s",
+            path, params, error,
+        )
+        raise WeatherProviderError("天气服务网络异常，请稍后重试。") from error
     except Exception as error:
+        logger.exception(
+            "和风天气调用未预期异常，路径=%s，参数=%s",
+            path, params,
+        )
         raise WeatherProviderError("天气服务暂时不可用，请稍后重试。") from error
-    if not isinstance(payload, dict) or payload.get("code") != "200":
+    if not isinstance(payload, dict):
+        logger.warning("和风天气响应非对象结构，payload 类型=%s", type(payload).__name__)
         raise WeatherProviderError("天气服务返回了异常结果。")
+    if str(payload.get("code")) != "200":
+        logger.warning(
+            "和风天气业务错误，路径=%s，参数=%s，code=%s",
+            path, params, payload.get("code"),
+        )
+        raise WeatherProviderError(
+            f"天气服务返回错误（{payload.get('code')}），请稍后重试。"
+        )
     return payload
 
 
@@ -89,14 +118,17 @@ def build_weather(
     location_id = str(matched["id"])
     current_payload = request_qweather("/v7/weather/now", {"location": location_id, "lang": "zh", "unit": "m"})
     daily_payload = request_qweather("/v7/weather/7d", {"location": location_id, "lang": "zh", "unit": "m"})
+    hourly_payload = request_qweather("/v7/weather/24h", {"location": location_id, "lang": "zh", "unit": "m"})
     current = current_payload["now"]
     daily = daily_payload.get("daily") or []
+    hourly = hourly_payload.get("hourly") or []
     return MeetingWeatherResponse(
         available=True,
         location_name=f"{matched.get('name', query)} · {matched.get('adm2') or matched.get('adm1') or '中国'}",
         message="以下为和风天气提供的近期天气预报。",
         current=CurrentWeatherResponse(
             observed_at=str(current["obsTime"]),
+            updated_at=str(current_payload.get("updateTime")) if current_payload.get("updateTime") else None,
             temperature=int(current["temp"]),
             condition=str(current["text"]),
             icon_code=str(current["icon"]),
@@ -114,7 +146,71 @@ def build_weather(
             )
             for item in daily
         ],
+        hourly=[
+            HourlyWeatherResponse(
+                forecast_at=str(item["fxTime"]),
+                condition=str(item["text"]),
+                icon_code=str(item["icon"]),
+                temperature=int(item["temp"]),
+                precipitation_probability=int(float(item.get("pop") or 0)),
+                precipitation=float(item.get("precip") or 0),
+            )
+            for item in hourly[:6]
+        ],
+        tips=_build_weather_tips(current, daily),
     )
+
+
+# 阈值常量集中存放，便于运营调整。
+_RAIN_TIP_MM = 5.0        # 当天降水 ≥ 5mm 提示带伞
+_STRONG_WIND_KMH = 30     # 风速 ≥ 30 km/h 提示防风
+_HOT_TEMP_C = 32          # 高温阈值
+_COLD_TEMP_C = 5          # 低温阈值
+_HIGH_HUMIDITY_PCT = 80   # 高湿阈值
+
+
+def _build_weather_tips(current: dict[str, Any], daily: list[dict[str, Any]]) -> list[str]:
+    """根据实时天气和短期预报生成简洁温馨提示列表。
+
+    入参：current 为和风天气当前实况；daily 为未来 7 天预报列表。
+    返回值：list[str]：条件触发的提示文案列表，未触发时为空列表。
+    异常：解析失败时静默忽略，不向路由抛出异常。
+    """
+
+    def safe_int(value: Any) -> int | None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def safe_float(value: Any) -> float | None:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    temperature = safe_int(current.get("temp"))
+    humidity = safe_int(current.get("humidity"))
+    wind_speed = safe_int(current.get("windSpeed"))
+
+    today_precipitation = 0.0
+    if daily:
+        today_precipitation = safe_float(daily[0].get("precip")) or 0.0
+
+    tips: list[str] = []
+    if wind_speed is not None and wind_speed >= _STRONG_WIND_KMH:
+        tips.append("今日风力较大，外出注意避风并适当添衣")
+    if today_precipitation >= _RAIN_TIP_MM:
+        tips.append("近期有降雨，建议携带雨具")
+    if temperature is not None and temperature >= _HOT_TEMP_C:
+        tips.append("气温较高，外出注意防晒与补水")
+    elif temperature is not None and temperature <= _COLD_TEMP_C:
+        tips.append("气温偏低，建议添衣保暖")
+    if humidity is not None and humidity >= _HIGH_HUMIDITY_PCT:
+        tips.append("空气湿度较高，请注意防潮与通风")
+    if not tips and temperature is not None and 12 <= temperature <= 26 and (humidity or 0) < 70:
+        tips.append("天气舒适，适合户外活动")
+    return tips
 
 
 def get_weather(

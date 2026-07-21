@@ -7,7 +7,7 @@ from app.core.security import hash_password
 from app.models.access import StaffMeeting
 from app.models.meeting import Meeting
 from app.models.user import User
-from app.schemas.staff import StaffCreate
+from app.schemas.staff import StaffCreate, StaffUpdate
 
 
 def create_or_authorize_staff(db: Session, meeting: Meeting, payload: StaffCreate) -> User:
@@ -25,8 +25,6 @@ def create_or_authorize_staff(db: Session, meeting: Meeting, payload: StaffCreat
         staff = User(
             username=payload.username,
             password_hash=hash_password(payload.initial_password),
-            display_name=payload.display_name,
-            phone=payload.phone,
             role="staff",
             is_active=True,
         )
@@ -38,6 +36,22 @@ def create_or_authorize_staff(db: Session, meeting: Meeting, payload: StaffCreat
     )
     if assignment is None:
         db.add(StaffMeeting(meeting_id=meeting.id, user_id=staff.id))
+    db.commit()
+    db.refresh(staff)
+    return staff
+
+
+def update_meeting_staff(db: Session, staff: User, payload: StaffUpdate) -> User:
+    """更新工作人员启用状态和密码。
+
+    入参：db 为数据库会话；staff 为已存在工作人员；payload 包含可选的启用状态与新密码，均必填。
+    返回值：User：已持久化的工作人员账号。
+    异常：数据库写入失败时由 SQLAlchemy 抛出异常。
+    """
+    if payload.is_active is not None:
+        staff.is_active = payload.is_active
+    if payload.new_password:
+        staff.password_hash = hash_password(payload.new_password)
     db.commit()
     db.refresh(staff)
     return staff

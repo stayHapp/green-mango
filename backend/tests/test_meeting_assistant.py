@@ -115,6 +115,7 @@ def test_admin_can_publish_feature_and_guest_cannot_read_unpublished_draft(
         "content": None,
         "unpublished_message": "天气信息正在更新。",
         "is_published": False,
+        "contacts": [],
     }
 
 

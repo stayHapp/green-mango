@@ -10,6 +10,7 @@ interface MeetingAssistantFeatureApiResponse {
   unpublished_message: string
   is_published: boolean
   updated_at?: string
+  contacts?: Array<{ name: string; role: string; phone: string }>
 }
 
 export const meetingAssistantFeatureDefinitions: Array<Pick<MeetingAssistantFeature, 'key' | 'title' | 'description'>> = [
@@ -64,6 +65,11 @@ function mapMeetingAssistantFeature(response: MeetingAssistantFeatureApiResponse
     content: response.content ?? '',
     unpublishedMessage: normalizeUnpublishedMessage(response.feature_key, response.unpublished_message),
     isPublished: response.is_published,
+    contacts: (response.contacts ?? []).map((item) => ({
+      name: item.name,
+      role: item.role,
+      phone: item.phone,
+    })),
   }
 }
 
@@ -92,7 +98,7 @@ export async function listAdminMeetingAssistantFeatures(meetingId: string): Prom
 export async function updateAdminMeetingAssistantFeature(
   meetingId: string,
   key: MeetingAssistantFeatureKey,
-  input: Pick<MeetingAssistantFeature, 'content' | 'unpublishedMessage' | 'isPublished'>,
+  input: Pick<MeetingAssistantFeature, 'content' | 'unpublishedMessage' | 'isPublished' | 'contacts'>,
 ): Promise<MeetingAssistantFeature> {
   const { data } = await apiClient.patch<MeetingAssistantFeatureApiResponse>(
     `/admin/meetings/${encodeURIComponent(meetingId)}/assistant-features/${key}`,
@@ -100,6 +106,7 @@ export async function updateAdminMeetingAssistantFeature(
       content: input.content,
       unpublished_message: input.unpublishedMessage,
       is_published: input.isPublished,
+      contacts: input.contacts,
     },
     authorizationConfig('admin'),
   )

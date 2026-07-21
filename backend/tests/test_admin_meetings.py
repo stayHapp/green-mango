@@ -440,7 +440,7 @@ def test_admin_can_create_staff_and_staff_can_list_assigned_meetings(
     create_response = client.post(
         f"/api/admin/meetings/{meeting.id}/staff",
         headers=admin_headers,
-        json={"username": "staff01", "display_name": "现场一组", "phone": "13700000001", "initial_password": "staff-pass-123"},
+        json={"username": "staff01", "initial_password": "staff-pass-123"},
     )
     assert create_response.status_code == 201
     staff_id = create_response.json()["id"]
@@ -448,7 +448,7 @@ def test_admin_can_create_staff_and_staff_can_list_assigned_meetings(
     repeated_response = client.post(
         f"/api/admin/meetings/{meeting.id}/staff",
         headers=admin_headers,
-        json={"username": "staff01", "display_name": "现场一组", "initial_password": "staff-pass-123"},
+        json={"username": "staff01", "initial_password": "staff-pass-123"},
     )
     assert repeated_response.status_code == 201
     assert repeated_response.json()["id"] == staff_id
@@ -665,8 +665,6 @@ def test_admin_resource_maintenance_and_cors_are_available(
         headers=headers,
         json={
             "username": "resource-staff",
-            "display_name": "资源工作人员",
-            "phone": "13700000009",
             "initial_password": "resource-pass-123",
         },
     )
@@ -675,7 +673,7 @@ def test_admin_resource_maintenance_and_cors_are_available(
     patch_staff_response = client.patch(
         f"/api/admin/meetings/{meeting.id}/staff/{staff_id}",
         headers=headers,
-        json={"display_name": "已修改工作人员", "is_active": False},
+        json={"is_active": False},
     )
     assert patch_staff_response.status_code == 200
     assert patch_staff_response.json()["is_active"] is False

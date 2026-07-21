@@ -34,12 +34,6 @@
         </section>
 
         <section v-if="activeMode === 'scan'" class="staff-scan-view">
-          <div class="staff-workspace-stats" aria-label="签到统计">
-            <div><strong>{{ guests.length }}</strong><span>参会人员</span></div>
-            <div><strong>{{ checkedCount }}</strong><span>已签到</span></div>
-            <div><strong>{{ uncheckedCount }}</strong><span>未签到</span></div>
-          </div>
-
           <div class="staff-scan-stage" :class="{ 'is-scanning': cameraScanning }">
             <div id="staff-qr-reader" class="staff-scan-camera" />
             <div v-if="!cameraScanning" class="staff-scan-placeholder">
@@ -155,6 +149,11 @@
         </section>
 
         <section v-else class="staff-records-view">
+          <div class="staff-workspace-stats" aria-label="签到统计">
+            <div><strong>{{ guests.length }}</strong><span>参会人员</span></div>
+            <div><strong>{{ checkedCount }}</strong><span>已签到</span></div>
+            <div><strong>{{ uncheckedCount }}</strong><span>未签到</span></div>
+          </div>
           <el-empty v-if="!checkInRows.length" description="暂无签到记录" :image-size="72" />
           <article v-for="row in checkInRows" :key="row.id" class="staff-record-row">
             <span>{{ row.guestName.slice(0, 1) }}</span>

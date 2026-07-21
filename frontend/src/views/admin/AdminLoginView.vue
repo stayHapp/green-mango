@@ -57,9 +57,9 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { getApiErrorMessage } from '../api/client'
-import { loginAdmin } from '../api/sessions'
-import { useSessionStore } from '../stores/session'
+import { getApiErrorMessage } from '../../api/client'
+import { loginAdmin } from '../../api/sessions'
+import { useSessionStore } from '../../stores/session'
 
 const router = useRouter()
 const session = useSessionStore()
