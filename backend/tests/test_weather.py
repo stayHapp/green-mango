@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from app.models.guest import Guest
 from app.services import weather
-from tests.test_admin_meetings import auth_headers, client_and_session
 from tests.test_meeting_assistant import create_meeting
 
 
@@ -103,16 +102,16 @@ def test_build_weather_prefers_navigation_coordinates(monkeypatch) -> None:
 
 
 def test_guest_weather_requires_published_feature_and_returns_data(
-    client_and_session: tuple[TestClient, Session], monkeypatch
+    client_and_session: tuple[TestClient, Session], create_user, auth_headers, monkeypatch
 ) -> None:
     """验证嘉宾只能读取已发布会议的天气并获得聚合结果。
 
-    入参：client_and_session 为测试客户端和数据库会话；monkeypatch 用于隔离外部供应商。
+    入参：client_and_session 为测试客户端和数据库会话；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数；monkeypatch 用于隔离外部供应商。
     返回值：None：断言通过表示发布权限与响应结构正确。
     异常：接口状态或返回数据不符合约定时由断言报告。
     """
     client, db = client_and_session
-    meeting_id, admin_headers = create_meeting(client, db, "weather-admin")
+    meeting_id, admin_headers = create_meeting(client, db, create_user, auth_headers, "weather-admin")
     meeting_response = client.patch(
         f"/api/admin/meetings/{meeting_id}",
         headers=admin_headers,

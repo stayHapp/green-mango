@@ -6,13 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.models.guest import Guest
 from app.models.meeting import MeetingAssistantFeature
-from tests.test_admin_meetings import auth_headers, client_and_session, create_user
 
 
-def create_meeting(client: TestClient, db: Session, admin_username: str = "assistant-admin") -> tuple[int, dict[str, str]]:
+def create_meeting(client: TestClient, db: Session, create_user, auth_headers, admin_username: str = "assistant-admin") -> tuple[int, dict[str, str]]:
     """通过真实管理员接口创建带默认会议助手配置的测试会议。
 
-    入参：client 为测试客户端；db 为数据库会话；admin_username 为唯一管理员账号，均必填。
+    入参：client 为测试客户端；db 为数据库会话；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数；admin_username 为唯一管理员账号，均必填。
     返回值：tuple[int, dict[str, str]]：新会议 ID 和管理员认证请求头。
     异常：接口创建失败时由测试断言报告，不主动转换异常。
     """
@@ -29,15 +28,17 @@ def create_meeting(client: TestClient, db: Session, admin_username: str = "assis
 
 def test_new_meeting_has_five_default_assistant_features(
     client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
 ) -> None:
     """验证新会议在创建事务内生成顺序稳定的五项默认配置。
 
-    入参：client_and_session 为测试客户端和数据库会话夹具。
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
     返回值：None：断言通过表示默认配置数量、顺序和状态正确。
     异常：断言失败表示默认初始化行为不符合设计。
     """
     client, db = client_and_session
-    meeting_id, headers = create_meeting(client, db)
+    meeting_id, headers = create_meeting(client, db, create_user, auth_headers)
 
     response = client.get(f"/api/admin/meetings/{meeting_id}/assistant-features", headers=headers)
 
@@ -55,15 +56,17 @@ def test_new_meeting_has_five_default_assistant_features(
 
 def test_admin_can_publish_feature_and_guest_cannot_read_unpublished_draft(
     client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
 ) -> None:
     """验证管理员发布闭环及嘉宾在撤回后无法读取已保存草稿。
 
-    入参：client_and_session 为测试客户端和数据库会话夹具。
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
     返回值：None：断言通过表示发布内容可见且撤回后正文为 null。
     异常：断言失败表示发布状态或草稿隔离存在缺陷。
     """
     client, db = client_and_session
-    meeting_id, admin_headers = create_meeting(client, db, "assistant-publisher")
+    meeting_id, admin_headers = create_meeting(client, db, create_user, auth_headers, "assistant-publisher")
     guest = Guest(
         meeting_id=meeting_id,
         name="会议助手嘉宾",
@@ -117,15 +120,17 @@ def test_admin_can_publish_feature_and_guest_cannot_read_unpublished_draft(
 
 def test_assistant_feature_rejects_unauthorized_access_and_invalid_input(
     client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
 ) -> None:
     """验证管理员越权、嘉宾跨会议和非法功能配置均被拒绝。
 
-    入参：client_and_session 为测试客户端和数据库会话夹具。
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
     返回值：None：断言通过表示权限边界和请求字段限制生效。
     异常：断言失败表示接口授权或校验规则存在回归。
     """
     client, db = client_and_session
-    meeting_id, owner_headers = create_meeting(client, db, "assistant-owner")
+    meeting_id, owner_headers = create_meeting(client, db, create_user, auth_headers, "assistant-owner")
     visitor = create_user(db, "assistant-visitor")
     visitor_headers = auth_headers(db, visitor)
     guest = Guest(
@@ -164,15 +169,17 @@ def test_assistant_feature_rejects_unauthorized_access_and_invalid_input(
 
 def test_historical_meeting_missing_features_is_backfilled(
     client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
 ) -> None:
     """验证迁移前历史会议首次读取时补齐缺少的默认配置。
 
-    入参：client_and_session 为测试客户端和数据库会话夹具。
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
     返回值：None：断言通过表示缺失配置补齐且已有内容不被覆盖。
     异常：断言失败表示历史数据兼容逻辑不正确。
     """
     client, db = client_and_session
-    meeting_id, headers = create_meeting(client, db, "assistant-history")
+    meeting_id, headers = create_meeting(client, db, create_user, auth_headers, "assistant-history")
     weather = db.scalar(
         select(MeetingAssistantFeature).where(
             MeetingAssistantFeature.meeting_id == meeting_id,
