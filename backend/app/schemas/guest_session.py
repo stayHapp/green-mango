@@ -63,6 +63,15 @@ class PublicMeetingResponse(GuestMeetingResponse):
 
     registration_enabled: bool
     guest_login_fields: list[str]
+    registration_fields: list["GuestRegistrationFieldResponse"] = Field(default_factory=list)
+
+
+class GuestRegistrationFieldResponse(BaseModel):
+    """公开报名表单中的单个字段定义。"""
+
+    key: str
+    label: str
+    required: bool
 
 
 class GuestQrResponse(BaseModel):

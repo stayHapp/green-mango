@@ -200,7 +200,7 @@ onMounted(loadMeeting)
 <style scoped>
 .guest-login-page {
   min-height: 100dvh;
-  background: #ffffff;
+  background: #f6f8f7;
 }
 
 .guest-login-page::before {
@@ -211,7 +211,7 @@ onMounted(loadMeeting)
   display: block;
   min-height: 100dvh;
   padding: 22px 24px 52px;
-  background: #ffffff;
+  background: #f6f8f7;
   box-shadow: none;
 }
 

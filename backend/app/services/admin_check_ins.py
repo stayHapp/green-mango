@@ -28,13 +28,20 @@ def get_check_in_summary(db: Session, meeting: Meeting) -> AdminCheckInSummary:
     返回值：AdminCheckInSummary：嘉宾总数、已签到数、未签到数及签到明细。
     异常：数据库查询失败时由 SQLAlchemy 抛出异常。
     """
-    total_guests = db.scalar(select(func.count()).select_from(Guest).where(Guest.meeting_id == meeting.id)) or 0
-    checked_in_count = db.scalar(select(func.count()).select_from(CheckIn).where(CheckIn.meeting_id == meeting.id)) or 0
+    total_guests = db.scalar(
+        select(func.count()).select_from(Guest).where(Guest.meeting_id == meeting.id, Guest.is_active.is_(True))
+    ) or 0
+    checked_in_count = db.scalar(
+        select(func.count())
+        .select_from(CheckIn)
+        .join(Guest, Guest.id == CheckIn.guest_id)
+        .where(CheckIn.meeting_id == meeting.id, Guest.is_active.is_(True))
+    ) or 0
     statement = (
         select(CheckIn, Guest, User.display_name)
         .join(Guest, Guest.id == CheckIn.guest_id)
         .outerjoin(User, User.id == CheckIn.staff_id)
-        .where(CheckIn.meeting_id == meeting.id)
+        .where(CheckIn.meeting_id == meeting.id, Guest.is_active.is_(True))
         .order_by(CheckIn.checked_in_at.desc(), CheckIn.id.desc())
     )
     records = [

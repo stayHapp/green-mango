@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -29,6 +29,7 @@ class GuestField(Base):
     field_type: Mapped[str] = mapped_column(String(50), nullable=False)
     required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     visible_to_guest: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     options_json: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
@@ -42,6 +43,17 @@ class Guest(Base):
     """一个会议中由管理员录入或导入的嘉宾。"""
 
     __tablename__ = "guests"
+    __table_args__ = (
+        Index(
+            "uq_guests_active_meeting_name_phone",
+            "meeting_id",
+            "name",
+            "phone",
+            unique=True,
+            sqlite_where=text("is_active = 1"),
+            postgresql_where=text("is_active"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     meeting_id: Mapped[int] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), index=True, nullable=False)
@@ -51,6 +63,7 @@ class Guest(Base):
     title: Mapped[str | None] = mapped_column(String(100))
     tag: Mapped[str | None] = mapped_column(String(100))
     seat: Mapped[str | None] = mapped_column(String(100))
+    source: Mapped[str] = mapped_column(String(32), default="admin_entry", nullable=False)
     # 二维码只承载随机凭证；不得将姓名、手机号等敏感信息编码到该字段。
     qr_token: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

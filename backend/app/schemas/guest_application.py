@@ -14,6 +14,7 @@ class GuestApplicationCreate(BaseModel):
     organization: str | None = Field(default=None, max_length=255)
     title: str | None = Field(default=None, max_length=100)
     tag: str | None = Field(default=None, max_length=100)
+    seat: str | None = Field(default=None, max_length=100)
     values: dict[str, str | None] = Field(default_factory=dict)
 
     @field_validator("name", "phone")

@@ -1,46 +1,57 @@
 <template>
-  <section class="page">
-    <div class="page-heading">
+  <AdminWorkspaceLayout active-section="meetings">
+    <section class="admin-meetings-page">
+      <div class="admin-page-heading">
       <div>
-        <p class="eyebrow">管理员端</p>
+        <p class="admin-page-eyebrow">会议管理</p>
         <h1>会议管理</h1>
-        <p class="muted">{{ session.admin ? `${session.admin.name} 可管理的会议` : '请先完成管理员登录。' }}</p>
+        <p class="muted">{{ session.admin ? `${session.admin.name} 可管理的全部会议` : '请先完成管理员登录。' }}</p>
       </div>
-      <el-button v-if="!session.admin" type="primary" @click="goLogin">去登录</el-button>
-    </div>
+        <el-button v-if="!session.admin" type="primary" @click="goLogin">去登录</el-button>
+        <el-button v-else type="primary" @click="openCreateMeetingDialog">创建会议</el-button>
+      </div>
 
-    <el-empty v-if="!session.admin" description="暂无管理员会话" />
-    <template v-else>
-      <el-alert v-if="loadError" class="top-gap" type="error" :closable="false" :title="loadError" />
-      <el-table v-loading="loading" :data="meetings" class="data-table top-gap" row-key="id">
-      <el-table-column prop="title" label="会议名称" min-width="220" />
-      <el-table-column prop="location" label="地点" min-width="220" />
-      <el-table-column label="时间" min-width="260">
-        <template #default="{ row }">{{ formatDate(row.startTime) }} - {{ formatDate(row.endTime) }}</template>
-      </el-table-column>
-      <el-table-column label="状态" width="120">
-        <template #default="{ row }">
-          <el-tag :type="row.status === 'published' ? 'success' : 'warning'">{{ statusText(row.status) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="140">
-        <template #default="{ row }">
-          <el-button type="primary" size="small" @click="goDetail(row.id)">查看</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-      <div class="action-row top-gap"><el-button type="primary" @click="openCreateMeetingDialog">创建会议</el-button></div>
-      <el-dialog v-model="createDialogVisible" title="创建会议" width="min(560px, calc(100% - 32px))">
-        <el-form label-position="top" @submit.prevent>
-          <div class="form-grid"><el-form-item label="会议名称"><el-input v-model="createForm.title" /></el-form-item><el-form-item label="会议地点"><el-input v-model="createForm.location" /></el-form-item></div>
-          <el-form-item label="会议说明"><el-input v-model="createForm.description" type="textarea" /></el-form-item>
-          <div class="form-grid"><el-form-item label="开始时间"><el-input v-model="createForm.startTime" type="datetime-local" /></el-form-item><el-form-item label="结束时间"><el-input v-model="createForm.endTime" type="datetime-local" /></el-form-item></div>
-          <div class="action-row"><el-button type="primary" :loading="creating" @click="handleCreateMeeting">创建会议</el-button></div>
-          <el-alert v-if="createMessage" class="top-gap" :type="createMessageType" :closable="false" :title="createMessage" />
-        </el-form>
-      </el-dialog>
-    </template>
-  </section>
+      <el-empty v-if="!session.admin" description="暂无管理员会话" />
+      <template v-else>
+        <el-alert v-if="loadError" class="top-gap" type="error" :closable="false" :title="loadError" />
+        <section class="admin-panel admin-meeting-list-panel">
+          <div class="admin-panel__heading">
+            <div>
+              <h2>全部会议</h2>
+              <p>选择一场会议，进入会议级管理工作台。</p>
+            </div>
+            <span class="admin-count-chip">{{ meetings.length }} 场会议</span>
+          </div>
+          <el-table v-loading="loading" :data="meetings" class="admin-data-table" row-key="id">
+            <el-table-column prop="title" label="会议名称" min-width="250" />
+            <el-table-column prop="location" label="地点" min-width="200" />
+            <el-table-column label="时间" min-width="250">
+              <template #default="{ row }">{{ formatDate(row.startTime) }} - {{ formatDate(row.endTime) }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="120">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'published' ? 'success' : 'warning'">{{ statusText(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="120" align="right">
+              <template #default="{ row }">
+                <el-button type="primary" link @click="goDetail(row.id)">进入管理</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </section>
+        <el-dialog v-model="createDialogVisible" title="创建会议" width="min(560px, calc(100% - 32px))">
+          <el-form label-position="top" @submit.prevent>
+            <div class="form-grid"><el-form-item label="会议名称"><el-input v-model="createForm.title" /></el-form-item><el-form-item label="会议地点"><el-input v-model="createForm.location" /></el-form-item></div>
+            <el-form-item label="会议说明"><el-input v-model="createForm.description" type="textarea" /></el-form-item>
+            <div class="form-grid"><el-form-item label="开始时间"><el-input v-model="createForm.startTime" type="datetime-local" /></el-form-item><el-form-item label="结束时间"><el-input v-model="createForm.endTime" type="datetime-local" /></el-form-item></div>
+            <div class="action-row"><el-button type="primary" :loading="creating" @click="handleCreateMeeting">创建会议</el-button></div>
+            <el-alert v-if="createMessage" class="top-gap" :type="createMessageType" :closable="false" :title="createMessage" />
+          </el-form>
+        </el-dialog>
+      </template>
+    </section>
+  </AdminWorkspaceLayout>
 </template>
 
 <script setup lang="ts">
@@ -49,6 +60,7 @@ import { useRouter } from 'vue-router'
 
 import { createAdminMeeting, listAdminMeetings } from '../../api/adminMeetings'
 import { getApiErrorMessage } from '../../api/client'
+import AdminWorkspaceLayout from '../../components/AdminWorkspaceLayout.vue'
 import { useSessionStore } from '../../stores/session'
 import type { Meeting, MeetingStatus } from '../../types'
 

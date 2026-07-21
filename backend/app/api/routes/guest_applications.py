@@ -12,10 +12,16 @@ from app.schemas.guest_application import (
     GuestApplicationResponse,
     GuestApplicationReviewRequest,
 )
-from app.schemas.guest_session import PublicMeetingResponse
+from app.schemas.guest_session import GuestRegistrationFieldResponse, PublicMeetingResponse
 from app.services.admin_resources import get_login_fields
 from app.services.admin_meetings import get_authorized_meeting
-from app.services.guest_applications import create_application, get_open_meeting, list_applications, review_application
+from app.services.guest_applications import (
+    create_application,
+    get_open_meeting,
+    get_registration_fields,
+    list_applications,
+    review_application,
+)
 
 public_router = APIRouter(prefix="/meetings")
 admin_router = APIRouter(prefix="/admin/meetings")
@@ -57,6 +63,7 @@ def get_public_meeting(meeting_id: int, db: DatabaseSession) -> PublicMeetingRes
         status=meeting.status,
         registration_enabled=bool(meeting.setting and meeting.setting.registration_enabled),
         guest_login_fields=get_login_fields(meeting),
+        registration_fields=[GuestRegistrationFieldResponse(**field) for field in get_registration_fields(db, meeting)],
     )
 
 

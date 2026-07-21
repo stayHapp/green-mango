@@ -16,6 +16,7 @@ from app.core.security import hash_password
 from app.db import Base
 from app.main import create_app
 from app.models.access import MeetingAdmin, StaffMeeting
+from app.models.application import GuestApplication
 from app.models.guest import CheckIn, Guest, GuestField, GuestValue
 from app.models.meeting import Meeting, MeetingSetting
 from app.models.user import User
@@ -270,13 +271,13 @@ def test_admin_can_replace_guest_fields_and_create_guest(client_and_session: tup
     assert len(list_response.json()) == 1
 
 
-def test_guest_field_replace_rejects_duplicate_keys_and_existing_values(
+def test_guest_field_save_updates_in_place_and_protects_destructive_changes(
     client_and_session: tuple[TestClient, Session],
 ) -> None:
-    """验证字段配置拒绝重复 key，并保护已有嘉宾动态字段值。
+    """验证字段配置增量更新已有字段，并保护含值字段免受删除或类型变更。
 
     入参：client_and_session 为测试客户端和数据库会话夹具。
-    返回值：None：断言通过表示字段配置不会重复或意外删除已有值。
+    返回值：None：断言通过表示安全修改保留字段 ID 和嘉宾值，破坏性修改会被拒绝。
     异常：当前函数不主动抛出业务异常；断言失败表示数据一致性保护失效。
     """
     client, db = client_and_session
@@ -304,13 +305,91 @@ def test_guest_field_replace_rejects_duplicate_keys_and_existing_values(
     guest = Guest(meeting_id=meeting.id, name="王敏", phone="13900000002", qr_token="test-guest-token")
     db.add_all([field, guest])
     db.flush()
+    original_field_id = field.id
     db.add(GuestValue(guest_id=guest.id, field_id=field.id, field_key=field.key, value_text="知会教育"))
     db.commit()
 
-    replace_response = client.put(
+    update_response = client.put(
+        f"/api/admin/meetings/{meeting.id}/guest-fields",
+        headers=headers,
+        json={
+            "fields": [
+                {
+                    "label": "所在单位",
+                    "key": "organization",
+                    "field_type": "text",
+                    "required": True,
+                    "visible_to_guest": False,
+                    "is_enabled": True,
+                    "sort_order": 1,
+                },
+                {
+                    "label": "饮食偏好",
+                    "key": "diet_preference",
+                    "field_type": "text",
+                    "sort_order": 2,
+                },
+            ]
+        },
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()[0]["id"] == original_field_id
+    assert update_response.json()[0]["label"] == "所在单位"
+    assert update_response.json()[0]["required"] is True
+    saved_value = db.scalar(select(GuestValue).where(GuestValue.guest_id == guest.id))
+    assert saved_value is not None
+    assert saved_value.field_id == original_field_id
+    assert saved_value.value_text == "知会教育"
+
+    empty_field = db.scalar(
+        select(GuestField).where(
+            GuestField.meeting_id == meeting.id,
+            GuestField.key == "diet_preference",
+        )
+    )
+    assert empty_field is not None
+    empty_field_id = empty_field.id
+    db.add(GuestValue(guest_id=guest.id, field_id=empty_field.id, field_key=empty_field.key, value_text=""))
+    db.commit()
+
+    remove_empty_response = client.put(
+        f"/api/admin/meetings/{meeting.id}/guest-fields",
+        headers=headers,
+        json={
+            "fields": [
+                {
+                    "label": "所在单位",
+                    "key": "organization",
+                    "field_type": "text",
+                }
+            ]
+        },
+    )
+    assert remove_empty_response.status_code == 200
+    assert [item["key"] for item in remove_empty_response.json()] == ["organization"]
+    assert db.scalar(select(GuestValue).where(GuestValue.field_id == empty_field_id)) is None
+
+    delete_valued_response = client.put(
         f"/api/admin/meetings/{meeting.id}/guest-fields", headers=headers, json={"fields": []}
     )
-    assert replace_response.status_code == 422
+    assert delete_valued_response.status_code == 422
+    assert delete_valued_response.json()["detail"] == "字段“所在单位”已有嘉宾数据，不能删除。"
+
+    change_type_response = client.put(
+        f"/api/admin/meetings/{meeting.id}/guest-fields",
+        headers=headers,
+        json={
+            "fields": [
+                {
+                    "label": "所在单位",
+                    "key": "organization",
+                    "field_type": "select",
+                }
+            ]
+        },
+    )
+    assert change_type_response.status_code == 422
+    assert change_type_response.json()["detail"] == "字段“所在单位”已有嘉宾数据，不能修改字段类型。"
 
 
 def test_admin_configures_guest_display_fields_and_guest_profile_receives_them(
@@ -751,6 +830,80 @@ def test_admin_excel_template_import_and_check_in_export(
     assert exported_rows[1][10] == "staff-excel"
 
 
+def test_admin_can_export_guest_information_and_status(
+    client_and_session: tuple[TestClient, Session],
+) -> None:
+    """验证嘉宾状态表包含正式嘉宾、未转化报名申请和对应状态。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具。
+    返回值：None：断言通过表示嘉宾状态表字段与管理列表口径一致。
+    异常：当前函数不主动抛出业务异常；断言失败表示导出内容或去重规则不符合预期。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-guest-status-export")
+    meeting = Meeting(title="嘉宾状态验证会议", created_by_id=admin.id, status="published")
+    db.add(meeting)
+    db.flush()
+    db.add(MeetingAdmin(meeting_id=meeting.id, user_id=admin.id))
+    subject_field = GuestField(meeting_id=meeting.id, label="学科", key="subject", field_type="text")
+    db.add(subject_field)
+    db.flush()
+    approved_guest = Guest(
+        meeting_id=meeting.id,
+        name="已通过嘉宾",
+        phone="13800000021",
+        organization="第一学校",
+        title="教师",
+        source="self_registration",
+        qr_token="guest-status-approved",
+    )
+    entered_guest = Guest(
+        meeting_id=meeting.id,
+        name="后台嘉宾",
+        phone="13800000022",
+        source="admin_import",
+        qr_token="guest-status-entered",
+    )
+    db.add_all([approved_guest, entered_guest])
+    db.flush()
+    db.add(GuestValue(guest_id=approved_guest.id, field_id=subject_field.id, field_key="subject", value_text="数学"))
+    db.add(CheckIn(meeting_id=meeting.id, guest_id=approved_guest.id, method="manual"))
+    db.add_all([
+        GuestApplication(
+            meeting_id=meeting.id,
+            name="待审核申请人",
+            phone="13800000023",
+            status="pending",
+            values_json={"subject": "语文"},
+        ),
+        GuestApplication(
+            meeting_id=meeting.id,
+            name="已通过重复申请",
+            phone="13800000024",
+            status="approved",
+            guest_id=approved_guest.id,
+        ),
+    ])
+    db.commit()
+
+    response = client.get(
+        f"/api/admin/meetings/{meeting.id}/guests/export",
+        headers=auth_headers(db, admin),
+    )
+    assert response.status_code == 200
+    workbook = load_workbook(BytesIO(response.content), data_only=True)
+    rows = list(workbook["嘉宾状态"].iter_rows(values_only=True))
+    workbook.close()
+    assert rows[0] == (
+        "记录ID", "姓名", "手机号", "单位", "职务", "身份", "座位号", "学科", "来源", "管理状态", "签到状态"
+    )
+    rows_by_name = {row[1]: row for row in rows[1:]}
+    assert set(rows_by_name) == {"待审核申请人", "已通过嘉宾", "后台嘉宾"}
+    assert rows_by_name["待审核申请人"][7:] == ("语文", "自主报名", "待审核", "—")
+    assert rows_by_name["已通过嘉宾"][7:] == ("数学", "自主报名", "已通过", "已签到")
+    assert rows_by_name["后台嘉宾"][8:] == ("后台导入", "已录入", "未签到")
+
+
 def test_public_application_can_be_reviewed_into_guest(
     client_and_session: tuple[TestClient, Session],
 ) -> None:
@@ -794,6 +947,13 @@ def test_public_application_can_be_reviewed_into_guest(
     assert public_meeting_response.status_code == 200
     assert public_meeting_response.json()["title"] == "开放报名会议"
     assert public_meeting_response.json()["guest_login_fields"] == ["name", "phone"]
+    assert public_meeting_response.json()["registration_fields"] == [
+        {"key": "name", "label": "姓名", "required": True},
+        {"key": "phone", "label": "手机号", "required": True},
+        {"key": "organization", "label": "单位", "required": False},
+        {"key": "title", "label": "职务", "required": False},
+        {"key": "research_area", "label": "研究方向", "required": True},
+    ]
 
     submit_response = client.post(f"/api/meetings/{meeting.id}/guest-applications", json=payload)
     assert submit_response.status_code == 201
@@ -815,6 +975,9 @@ def test_public_application_can_be_reviewed_into_guest(
     assert review_response.status_code == 200
     assert review_response.json()["status"] == "approved"
     assert review_response.json()["guest_id"] is not None
+    guest_response = client.get(f"/api/admin/meetings/{meeting.id}/guests", headers=headers)
+    assert guest_response.status_code == 200
+    assert guest_response.json()[0]["source"] == "self_registration"
     assert client.patch(
         f"/api/admin/meetings/{meeting.id}/guest-applications/{application_id}",
         headers=headers,
@@ -899,10 +1062,6 @@ def test_admin_resource_maintenance_and_cors_are_available(
         f"/api/admin/meetings/{meeting.id}/staff/{staff_id}", headers=headers
     ).status_code == 200
 
-    qr_response = client.post(
-        f"/api/admin/meetings/{meeting.id}/guest-qrcodes/generate", headers=headers
-    )
-    assert qr_response.json() == {"generated_count": 0, "existing_count": 1}
     assert client.delete(
         f"/api/admin/meetings/{meeting.id}/guests/{guest.id}", headers=headers
     ).status_code == 200
@@ -922,3 +1081,110 @@ def test_admin_resource_maintenance_and_cors_are_available(
     assert cors_response.status_code == 200
     assert cors_response.headers["access-control-allow-origin"] == "http://localhost:5173"
     assert client.get("/api/admin/meetings").status_code == 401
+
+
+def test_guest_deactivation_identity_and_dynamic_values_are_consistent(
+    client_and_session: tuple[TestClient, Session],
+) -> None:
+    """验证停用嘉宾退出当前名单、身份可重新使用且动态必填字段遵守启用状态。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具。
+    返回值：None：断言通过表示列表、统计、工作人员搜索、导出、身份唯一性和动态字段保存口径一致。
+    异常：当前函数不主动抛出业务异常；断言失败表示嘉宾管理闭环存在数据口径回归。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-guest-consistency")
+    staff = create_user(db, "staff-guest-consistency", role="staff")
+    meeting = Meeting(title="嘉宾一致性会议", created_by_id=admin.id, status="published")
+    db.add(meeting)
+    db.flush()
+    db.add_all([
+        MeetingAdmin(meeting_id=meeting.id, user_id=admin.id),
+        StaffMeeting(meeting_id=meeting.id, user_id=staff.id),
+        GuestField(
+            meeting_id=meeting.id,
+            label="饮食偏好",
+            key="diet_preference",
+            field_type="text",
+            required=True,
+            is_enabled=True,
+        ),
+        GuestField(
+            meeting_id=meeting.id,
+            label="历史字段",
+            key="legacy_field",
+            field_type="text",
+            required=True,
+            is_enabled=False,
+        ),
+    ])
+    db.commit()
+    admin_headers = auth_headers(db, admin)
+
+    create_payload = {
+        "name": "重复身份嘉宾",
+        "phone": "13800000999",
+        "values": {"diet_preference": "清淡"},
+    }
+    create_response = client.post(
+        f"/api/admin/meetings/{meeting.id}/guests",
+        headers=admin_headers,
+        json=create_payload,
+    )
+    assert create_response.status_code == 201
+    guest_id = create_response.json()["id"]
+    duplicate_response = client.post(
+        f"/api/admin/meetings/{meeting.id}/guests",
+        headers=admin_headers,
+        json=create_payload,
+    )
+    assert duplicate_response.status_code == 422
+    assert duplicate_response.json()["detail"] == "当前会议已存在姓名和手机号相同的启用嘉宾。"
+
+    db.add(CheckIn(meeting_id=meeting.id, guest_id=guest_id, staff_id=staff.id, method="manual"))
+    db.commit()
+    assert client.delete(
+        f"/api/admin/meetings/{meeting.id}/guests/{guest_id}", headers=admin_headers
+    ).status_code == 200
+    assert client.get(f"/api/admin/meetings/{meeting.id}/guests", headers=admin_headers).json() == []
+
+    summary_response = client.get(
+        f"/api/admin/meetings/{meeting.id}/check-ins", headers=admin_headers
+    )
+    assert summary_response.status_code == 200
+    assert summary_response.json() == {
+        "total_guests": 0,
+        "checked_in_count": 0,
+        "unchecked_count": 0,
+        "records": [],
+    }
+    staff_headers = auth_headers(db, staff)
+    assert client.get(
+        f"/api/staff/meetings/{meeting.id}/guests", headers=staff_headers
+    ).json() == []
+
+    check_in_export = client.get(
+        f"/api/admin/meetings/{meeting.id}/check-ins/export", headers=admin_headers
+    )
+    check_in_workbook = load_workbook(BytesIO(check_in_export.content), read_only=True)
+    assert check_in_workbook.active.max_row == 1
+    check_in_workbook.close()
+    guest_export = client.get(
+        f"/api/admin/meetings/{meeting.id}/guests/export", headers=admin_headers
+    )
+    guest_workbook = load_workbook(BytesIO(guest_export.content), read_only=True)
+    assert guest_workbook.active.max_row == 1
+    guest_workbook.close()
+
+    recreate_response = client.post(
+        f"/api/admin/meetings/{meeting.id}/guests",
+        headers=admin_headers,
+        json={**create_payload, "values": {"diet_preference": "素食"}},
+    )
+    assert recreate_response.status_code == 201
+    recreated_id = recreate_response.json()["id"]
+    detail_response = client.get(
+        f"/api/admin/meetings/{meeting.id}/guests/{recreated_id}", headers=admin_headers
+    )
+    assert detail_response.status_code == 200
+    assert detail_response.json()["values"] == {"diet_preference": "素食"}

@@ -16,8 +16,15 @@ export interface Meeting {
   endTime: string
   status: MeetingStatus
   registrationEnabled?: boolean
+  registrationFields?: GuestRegistrationField[]
   adminIds: string[]
   staffIds: string[]
+}
+
+export interface GuestRegistrationField {
+  key: string
+  label: string
+  required: boolean
 }
 
 export interface GuestApplicationInput {
@@ -25,6 +32,9 @@ export interface GuestApplicationInput {
   phone: string
   organization?: string
   title?: string
+  tag?: string
+  seat?: string
+  values?: Record<string, string>
 }
 
 export interface GuestApplicationResult {
@@ -54,6 +64,7 @@ export interface GuestField {
   visibleToGuest: boolean
   usedForLogin: boolean
   sortOrder: number
+  isEnabled: boolean
 }
 
 export interface Guest {
@@ -66,6 +77,7 @@ export interface Guest {
   title: string
   seat: string
   qrToken: string
+  source?: 'admin_entry' | 'admin_import' | 'self_registration'
   visibleFields?: string[]
   fieldLabels?: Record<string, string>
   values?: Record<string, string | null>
@@ -78,16 +90,12 @@ export interface GuestImportInput {
   title?: string
   tag?: string
   seat?: string
+  values?: Record<string, string | null>
 }
 
 export interface GuestImportResult {
   importedCount: number
   invalidRows: number[]
-}
-
-export interface GuestQrGenerationResult {
-  generatedCount: number
-  existingCount: number
 }
 
 export interface GuestCheckInQr {

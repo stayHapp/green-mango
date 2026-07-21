@@ -11,7 +11,47 @@ from app.models.meeting import Meeting
 from app.models.user import User
 from app.schemas.guest import GuestCreate
 from app.schemas.guest_application import GuestApplicationCreate
+from app.services.admin_resources import get_guest_registration_settings
 from app.services.admin_guests import create_guest
+
+FIXED_GUEST_FIELD_LABELS = {
+    "name": "姓名",
+    "phone": "手机号",
+    "organization": "单位",
+    "title": "职务",
+    "tag": "身份",
+    "seat": "座位号",
+}
+
+
+def get_registration_fields(db: Session, meeting: Meeting) -> list[dict[str, object]]:
+    """读取嘉宾端公开报名页可填写的字段定义。
+
+    入参：db 为数据库会话；meeting 为公开报名会议，均必填。
+    返回值：list[dict[str, object]]：按配置顺序返回 key、标签与必填状态。
+    异常：数据库查询失败时由 SQLAlchemy 抛出异常。
+    """
+    registration_fields, required_fields, _ = get_guest_registration_settings(meeting)
+    field_definitions = [
+        {"key": key, "label": FIXED_GUEST_FIELD_LABELS[key], "required": key in required_fields}
+        for key in registration_fields
+    ]
+    dynamic_fields = list(
+        db.scalars(
+            select(GuestField)
+            .where(
+                GuestField.meeting_id == meeting.id,
+                GuestField.visible_to_guest.is_(True),
+                GuestField.is_enabled.is_(True),
+            )
+            .order_by(GuestField.sort_order, GuestField.id)
+        )
+    )
+    field_definitions.extend(
+        {"key": field.key, "label": field.label, "required": field.required}
+        for field in dynamic_fields
+    )
+    return field_definitions
 
 
 def get_open_meeting(db: Session, meeting_id: int) -> Meeting | None:
@@ -48,7 +88,11 @@ def validate_application_values(
     异常：包含隐藏字段、未知字段或缺少公开必填字段时抛出 ValueError。
     """
     fields = list(db.scalars(select(GuestField).where(GuestField.meeting_id == meeting.id)))
-    visible_fields = {field.key: field for field in fields if field.visible_to_guest}
+    visible_fields = {
+        field.key: field
+        for field in fields
+        if field.visible_to_guest and field.is_enabled
+    }
     unknown_keys = set(values) - set(visible_fields)
     if unknown_keys:
         raise ValueError(f"存在不可填写的嘉宾字段：{', '.join(sorted(unknown_keys))}。")
@@ -69,6 +113,15 @@ def create_application(db: Session, meeting: Meeting, payload: GuestApplicationC
     异常：动态字段不合法或同一会议存在相同手机号待审核申请时抛出 ValueError。
     """
     validate_application_values(db, meeting, payload.values)
+    registration_fields, required_fields, _ = get_guest_registration_settings(meeting)
+    payload_values = payload.model_dump(exclude={"values"})
+    missing_fixed_fields = [
+        FIXED_GUEST_FIELD_LABELS[key]
+        for key in required_fields
+        if key in registration_fields and not str(payload_values.get(key) or "").strip()
+    ]
+    if missing_fixed_fields:
+        raise ValueError(f"缺少必填嘉宾字段：{', '.join(missing_fixed_fields)}。")
     duplicate = db.scalar(
         select(GuestApplication.id).where(
             GuestApplication.meeting_id == meeting.id,
@@ -134,6 +187,7 @@ def review_application(
                 seat=application.seat,
                 values=application.values_json,
             ),
+            source="self_registration",
         )
         application.guest_id = guest.id
     application.status = target_status

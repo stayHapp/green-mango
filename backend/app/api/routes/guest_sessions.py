@@ -105,6 +105,7 @@ def get_my_profile(meeting_id: int, db: DatabaseSession, guest: CurrentGuest) ->
         title=guest.title,
         tag=guest.tag,
         seat=guest.seat,
+        source=guest.source,
         qr_token=guest.qr_token,
         is_active=guest.is_active,
         created_at=guest.created_at,

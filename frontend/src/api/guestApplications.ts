@@ -28,7 +28,9 @@ export async function submitGuestApplication(
       phone: input.phone,
       organization: input.organization || null,
       title: input.title || null,
-      values: {},
+      tag: input.tag || null,
+      seat: input.seat || null,
+      values: input.values || {},
     },
   )
   return {

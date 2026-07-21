@@ -44,10 +44,10 @@
             />
 
             <el-form v-else label-position="top" class="guest-register-form" @submit.prevent="handleSubmit">
-              <el-form-item label="姓名" required :error="nameError">
+              <el-form-item v-if="registrationFieldMap.name" label="姓名" required :error="nameError">
                 <el-input ref="nameInput" v-model="form.name" autocomplete="name" placeholder="请输入姓名" @input="clearNameError" />
               </el-form-item>
-              <el-form-item label="手机号" required :error="phoneError">
+              <el-form-item v-if="registrationFieldMap.phone" label="手机号" required :error="phoneError">
                 <el-input
                   ref="phoneInput"
                   v-model="form.phone"
@@ -57,11 +57,18 @@
                   @input="clearPhoneError"
                 />
               </el-form-item>
-              <el-form-item label="单位">
-                <el-input v-model="form.organization" autocomplete="organization" placeholder="请输入单位名称（选填）" @input="clearSubmitError" />
-              </el-form-item>
-              <el-form-item label="职务">
-                <el-input v-model="form.title" placeholder="请输入职务（选填）" @input="clearSubmitError" />
+              <el-form-item
+                v-for="field in configurableRegistrationFields"
+                :key="field.key"
+                :label="field.label"
+                :required="field.required"
+              >
+                <el-input
+                  v-model="form[field.key]"
+                  :autocomplete="field.key === 'organization' ? 'organization' : 'off'"
+                  :placeholder="`请输入${field.label}${field.required ? '' : '（选填）'}`"
+                  @input="clearSubmitError"
+                />
               </el-form-item>
               <el-alert v-if="submitError" class="guest-login-form-error" type="error" :closable="false" :title="submitError" />
               <p class="guest-register-privacy">提交即表示你同意会务人员仅将这些信息用于本次会议报名审核与现场服务。</p>
@@ -75,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import type { InputInstance } from 'element-plus'
 import { ArrowLeft, CircleCheckFilled } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -84,7 +91,7 @@ import { getApiErrorMessage } from '../../api/client'
 import { submitGuestApplication } from '../../api/guestApplications'
 import { getPublicMeeting } from '../../api/sessions'
 import GuestMeetingSummary from '../../components/GuestMeetingSummary.vue'
-import type { GuestApplicationInput, Meeting } from '../../types'
+import type { Meeting } from '../../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -99,7 +106,48 @@ const nameError = ref('')
 const phoneError = ref('')
 const nameInput = ref<InputInstance>()
 const phoneInput = ref<InputInstance>()
-const form = reactive<GuestApplicationInput>({ name: '', phone: '', organization: '', title: '' })
+const form = reactive<Record<string, string>>({ name: '', phone: '', organization: '', title: '', tag: '', seat: '' })
+const registrationFieldMap = computed(resolveRegistrationFieldMap)
+const configurableRegistrationFields = computed(resolveConfigurableRegistrationFields)
+const requiredRegistrationFieldKeys = computed(resolveRequiredRegistrationFieldKeys)
+
+/**
+ * 将公开会议返回的报名字段转换为按 key 查询的映射。
+ *
+ * 入参：无；函数读取当前会议的报名字段定义。
+ * 返回值：Record<string, boolean>：字段启用时对应 key 为 true，未加载时保留姓名和手机号。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resolveRegistrationFieldMap(): Record<string, boolean> {
+  const fields = meeting.value?.registrationFields || [
+    { key: 'name', label: '姓名', required: true },
+    { key: 'phone', label: '手机号', required: true },
+  ]
+  return Object.fromEntries(fields.map((field) => [field.key, true]))
+}
+
+/**
+ * 筛选需要在姓名和手机号之后以通用输入框呈现的报名字段。
+ *
+ * 入参：无；函数读取当前会议的报名字段定义。
+ * 返回值：GuestRegistrationField[]：不包含姓名和手机号的字段，保持管理员配置顺序。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resolveConfigurableRegistrationFields() {
+  return (meeting.value?.registrationFields || []).filter((field) => field.key !== 'name' && field.key !== 'phone')
+}
+
+/**
+ * 读取当前报名表单中必须填写的字段 key。
+ *
+ * 入参：无；函数读取公开会议字段配置。
+ * 返回值：string[]：管理员标记为必填的字段 key；未加载时姓名和手机号必填。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resolveRequiredRegistrationFieldKeys(): string[] {
+  const fields = meeting.value?.registrationFields
+  return fields ? fields.filter((field) => field.required).map((field) => field.key) : ['name', 'phone']
+}
 
 /**
  * 加载报名页需要展示的公开会议信息和报名开关。
@@ -164,13 +212,14 @@ function clearSubmitError(): void {
  * 校验报名必填字段并聚焦第一个缺失输入框。
  *
  * 入参：无；函数读取当前报名表单。
- * 返回值：Promise<boolean>：姓名和手机号均非空时返回 true，否则返回 false。
+ * 返回值：Promise<boolean>：所有管理员标记为必填的字段均非空时返回 true，否则返回 false。
  * 异常：当前函数不主动抛出异常。
  */
 async function validateForm(): Promise<boolean> {
   nameError.value = form.name.trim() ? '' : '请输入姓名'
   phoneError.value = form.phone.trim() ? '' : '请输入手机号'
-  if (!nameError.value && !phoneError.value) {
+  const missingField = requiredRegistrationFieldKeys.value.find((key) => !form[key]?.trim())
+  if (!nameError.value && !phoneError.value && !missingField) {
     return true
   }
   await nextTick()
@@ -178,6 +227,9 @@ async function validateForm(): Promise<boolean> {
     nameInput.value?.focus()
   } else {
     phoneInput.value?.focus()
+  }
+  if (missingField && missingField !== 'name' && missingField !== 'phone') {
+    submitError.value = `请填写${configurableRegistrationFields.value.find((field) => field.key === missingField)?.label || '必填信息'}。`
   }
   return false
 }
@@ -200,11 +252,20 @@ async function handleSubmit(): Promise<void> {
   }
   submitting.value = true
   try {
+    const fixedKeys = new Set(['name', 'phone', 'organization', 'title', 'tag', 'seat'])
+    const dynamicValues = Object.fromEntries(
+      configurableRegistrationFields.value
+        .filter((field) => !fixedKeys.has(field.key))
+        .map((field) => [field.key, form[field.key]?.trim() || '']),
+    )
     await submitGuestApplication(meetingId, {
       name: form.name.trim(),
       phone: form.phone.trim(),
       organization: form.organization?.trim(),
       title: form.title?.trim(),
+      tag: form.tag?.trim(),
+      seat: form.seat?.trim(),
+      values: dynamicValues,
     })
     submitted.value = true
   } catch (error) {

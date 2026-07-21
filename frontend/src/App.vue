@@ -1,6 +1,6 @@
 <template>
-  <el-container class="app-shell" :class="{ 'staff-app-shell': isStaffPage }">
-    <el-header v-if="!isGuestPage && !isStaffWorkspace" class="topbar" :class="{ 'staff-topbar': isStaffPage }">
+  <el-container class="app-shell" :class="{ 'staff-app-shell': isStaffPage, 'admin-app-shell': isAdminPage }">
+    <el-header v-if="!isGuestPage && !isStaffWorkspace && !isAdminPage" class="topbar" :class="{ 'staff-topbar': isStaffPage }">
       <router-link class="brand" to="/">
         <span class="brand-name">知会</span>
         <span class="brand-subtitle">会议与签到原型</span>
@@ -16,7 +16,7 @@
         </template>
       </nav>
     </el-header>
-    <el-main :class="{ 'guest-main': isGuestPage, 'staff-main': isStaffPage }">
+    <el-main :class="{ 'guest-main': isGuestPage, 'staff-main': isStaffPage, 'admin-main': isAdminPage }">
       <router-view />
     </el-main>
   </el-container>
@@ -38,6 +38,7 @@ const currentClient = computed(clientName)
 const isGuestPage = computed(guestPage)
 const isStaffPage = computed(staffPage)
 const isStaffWorkspace = computed(staffWorkspace)
+const isAdminPage = computed(adminPage)
 
 /**
  * 判断当前路由是否属于嘉宾端页面。
@@ -70,6 +71,17 @@ function staffPage(): boolean {
  */
 function staffWorkspace(): boolean {
   return route.name === 'staff-check-in'
+}
+
+/**
+ * 判断当前路由是否属于管理员端页面。
+ *
+ * 入参：无；函数读取当前路由路径。
+ * 返回值：boolean：路径以 `/admin/` 开头时返回 true，否则返回 false。
+ * 异常：当前函数不主动抛出异常。
+ */
+function adminPage(): boolean {
+  return route.path.startsWith('/admin/')
 }
 
 /**

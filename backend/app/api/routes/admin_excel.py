@@ -9,7 +9,12 @@ from app.api.dependencies import CurrentAdmin, DatabaseSession
 from app.models.meeting import Meeting
 from app.schemas.admin_resources import GuestImportResponse
 from app.services.admin_meetings import get_authorized_meeting
-from app.services.excel_files import build_check_in_export, build_guest_import_template, read_import_rows
+from app.services.excel_files import (
+    build_check_in_export,
+    build_guest_import_template,
+    build_guest_status_export,
+    read_import_rows,
+)
 
 router = APIRouter(prefix="/admin/meetings")
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -94,3 +99,15 @@ def get_check_in_export(meeting_id: int, db: DatabaseSession, admin: CurrentAdmi
     """
     meeting = load_meeting_or_404(db, admin, meeting_id)
     return excel_response(build_check_in_export(db, meeting), f"{meeting.title}-签到明细.xlsx")
+
+
+@router.get("/{meeting_id}/guests/export")
+def get_guest_status_export(meeting_id: int, db: DatabaseSession, admin: CurrentAdmin) -> Response:
+    """导出当前会议的嘉宾信息与管理状态表。
+
+    入参：meeting_id 为会议 ID；db 与 admin 由 FastAPI 注入。
+    返回值：Response：包含嘉宾信息、来源、管理状态和签到状态的 XLSX 文件。
+    异常：会议不存在或无访问权限时返回 404。
+    """
+    meeting = load_meeting_or_404(db, admin, meeting_id)
+    return excel_response(build_guest_status_export(db, meeting), f"{meeting.title}-嘉宾状态表.xlsx")

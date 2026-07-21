@@ -10,7 +10,8 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.guest import CheckIn, Guest, GuestField
+from app.models.application import GuestApplication
+from app.models.guest import CheckIn, Guest, GuestField, GuestValue
 from app.models.meeting import Meeting
 from app.models.user import User
 from app.schemas.admin_resources import GuestImportResponse, ImportRowError
@@ -69,7 +70,7 @@ def build_guest_import_template(db: Session, meeting: Meeting) -> bytes:
     fields = list(
         db.scalars(
             select(GuestField)
-            .where(GuestField.meeting_id == meeting.id)
+            .where(GuestField.meeting_id == meeting.id, GuestField.is_enabled.is_(True))
             .order_by(GuestField.sort_order, GuestField.id)
         )
     )
@@ -134,7 +135,14 @@ def read_import_rows(db: Session, meeting: Meeting, source: BinaryIO) -> GuestIm
         if missing_headers:
             raise ValueError(f"Excel 缺少必填表头：{', '.join(sorted(missing_headers))}。")
 
-        fields = list(db.scalars(select(GuestField).where(GuestField.meeting_id == meeting.id)))
+        fields = list(
+            db.scalars(
+                select(GuestField).where(
+                    GuestField.meeting_id == meeting.id,
+                    GuestField.is_enabled.is_(True),
+                )
+            )
+        )
         dynamic_by_label = {field.label: field for field in fields}
         supported_headers = set(FIXED_IMPORT_COLUMNS) | set(dynamic_by_label)
         unknown_headers = {header for header in headers if header and header not in supported_headers}
@@ -169,7 +177,7 @@ def read_import_rows(db: Session, meeting: Meeting, source: BinaryIO) -> GuestIm
             }
             try:
                 payload = GuestCreate(**fixed_values, values=dynamic_values)
-                create_guest(db, meeting, payload)
+                create_guest(db, meeting, payload, source="admin_import")
                 imported_count += 1
             except (ValidationError, ValueError, RuntimeError) as error:
                 db.rollback()
@@ -190,7 +198,7 @@ def build_check_in_export(db: Session, meeting: Meeting) -> bytes:
         select(Guest, CheckIn, User.display_name)
         .outerjoin(CheckIn, CheckIn.guest_id == Guest.id)
         .outerjoin(User, User.id == CheckIn.staff_id)
-        .where(Guest.meeting_id == meeting.id)
+        .where(Guest.meeting_id == meeting.id, Guest.is_active.is_(True))
         .order_by(Guest.created_at, Guest.id)
     )
     workbook = Workbook()
@@ -224,4 +232,101 @@ def build_check_in_export(db: Session, meeting: Meeting) -> bytes:
             staff_name,
         ])
     style_worksheet(worksheet, [12, 18, 20, 28, 20, 16, 16, 14, 28, 16, 22])
+    return workbook_bytes(workbook)
+
+
+def build_guest_status_export(db: Session, meeting: Meeting) -> bytes:
+    """导出与嘉宾管理列表口径一致的嘉宾信息和状态表。
+
+    入参：db 为数据库会话；meeting 为已完成管理员授权校验的会议，均必填。
+    返回值：bytes：包含正式嘉宾、待审核和已拒绝报名申请，以及来源、管理状态、签到状态的 XLSX 内容。
+    异常：数据库查询或工作簿序列化失败时向上抛出对应异常。
+    使用示例：`content = build_guest_status_export(db, meeting)`。
+    """
+    fields = list(
+        db.scalars(
+            select(GuestField)
+            .where(GuestField.meeting_id == meeting.id, GuestField.is_enabled.is_(True))
+            .order_by(GuestField.sort_order, GuestField.id)
+        )
+    )
+    extra_fields = [field for field in fields if field.label not in FIXED_IMPORT_COLUMNS]
+    guest_values = {
+        (value.guest_id, value.field_key): value.value_text
+        for value in db.scalars(
+            select(GuestValue)
+            .join(Guest, Guest.id == GuestValue.guest_id)
+            .where(Guest.meeting_id == meeting.id, Guest.is_active.is_(True))
+        )
+    }
+    guest_statement = (
+        select(Guest, CheckIn)
+        .outerjoin(CheckIn, CheckIn.guest_id == Guest.id)
+        .where(Guest.meeting_id == meeting.id, Guest.is_active.is_(True))
+        .order_by(Guest.created_at, Guest.id)
+    )
+    application_statement = (
+        select(GuestApplication)
+        .where(
+            GuestApplication.meeting_id == meeting.id,
+            GuestApplication.status != "approved",
+        )
+        .order_by(GuestApplication.created_at, GuestApplication.id)
+    )
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "嘉宾状态"
+    worksheet.append([
+        "记录ID",
+        "姓名",
+        "手机号",
+        "单位",
+        "职务",
+        "身份",
+        "座位号",
+        *(field.label for field in extra_fields),
+        "来源",
+        "管理状态",
+        "签到状态",
+    ])
+
+    source_labels = {
+        "self_registration": "自主报名",
+        "admin_import": "后台导入",
+        "admin_entry": "后台录入",
+    }
+    # 未转化的报名申请先输出，与嘉宾管理列表的排列口径保持一致。
+    for application in db.scalars(application_statement):
+        worksheet.append([
+            f"申请-{application.id}",
+            application.name,
+            application.phone,
+            application.organization,
+            application.title,
+            application.tag,
+            application.seat,
+            *(application.values_json.get(field.key) for field in extra_fields),
+            "自主报名",
+            "待审核" if application.status == "pending" else "已拒绝",
+            "—",
+        ])
+
+    for guest, check_in in db.execute(guest_statement).tuples():
+        worksheet.append([
+            f"嘉宾-{guest.id}",
+            guest.name,
+            guest.phone,
+            guest.organization,
+            guest.title,
+            guest.tag,
+            guest.seat,
+            *(guest_values.get((guest.id, field.key)) for field in extra_fields),
+            source_labels.get(guest.source, "后台录入"),
+            "已通过" if guest.source == "self_registration" else "已录入",
+            "已签到" if check_in else "未签到",
+        ])
+
+    column_widths = [16, 18, 20, 28, 20, 16, 16, *([20] * len(extra_fields)), 16, 14, 14]
+    style_worksheet(worksheet, column_widths)
     return workbook_bytes(workbook)

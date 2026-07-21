@@ -1,8 +1,7 @@
 """嘉宾、工作人员和会议管理员的补充维护业务服务。"""
 
-import secrets
-
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password
@@ -12,9 +11,87 @@ from app.models.meeting import Meeting, MeetingSetting
 from app.models.user import User
 from app.schemas.admin_resources import StaffUpdate
 from app.schemas.guest import GuestUpdate
-from app.services.admin_guests import save_guest_values
+from app.services.admin_guests import ensure_guest_identity_available, save_guest_values
 
 FIXED_GUEST_DISPLAY_FIELDS = ("name", "phone", "organization", "title", "tag", "seat")
+DEFAULT_GUEST_REGISTRATION_FIELDS = ("name", "phone", "organization", "title")
+DEFAULT_GUEST_REQUIRED_FIELDS = ("name", "phone")
+
+
+def get_guest_registration_settings(meeting: Meeting) -> tuple[list[str], list[str], list[str]]:
+    """读取固定嘉宾字段在公开报名页中的启用、呈现和必填配置。
+
+    入参：meeting 为已加载的会议对象，必填。
+    返回值：tuple[list[str], list[str], list[str]]：依次为报名字段、必填字段和启用字段的有序 key 列表。
+    异常：当前函数不主动抛出异常；历史配置非法时自动回退为兼容默认值。
+    """
+    settings_json = meeting.setting.settings_json if meeting.setting else {}
+    configured_fields = settings_json.get("guest_registration_fields", list(DEFAULT_GUEST_REGISTRATION_FIELDS))
+    configured_required = settings_json.get("guest_registration_required_fields", list(DEFAULT_GUEST_REQUIRED_FIELDS))
+    configured_enabled = settings_json.get("guest_enabled_fixed_fields", list(FIXED_GUEST_DISPLAY_FIELDS))
+    enabled_fields = [key for key in configured_enabled if isinstance(key, str) and key in FIXED_GUEST_DISPLAY_FIELDS]
+    registration_fields = [
+        key
+        for key in configured_fields
+        if isinstance(key, str) and key in enabled_fields
+    ]
+    required_fields = [
+        key
+        for key in configured_required
+        if isinstance(key, str) and key in registration_fields
+    ]
+    # 姓名和手机号是嘉宾登录凭证，始终启用、呈现并必填。
+    for key in reversed(DEFAULT_GUEST_REQUIRED_FIELDS):
+        if key not in enabled_fields:
+            enabled_fields.insert(0, key)
+        if key not in registration_fields:
+            registration_fields.insert(0, key)
+        if key not in required_fields:
+            required_fields.insert(0, key)
+    return registration_fields, required_fields, enabled_fields
+
+
+def save_guest_registration_settings(
+    db: Session,
+    meeting: Meeting,
+    fields: list[str],
+    required_fields: list[str],
+    enabled_fields: list[str],
+) -> tuple[list[str], list[str], list[str]]:
+    """保存固定嘉宾字段在公开报名页中的配置。
+
+    入参：db 为数据库会话；meeting 为目标会议；fields、required_fields、enabled_fields 分别为报名、必填与启用字段 key 列表。
+    返回值：tuple[list[str], list[str], list[str]]：保存后规范化的报名、必填与启用字段列表。
+    异常：包含未知字段、关闭登录凭证字段或必填字段未同时报名和启用时抛出 ValueError。
+    """
+    sequences = (fields, required_fields, enabled_fields)
+    invalid_fields = [
+        key
+        for sequence in sequences
+        for key in sequence
+        if key not in FIXED_GUEST_DISPLAY_FIELDS
+    ]
+    if invalid_fields:
+        raise ValueError(f"存在不可用的固定嘉宾字段：{', '.join(sorted(set(invalid_fields)))}。")
+    normalized_enabled = list(dict.fromkeys(enabled_fields))
+    normalized_fields = [key for key in dict.fromkeys(fields) if key in normalized_enabled]
+    normalized_required = [key for key in dict.fromkeys(required_fields) if key in normalized_fields]
+    for key in reversed(DEFAULT_GUEST_REQUIRED_FIELDS):
+        if key not in normalized_enabled:
+            normalized_enabled.insert(0, key)
+        if key not in normalized_fields:
+            normalized_fields.insert(0, key)
+        if key not in normalized_required:
+            normalized_required.insert(0, key)
+    if meeting.setting is None:
+        meeting.setting = MeetingSetting(settings_json={})
+    settings_json = dict(meeting.setting.settings_json)
+    settings_json["guest_registration_fields"] = normalized_fields
+    settings_json["guest_registration_required_fields"] = normalized_required
+    settings_json["guest_enabled_fixed_fields"] = normalized_enabled
+    meeting.setting.settings_json = settings_json
+    db.commit()
+    return normalized_fields, normalized_required, normalized_enabled
 
 
 def update_guest(db: Session, meeting: Meeting, guest: Guest, payload: GuestUpdate) -> Guest:
@@ -28,11 +105,21 @@ def update_guest(db: Session, meeting: Meeting, guest: Guest, payload: GuestUpda
         raise ValueError("嘉宾不属于当前会议。")
     values = payload.model_dump(exclude_unset=True)
     dynamic_values = values.pop("values", None)
+    target_name = values.get("name", guest.name)
+    target_phone = values.get("phone", guest.phone)
+    target_active = values.get("is_active", guest.is_active)
+    # 只有目标记录保持启用时才占用登录身份；停用记录允许后续重新录入同一嘉宾。
+    if target_active:
+        ensure_guest_identity_available(db, meeting, target_name, target_phone, exclude_guest_id=guest.id)
     for field_name, value in values.items():
         setattr(guest, field_name, value)
     if dynamic_values is not None:
         save_guest_values(db, meeting, guest, dynamic_values, require_all=False)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        raise ValueError("当前会议已存在姓名和手机号相同的启用嘉宾。") from error
     db.refresh(guest)
     return guest
 
@@ -85,10 +172,11 @@ def get_guest_display_fields(meeting: Meeting) -> list[str]:
     返回值：list[str]：固定字段与动态字段组成的有序字段 key 列表。
     异常：当前函数不主动抛出业务异常；历史配置无效时回退为默认呈现字段。
     """
-    dynamic_fields = [field.key for field in meeting.guest_fields]
+    _, _, enabled_fixed_fields = get_guest_registration_settings(meeting)
+    dynamic_fields = [field.key for field in meeting.guest_fields if field.is_enabled]
     default_fields = [
-        *FIXED_GUEST_DISPLAY_FIELDS,
-        *(field.key for field in meeting.guest_fields if field.visible_to_guest),
+        *enabled_fixed_fields,
+        *(field.key for field in meeting.guest_fields if field.is_enabled and field.visible_to_guest),
     ]
     settings_json = meeting.setting.settings_json if meeting.setting else {}
     configured_fields = settings_json.get("guest_visible_fields")
@@ -112,7 +200,8 @@ def save_guest_display_fields(db: Session, meeting: Meeting, fields: list[str]) 
     异常：包含当前会议不存在的固定或动态字段 key 时抛出 ValueError；数据库提交失败时向上抛出异常。
     使用示例：保存 `["name", "organization", "seat"]` 后嘉宾端只呈现对应非空资料。
     """
-    allowed_fields = set(FIXED_GUEST_DISPLAY_FIELDS) | {field.key for field in meeting.guest_fields}
+    _, _, enabled_fixed_fields = get_guest_registration_settings(meeting)
+    allowed_fields = set(enabled_fixed_fields) | {field.key for field in meeting.guest_fields if field.is_enabled}
     invalid_fields = [field for field in fields if field not in allowed_fields]
     if invalid_fields:
         raise ValueError(f"存在不可用的嘉宾呈现字段：{', '.join(invalid_fields)}。")
@@ -125,26 +214,6 @@ def save_guest_display_fields(db: Session, meeting: Meeting, fields: list[str]) 
     meeting.setting.settings_json = settings_json
     db.commit()
     return normalized_fields
-
-
-def regenerate_missing_guest_tokens(db: Session, meeting: Meeting) -> tuple[int, int]:
-    """为会议中缺少 token 的嘉宾补生成随机凭证。
-
-    入参：db 为数据库会话；meeting 为目标会议。
-    返回值：tuple[int, int]：生成数量与已有数量。
-    异常：数据库提交失败时由 SQLAlchemy 抛出异常。
-    """
-    guests = list(db.scalars(select(Guest).where(Guest.meeting_id == meeting.id)))
-    generated_count = 0
-    existing_count = 0
-    for guest in guests:
-        if guest.qr_token:
-            existing_count += 1
-        else:
-            guest.qr_token = secrets.token_urlsafe(32)
-            generated_count += 1
-    db.commit()
-    return generated_count, existing_count
 
 
 def update_staff(db: Session, staff: User, payload: StaffUpdate) -> User:

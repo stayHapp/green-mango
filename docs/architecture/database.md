@@ -9,7 +9,7 @@
 - 迁移工具：Alembic
 - 本地默认数据库：SQLite，`sqlite:///./dev.db`
 - 正式环境数据库：PostgreSQL，通过 `DATABASE_URL` 配置
-- 当前迁移头：`20260716_0006`
+- 当前迁移头：`20260721_0008`
 
 ## 表结构
 
@@ -19,8 +19,8 @@
 - `meeting_admins`：会议与管理员的多对多授权。
 - `staff_meetings`：会议与工作人员的多对多授权。
 - `meeting_assistant_features`：会议助手五项固定功能的正文、未发布提醒和发布状态。
-- `guest_fields`：会议级动态嘉宾字段。
-- `guests`：正式嘉宾、固定资料、启用状态和随机二维码凭证。
+- `guest_fields`：会议级动态嘉宾字段，包含报名页可见、必填和启用状态。
+- `guests`：正式嘉宾、固定资料、来源、启用状态和随机二维码凭证。
 - `guest_values`：正式嘉宾的动态字段值。
 - `check_ins`：嘉宾唯一签到记录及执行工作人员。
 - `guest_applications`：公开报名申请、动态值快照、审核结果和转化后的嘉宾 ID。
@@ -49,6 +49,7 @@ users --< auth_sessions
 - 同一会议的同一管理员授权唯一：`uq_meeting_admins_meeting_id_user_id`。
 - 同一会议的同一工作人员授权唯一：`uq_staff_meetings_meeting_id_user_id`。
 - 同一会议内动态字段 key 唯一：`uq_guest_fields_meeting_id_key`。
+- 同一会议内姓名和手机号相同的启用嘉宾唯一：`uq_guests_active_meeting_name_phone`；停用历史记录不占用身份。
 - 同一会议内会议助手功能 key 唯一：`uq_meeting_assistant_features_meeting_id_feature_key`。
 - 嘉宾二维码 token 全局唯一，且只承载随机凭证，不写入姓名和手机号。
 - 同一嘉宾的同一动态字段值唯一：`uq_guest_values_guest_id_field_id`。
@@ -66,6 +67,8 @@ users --< auth_sessions
 4. `20260715_0004`：嘉宾自主报名申请和审核字段。
 5. `20260716_0005`：会议助手五项固定功能配置、发布状态和唯一约束。
 6. `20260716_0006`：会议导航名称、地址和高德经纬度。
+7. `20260720_0007`：嘉宾来源与动态嘉宾字段启用状态。
+8. `20260721_0008`：启用嘉宾会议内姓名与手机号身份部分唯一索引。
 
 ## 会议助手结构
 
@@ -87,5 +90,13 @@ users --< auth_sessions
 会议表使用 `navigation_name`、`navigation_address`、`navigation_longitude` 和 `navigation_latitude` 保存管理员确认的高德地点。路线页使用坐标生成导航链接，天气服务使用同一坐标查询和风天气；历史会议字段为空时继续按 `location` 文字匹配。
 
 嘉宾端呈现字段保存在 `meeting_settings.settings_json.guest_visible_fields`，值为固定字段与当前会议动态字段 key 组成的有序数组。该配置复用既有 JSON 字段，不新增数据库迁移；历史会议缺少该键时，服务层默认呈现全部固定字段和原先标记为嘉宾可见的动态字段。
+
+固定嘉宾字段在公开报名页中的配置保存在同一 JSON 字段：`guest_registration_fields` 为报名表单字段、`guest_registration_required_fields` 为必填字段、`guest_enabled_fixed_fields` 为启用字段。姓名和手机号始终启用、展示并必填，保证嘉宾登录凭证稳定。动态字段使用 `guest_fields.required`、`guest_fields.visible_to_guest` 和 `guest_fields.is_enabled` 分别表达必填、报名页呈现与启用状态。
+
+`guest_fields.key` 是会议内稳定的动态字段业务标识。字段配置保存时按 `key` 原位更新，保留 `guest_fields.id` 以及 `guest_values.field_id` 关联；含非空嘉宾值的字段禁止删除或修改类型，没有非空填写内容的字段可以安全删除。
+
+`guests.source` 保存正式嘉宾进入系统的方式：`admin_entry` 为后台录入、`admin_import` 为 Excel 后台导入、`self_registration` 为自主报名审核通过后生成。该字段让后台列表能够区分名单来源，不影响嘉宾登录和签到规则。
+
+`guests.is_active=false` 表示嘉宾已软停用。停用记录及历史签到继续保存在数据库中，但不进入当前嘉宾列表、签到统计、工作人员搜索和当前名单导出。启用嘉宾使用部分唯一索引限制同一会议内 `name + phone` 身份重复；停用后允许重新录入相同身份。
 
 使用唯一约束 `uq_meeting_assistant_features_meeting_id_feature_key` 保证同一会议内功能标识唯一。

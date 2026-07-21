@@ -103,7 +103,7 @@ def search_guests_with_check_in_status(db: Session, meeting: Meeting, query: str
     statement = (
         select(Guest, CheckIn)
         .outerjoin(CheckIn, (CheckIn.meeting_id == Guest.meeting_id) & (CheckIn.guest_id == Guest.id))
-        .where(Guest.meeting_id == meeting.id)
+        .where(Guest.meeting_id == meeting.id, Guest.is_active.is_(True))
         .order_by(Guest.created_at, Guest.id)
     )
     normalized_query = query.strip().lower()

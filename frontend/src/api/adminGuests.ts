@@ -1,6 +1,6 @@
 /** 管理员嘉宾、动态字段和二维码相关 API。 */
 
-import type { Guest, GuestField, GuestImportInput, GuestQrGenerationResult } from '../types'
+import type { Guest, GuestField, GuestImportInput } from '../types'
 import { apiClient, authorizationConfig } from './client'
 
 interface GuestApiResponse {
@@ -12,6 +12,7 @@ interface GuestApiResponse {
   title: string | null
   tag: string | null
   seat: string | null
+  source: 'admin_entry' | 'admin_import' | 'self_registration'
   qr_token: string
   is_active: boolean
   created_at: string
@@ -30,6 +31,7 @@ interface GuestFieldApiResponse {
   field_type: string
   required: boolean
   visible_to_guest: boolean
+  is_enabled: boolean
   sort_order: number
   options_json: Array<Record<string, unknown>>
   created_at: string
@@ -44,9 +46,10 @@ interface GuestDisplayFieldsApiResponse {
   fields: string[]
 }
 
-interface GuestQrGenerationApiResponse {
-  generated_count: number
-  existing_count: number
+interface GuestRegistrationFieldsApiResponse {
+  fields: string[]
+  required_fields: string[]
+  enabled_fields: string[]
 }
 
 export interface AdminGuestDetail extends Guest {
@@ -58,6 +61,14 @@ export interface AdminGuestFieldInput {
   key: string
   type: GuestField['type']
   visibleToGuest: boolean
+  required: boolean
+  isEnabled: boolean
+}
+
+export interface AdminGuestRegistrationSettings {
+  fields: string[]
+  requiredFields: string[]
+  enabledFields: string[]
 }
 
 /**
@@ -78,6 +89,7 @@ function mapGuest(guest: GuestApiResponse): Guest {
     tag: guest.tag || '',
     seat: guest.seat || '',
     qrToken: guest.qr_token,
+    source: guest.source,
   }
 }
 
@@ -113,6 +125,7 @@ function mapGuestField(field: GuestFieldApiResponse, loginFields: Set<string>): 
     visibleToGuest: field.visible_to_guest,
     usedForLogin: loginFields.has(field.key),
     sortOrder: field.sort_order,
+    isEnabled: field.is_enabled,
   }
 }
 
@@ -124,6 +137,9 @@ function mapGuestField(field: GuestFieldApiResponse, loginFields: Set<string>): 
  * 异常：当前函数不主动抛出异常；必填和长度规则由页面及后端共同校验。
  */
 function guestPayload(input: GuestImportInput) {
+  const dynamicValues = Object.fromEntries(
+    Object.entries(input.values ?? {}).map(([key, value]) => [key, value?.trim() || null]),
+  )
   return {
     name: input.name.trim(),
     phone: input.phone.trim(),
@@ -131,7 +147,7 @@ function guestPayload(input: GuestImportInput) {
     title: input.title?.trim() || null,
     tag: input.tag?.trim() || null,
     seat: input.seat?.trim() || null,
-    values: {},
+    values: dynamicValues,
   }
 }
 
@@ -164,6 +180,40 @@ export async function createAdminGuest(meetingId: string, input: GuestImportInpu
     authorizationConfig('admin'),
   )
   return mapGuest(data)
+}
+
+/**
+ * 修改指定会议中的嘉宾固定资料。
+ *
+ * 入参：meetingId 为会议 ID；guestId 为嘉宾 ID；input 为姓名、手机号及可选固定资料，均必填。
+ * 返回值：Promise<Guest>：后端保存后返回的最新嘉宾资料。
+ * 异常：字段无效、嘉宾不存在、登录失效、会议无权限或网络失败时抛出异常，由页面展示。
+ */
+export async function updateAdminGuest(
+  meetingId: string,
+  guestId: string,
+  input: GuestImportInput,
+): Promise<Guest> {
+  const { data } = await apiClient.patch<GuestProfileApiResponse>(
+    `/admin/meetings/${encodeURIComponent(meetingId)}/guests/${encodeURIComponent(guestId)}`,
+    guestPayload(input),
+    authorizationConfig('admin'),
+  )
+  return mapGuest(data)
+}
+
+/**
+ * 软删除指定会议中的嘉宾并保留历史签到数据。
+ *
+ * 入参：meetingId 为会议 ID；guestId 为嘉宾 ID，均必填。
+ * 返回值：Promise<void>：服务端确认嘉宾停用后结束，不返回业务数据。
+ * 异常：嘉宾不存在、登录失效、会议无权限或网络失败时抛出异常，由页面展示。
+ */
+export async function deleteAdminGuest(meetingId: string, guestId: string): Promise<void> {
+  await apiClient.delete(
+    `/admin/meetings/${encodeURIComponent(meetingId)}/guests/${encodeURIComponent(guestId)}`,
+    authorizationConfig('admin'),
+  )
 }
 
 /**
@@ -205,11 +255,11 @@ export async function listAdminGuestFields(meetingId: string): Promise<GuestFiel
 }
 
 /**
- * 全量保存指定会议的动态嘉宾字段。
+ * 按完整目标集合增量保存指定会议的动态嘉宾字段。
  *
  * 入参：meetingId 为会议 ID；fields 为已按页面顺序排列的字段配置，均必填。
- * 返回值：Promise<GuestField[]>：后端保存并重新排序后的完整字段列表。
- * 异常：字段标识重复、已有动态字段值、登录失效、无权限或网络失败时抛出异常，由页面展示。
+ * 返回值：Promise<GuestField[]>：后端原位更新、新增或安全删除后重新排序的完整字段列表。
+ * 异常：字段标识重复、删除含值字段、修改含值字段类型、登录失效、无权限或网络失败时抛出异常，由页面展示。
  * 使用示例：`await replaceAdminGuestFields('1', [{ label: '饮食偏好', key: 'diet', type: 'text', visibleToGuest: true }])`。
  */
 export async function replaceAdminGuestFields(
@@ -223,8 +273,9 @@ export async function replaceAdminGuestFields(
         label: field.label.trim(),
         key: field.key.trim(),
         field_type: field.type,
-        required: false,
+        required: field.required,
         visible_to_guest: field.visibleToGuest,
+        is_enabled: field.isEnabled,
         sort_order: index,
         options_json: [],
       })),
@@ -267,20 +318,47 @@ export async function replaceAdminGuestDisplayFields(meetingId: string, fields: 
 }
 
 /**
- * 为会议中缺少凭证的嘉宾批量补生成二维码 token。
+ * 读取固定嘉宾字段在公开报名表单中的呈现、必填和启用配置。
  *
  * 入参：meetingId 为会议 ID，必填。
- * 返回值：Promise<GuestQrGenerationResult>：新生成数量与已有数量。
- * 异常：会议无权限、登录失效或网络失败时抛出异常，由页面展示。
+ * 返回值：Promise<AdminGuestRegistrationSettings>：已转换为前端命名的固定字段配置。
+ * 异常：登录失效、会议无权限或网络失败时抛出异常。
  */
-export async function generateAdminGuestQrTokens(meetingId: string): Promise<GuestQrGenerationResult> {
-  const { data } = await apiClient.post<GuestQrGenerationApiResponse>(
-    `/admin/meetings/${encodeURIComponent(meetingId)}/guest-qrcodes/generate`,
-    undefined,
+export async function getAdminGuestRegistrationSettings(meetingId: string): Promise<AdminGuestRegistrationSettings> {
+  const { data } = await apiClient.get<GuestRegistrationFieldsApiResponse>(
+    `/admin/meetings/${encodeURIComponent(meetingId)}/guest-registration-fields`,
     authorizationConfig('admin'),
   )
   return {
-    generatedCount: data.generated_count,
-    existingCount: data.existing_count,
+    fields: data.fields,
+    requiredFields: data.required_fields,
+    enabledFields: data.enabled_fields,
+  }
+}
+
+/**
+ * 保存固定嘉宾字段在公开报名表单中的呈现、必填和启用配置。
+ *
+ * 入参：meetingId 为会议 ID；settings 为固定字段配置，均必填。
+ * 返回值：Promise<AdminGuestRegistrationSettings>：后端规范化后的配置。
+ * 异常：字段规则不合法、登录失效、会议无权限或网络失败时抛出异常。
+ */
+export async function replaceAdminGuestRegistrationSettings(
+  meetingId: string,
+  settings: AdminGuestRegistrationSettings,
+): Promise<AdminGuestRegistrationSettings> {
+  const { data } = await apiClient.put<GuestRegistrationFieldsApiResponse>(
+    `/admin/meetings/${encodeURIComponent(meetingId)}/guest-registration-fields`,
+    {
+      fields: settings.fields,
+      required_fields: settings.requiredFields,
+      enabled_fields: settings.enabledFields,
+    },
+    authorizationConfig('admin'),
+  )
+  return {
+    fields: data.fields,
+    requiredFields: data.required_fields,
+    enabledFields: data.enabled_fields,
   }
 }

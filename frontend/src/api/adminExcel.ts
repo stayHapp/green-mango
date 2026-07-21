@@ -1,4 +1,4 @@
-/** 管理员 Excel 模板、嘉宾导入和签到表导出 API。 */
+/** 管理员 Excel 模板、嘉宾导入、嘉宾状态表和签到表导出 API。 */
 
 import { apiClient, authorizationConfig } from './client'
 
@@ -86,4 +86,19 @@ export async function downloadAdminCheckInExport(meetingId: string, meetingTitle
     authorizationConfig('admin', { responseType: 'blob' }),
   )
   saveBlob(response.data, `${meetingTitle}-签到明细.xlsx`)
+}
+
+/**
+ * 下载当前会议包含嘉宾信息、来源、管理状态和签到状态的嘉宾状态表。
+ *
+ * 入参：meetingId 为会议 ID，必填；meetingTitle 为会议标题，必填，用于生成本地文件名。
+ * 返回值：Promise<void>：后端文件响应保存完成后结束。
+ * 异常：登录失效、无会议权限或网络失败时抛出 Axios 异常。
+ */
+export async function downloadAdminGuestStatusExport(meetingId: string, meetingTitle: string): Promise<void> {
+  const response = await apiClient.get<Blob>(
+    `/admin/meetings/${meetingId}/guests/export`,
+    authorizationConfig('admin', { responseType: 'blob' }),
+  )
+  saveBlob(response.data, `${meetingTitle}-嘉宾状态表.xlsx`)
 }

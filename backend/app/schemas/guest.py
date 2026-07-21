@@ -13,12 +13,13 @@ class GuestFieldInput(BaseModel):
     field_type: str = Field(min_length=1, max_length=50)
     required: bool = False
     visible_to_guest: bool = True
+    is_enabled: bool = True
     sort_order: int = Field(default=0, ge=0)
     options_json: list[dict[str, object]] = Field(default_factory=list)
 
 
 class GuestFieldReplaceRequest(BaseModel):
-    """全量替换一个会议嘉宾字段配置的请求数据。"""
+    """按完整目标集合增量同步一个会议嘉宾字段配置的请求数据。"""
 
     fields: list[GuestFieldInput] = Field(default_factory=list)
 
@@ -86,6 +87,7 @@ class GuestResponse(BaseModel):
     title: str | None
     tag: str | None
     seat: str | None
+    source: str
     qr_token: str
     is_active: bool
     created_at: datetime
@@ -130,10 +132,3 @@ class GuestLoginFieldsRequest(BaseModel):
         if set(value) != {"name", "phone"} or len(value) != 2:
             raise ValueError("MVP 嘉宾登录字段固定为 name 和 phone。")
         return ["name", "phone"]
-
-
-class GuestQrGenerationResponse(BaseModel):
-    """批量补生成嘉宾二维码 token 的结果。"""
-
-    generated_count: int
-    existing_count: int

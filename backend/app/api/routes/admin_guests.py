@@ -39,16 +39,17 @@ def get_guest_fields(meeting_id: int, db: DatabaseSession, admin: CurrentAdmin) 
 def put_guest_fields(
     meeting_id: int, payload: GuestFieldReplaceRequest, db: DatabaseSession, admin: CurrentAdmin
 ) -> list[GuestFieldResponse]:
-    """全量保存已授权会议的嘉宾字段配置。
+    """按稳定 key 增量保存已授权会议的嘉宾字段配置。
 
     入参：meeting_id 为会议 ID；payload 为字段配置；db 与 admin 由 FastAPI 注入。
     返回值：list[GuestFieldResponse]：保存后的完整字段配置。
-    异常：管理员身份无效时返回 401 或 403；会议未授权时返回 404；已有字段值时返回 422。
+    异常：管理员身份无效时返回 401 或 403；会议未授权时返回 404；删除含值字段或修改其类型时返回 422。
     """
     meeting = load_authorized_meeting_or_404(db, admin, meeting_id)
     try:
         return replace_guest_fields(db, meeting, payload.fields)
     except ValueError as error:
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
 
 

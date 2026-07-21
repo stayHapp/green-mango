@@ -1,97 +1,169 @@
 <template>
-  <section v-if="meeting" class="page">
-    <div class="page-heading">
+  <AdminWorkspaceLayout
+    v-if="meeting"
+    :meeting-id="meeting.id"
+    :meeting-title="meeting.title"
+    :meeting-status="statusText(meeting.status)"
+    :active-section="activeSection"
+    @navigate="handleWorkspaceNavigation"
+  >
+    <section class="admin-detail-page">
+      <div class="admin-page-heading">
       <div>
-        <p class="eyebrow">管理员端</p>
-        <h1>{{ meeting.title }}</h1>
-        <p class="muted">{{ meeting.location }}｜{{ formatDate(meeting.startTime) }} - {{ formatDate(meeting.endTime) }}</p>
+          <h1>{{ activeSectionTitle }}</h1>
+          <p class="muted">{{ meeting.location }}｜{{ formatDate(meeting.startTime) }} - {{ formatDate(meeting.endTime) }}</p>
       </div>
       <div class="heading-actions">
-        <el-button @click="goMeetings">返回会议管理</el-button>
-        <el-button v-if="!session.admin" type="primary" @click="goLogin">去登录</el-button>
-        <el-button
-          v-else
-          type="primary"
-          plain
-          :icon="Download"
-          :loading="exporting"
-          @click="handleExportCheckInSheet"
-        >
-          导出签到表
-        </el-button>
-        <el-tag type="success">签到 {{ checkedCount }}/{{ totalGuestCount }}</el-tag>
+        <template v-if="activeSection === 'guests'">
+          <el-button :icon="Upload" @click="openGuestImportDialog">导入 Excel</el-button>
+          <el-button :icon="Download" :loading="exporting" @click="handleExportGuestStatusSheet">导出嘉宾状态表</el-button>
+          <el-button type="primary" :icon="Plus" @click="openGuestCreateDialog">新增嘉宾</el-button>
+        </template>
+        <template v-else-if="activeSection === 'overview'">
+          <el-button
+            type="primary"
+            plain
+            :icon="Download"
+            :loading="exporting"
+            @click="handleExportCheckInSheet"
+          >
+            导出签到表
+          </el-button>
+          <el-tag type="success">签到 {{ checkedCount }}/{{ totalGuestCount }}</el-tag>
+        </template>
       </div>
-    </div>
+      </div>
 
     <el-alert v-if="!session.admin" class="top-gap" type="warning" :closable="false" title="请先完成管理员登录后再查看和编辑会议。" />
 
-    <el-alert v-else-if="meeting.status === 'published'" class="top-gap" type="success" :closable="false" title="会议已发布，可将会议入口链接生成二维码后分享给嘉宾和工作人员。">
-      <template #default>
-        <p>会议 ID：{{ meeting.id }}</p>
-        <div class="action-row"><el-input :model-value="meetingEntryUrl" readonly /><el-button type="primary" @click="copyMeetingEntryUrl">复制链接</el-button><el-button @click="openMeetingQrDialog">会议二维码</el-button></div>
-        <el-dialog v-model="meetingQrDialogVisible" title="会议二维码" width="min(360px, calc(100% - 32px))" align-center>
+    <el-tabs v-if="session.admin" v-model="activeSection" class="admin-detail-tabs">
+      <el-tab-pane label="数据总览" name="overview">
+        <section class="admin-overview-grid">
+          <article class="admin-stat-card">
+            <span>嘉宾总数</span>
+            <strong>{{ totalGuestCount }}</strong>
+            <small>已录入当前会议</small>
+          </article>
+          <article class="admin-stat-card">
+            <span>已签到</span>
+            <strong>{{ checkedCount }}</strong>
+            <small>现场已完成签到</small>
+          </article>
+          <article class="admin-stat-card">
+            <span>待签到</span>
+            <strong>{{ Math.max(totalGuestCount - checkedCount, 0) }}</strong>
+            <small>可继续核验入场</small>
+          </article>
+          <article class="admin-stat-card">
+            <span>工作人员</span>
+            <strong>{{ staff.length }}</strong>
+            <small>已授权当前会议</small>
+          </article>
+        </section>
+
+        <section class="admin-overview-content-grid">
+          <article class="admin-panel admin-checkin-progress-panel">
+            <div class="admin-panel__heading">
+              <div>
+                <h2>签到进度</h2>
+                <p>实时更新工作人员录入的签到结果。</p>
+              </div>
+              <strong>{{ checkInRate }}%</strong>
+            </div>
+            <el-progress :percentage="checkInRate" :show-text="false" :stroke-width="12" color="#07563f" />
+            <p class="admin-progress-caption">{{ checkedCount }} / {{ totalGuestCount }} 人已签到</p>
+          </article>
+
+          <article class="admin-panel admin-quick-actions-panel">
+            <div class="admin-panel__heading"><h2>快捷操作</h2></div>
+            <div class="admin-quick-actions">
+              <button type="button" @click="activeSection = 'guests'">新增或查看嘉宾</button>
+              <button type="button" @click="activeSection = 'fields'">配置嘉宾字段</button>
+              <button type="button" @click="activeSection = 'assistant'">设置会议服务</button>
+              <button type="button" @click="activeSection = 'staff'">维护工作人员</button>
+            </div>
+          </article>
+
+          <article class="admin-panel admin-recent-checkin-panel">
+            <div class="admin-panel__heading">
+              <div>
+                <h2>最近签到动态</h2>
+                <p>显示最近完成的现场签到。</p>
+              </div>
+              <el-button link type="primary" @click="activeSection = 'checkins'">查看全部</el-button>
+            </div>
+            <el-empty v-if="!checkInLoading && checkIns.length === 0" description="暂无签到记录" :image-size="72" />
+            <div v-else class="admin-recent-checkin-list">
+              <article v-for="record in checkIns.slice(0, 4)" :key="`${record.guestId}-${record.checkedInAt}`">
+                <span>{{ record.guestName.slice(0, 1) }}</span>
+                <strong>{{ record.guestName }}</strong>
+                <em>{{ record.method === 'scan' ? '扫码' : '人工' }}</em>
+                <small>{{ formatDate(record.checkedInAt) }}</small>
+              </article>
+            </div>
+          </article>
+        </section>
+      </el-tab-pane>
+      <el-tab-pane class="admin-tab-panel" label="编辑会议" name="edit">
+        <el-form class="edit-form meeting-edit-form" label-position="top" @submit.prevent>
+          <div class="meeting-fields-grid">
+            <el-form-item class="meeting-field-title" label="会议名称">
+              <el-input v-model="editForm.title" placeholder="请输入会议名称" />
+            </el-form-item>
+            <el-form-item class="meeting-field-location" label="会议地点">
+              <el-input v-model="editForm.location" placeholder="请输入会议地点" />
+            </el-form-item>
+            <el-form-item class="meeting-publish-field" label="会议发布">
+              <el-tag v-if="editForm.status === 'ended'" type="info" size="large">已结束</el-tag>
+              <el-button
+                v-else
+                :type="editForm.status === 'published' ? 'default' : 'primary'"
+                :plain="editForm.status === 'published'"
+                @click="toggleMeetingPublishStatus"
+              >
+                {{ editForm.status === 'published' ? '撤回为草稿' : '发布会议' }}
+              </el-button>
+            </el-form-item>
+            <el-form-item class="meeting-field-start" label="开始时间">
+              <el-input v-model="editForm.startTime" type="datetime-local" />
+            </el-form-item>
+            <el-form-item class="meeting-field-end" label="结束时间">
+              <el-input v-model="editForm.endTime" type="datetime-local" />
+            </el-form-item>
+            <el-form-item class="meeting-field-navigation" label="导航位置">
+              <div class="navigation-location-compact">
+                <span :title="editForm.navigationAddress">
+                  {{ editForm.navigationName || '未选择，天气将按会议地点匹配' }}
+                </span>
+                <el-button link type="primary" @click="openLocationDialog">{{ editForm.navigationName ? '更换' : '选择' }}</el-button>
+                <el-button v-if="editForm.navigationName" link @click="clearNavigationLocation">清除</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item class="meeting-field-description" label="会议说明">
+              <el-input v-model="editForm.description" type="textarea" :rows="2" placeholder="请输入会议说明" />
+            </el-form-item>
+          </div>
+          <div class="meeting-form-footer">
+            <p v-if="saveMessage" class="meeting-save-message" :class="`is-${saveMessageType}`">{{ saveMessage }}</p>
+            <div class="action-row meeting-save-actions">
+              <el-button @click="resetEditForm">重置</el-button>
+              <el-button type="primary" :loading="saving" @click="saveMeeting">保存会议信息</el-button>
+            </div>
+          </div>
+        </el-form>
+        <section v-if="meeting.status === 'published'" class="admin-entry-share-bar">
+          <div>
+            <strong>会议入口</strong>
+            <span>已发布，可分享给嘉宾和工作人员</span>
+          </div>
+          <el-input :model-value="meetingEntryUrl" readonly aria-label="会议入口链接" />
+          <el-button type="primary" @click="copyMeetingEntryUrl">复制链接</el-button>
+          <el-button @click="openMeetingQrDialog">下载二维码</el-button>
+        </section>
+        <el-dialog v-model="meetingQrDialogVisible" title="会议入口二维码" width="min(360px, calc(100% - 32px))" align-center>
           <img v-if="meetingQrCode" class="meeting-entry-qr" :src="meetingQrCode" alt="会议入口二维码" />
           <div class="action-row top-gap"><el-button type="primary" :disabled="!meetingQrCode" @click="downloadMeetingQrCode">下载二维码</el-button></div>
         </el-dialog>
-      </template>
-    </el-alert>
-
-    <div v-else class="stats-grid">
-      <el-card shadow="never"><div class="stat-number">{{ totalGuestCount }}</div><div class="muted">嘉宾总数</div></el-card>
-      <el-card shadow="never"><div class="stat-number">{{ checkedCount }}</div><div class="muted">已签到</div></el-card>
-      <el-card shadow="never"><div class="stat-number">{{ staff.length }}</div><div class="muted">工作人员</div></el-card>
-    </div>
-
-    <el-tabs v-if="session.admin" model-value="guests" class="section-tabs">
-      <el-tab-pane label="编辑会议" name="edit">
-        <el-form class="edit-form" label-position="top" @submit.prevent>
-          <div class="form-grid">
-            <el-form-item label="会议名称">
-              <el-input v-model="editForm.title" placeholder="请输入会议名称" />
-            </el-form-item>
-            <el-form-item label="会议状态">
-              <el-select v-model="editForm.status" placeholder="请选择状态">
-                <el-option label="草稿" value="draft" />
-                <el-option label="已发布" value="published" />
-                <el-option label="已结束" value="ended" />
-              </el-select>
-            </el-form-item>
-          </div>
-          <el-form-item label="会议地点">
-            <el-input v-model="editForm.location" placeholder="请输入会议地点" />
-          </el-form-item>
-          <el-form-item label="导航位置">
-            <div class="navigation-location-field">
-              <el-alert
-                v-if="editForm.navigationName"
-                type="success"
-                :closable="false"
-                :title="`${editForm.navigationName}｜${editForm.navigationAddress || '地址以高德地点为准'}`"
-              />
-              <el-alert v-else type="info" :closable="false" title="尚未选择导航位置；天气暂时继续按会议地点文字匹配。" />
-              <div class="action-row">
-                <el-button type="primary" plain @click="openLocationDialog">搜索并选择地点</el-button>
-                <el-button v-if="editForm.navigationName" @click="clearNavigationLocation">清除位置</el-button>
-              </div>
-            </div>
-          </el-form-item>
-          <el-form-item label="会议说明">
-            <el-input v-model="editForm.description" type="textarea" :rows="3" placeholder="请输入会议说明" />
-          </el-form-item>
-          <div class="form-grid">
-            <el-form-item label="开始时间">
-              <el-input v-model="editForm.startTime" type="datetime-local" />
-            </el-form-item>
-            <el-form-item label="结束时间">
-              <el-input v-model="editForm.endTime" type="datetime-local" />
-            </el-form-item>
-          </div>
-          <div class="action-row">
-            <el-button @click="resetEditForm">重置</el-button>
-            <el-button type="primary" :loading="saving" @click="saveMeeting">保存</el-button>
-          </div>
-          <el-alert v-if="saveMessage" class="top-gap" :type="saveMessageType" :closable="false" :title="saveMessage" />
-        </el-form>
         <el-dialog v-model="locationDialogVisible" title="选择导航位置" width="min(680px, calc(100% - 32px))">
           <div class="action-row">
             <el-input v-model="locationSearchQuery" placeholder="输入场馆、学校、酒店或详细地址" @keyup.enter="searchLocationOptions" />
@@ -113,64 +185,121 @@
           </div>
         </el-dialog>
       </el-tab-pane>
-      <el-tab-pane label="嘉宾" name="guests">
-        <div class="action-row"><el-button @click="guestCreateDialogVisible = true">新增嘉宾</el-button><el-button type="primary" :loading="generatingGuestQr" @click="handleGenerateGuestQrTokens">一键生成嘉宾二维码</el-button></div>
-        <el-alert v-if="guestQrMessage" class="top-gap" :type="guestQrMessageType" :closable="false" :title="guestQrMessage" />
-        <el-table :data="guestRows" row-key="id">
-          <el-table-column prop="name" label="姓名" width="120" />
-          <el-table-column prop="organization" label="单位" min-width="180" />
-          <el-table-column prop="title" label="职务" width="140" />
-          <el-table-column prop="tag" label="标签" width="120" />
-          <el-table-column prop="seat" label="座位" width="100" />
-          <el-table-column label="签到" width="120">
+      <el-tab-pane class="admin-tab-panel" label="嘉宾" name="guests">
+        <section class="admin-guest-filter-panel">
+          <el-select v-model="guestStatusFilter" aria-label="嘉宾状态筛选" class="admin-guest-filter-select">
+            <el-option label="全部状态" value="all" />
+            <el-option label="待审核" value="pending" />
+            <el-option label="已通过" value="approved" />
+            <el-option label="已录入" value="entered" />
+            <el-option label="已拒绝" value="rejected" />
+          </el-select>
+          <el-select v-model="guestCheckInFilter" aria-label="嘉宾签到筛选" class="admin-guest-filter-select">
+            <el-option label="全部签到" value="all" />
+            <el-option label="已签到" value="checked" />
+            <el-option label="未签到" value="unchecked" />
+          </el-select>
+          <el-input v-model="guestSearchKeyword" class="admin-guest-filter-search" placeholder="搜索姓名 / 手机号 / 单位 / 职务" clearable />
+        </section>
+        <el-alert v-if="guestApplicationError" class="top-gap" type="error" :closable="false" :title="guestApplicationError" />
+        <section class="admin-guest-list-panel">
+        <el-table :data="filteredGuestManagementRows" row-key="id">
+          <el-table-column prop="name" label="姓名" min-width="120" />
+          <el-table-column prop="phone" label="手机号" min-width="135" />
+          <el-table-column prop="organization" label="单位" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="title" label="职务" min-width="130" show-overflow-tooltip />
+          <el-table-column label="来源" min-width="110"><template #default="{ row }">{{ guestSourceText(row.source) }}</template></el-table-column>
+          <el-table-column label="状态" min-width="100"><template #default="{ row }"><el-tag :type="guestManagementStatusTagType(row.status)">{{ guestManagementStatusText(row.status) }}</el-tag></template></el-table-column>
+          <el-table-column label="签到" min-width="100">
             <template #default="{ row }">
-              <el-tag :type="row.checkedIn ? 'success' : 'info'">{{ row.checkedIn ? '已签到' : '未签到' }}</el-tag>
+              <span class="admin-guest-checkin-text">{{ row.recordType === 'application' ? '—' : row.checkedIn ? '已签到' : '未签到' }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="100"><template #default="{ row }"><el-button size="small" @click="showGuestDetail(row)">查看</el-button></template></el-table-column>
+          <el-table-column label="操作" width="180" fixed="right"><template #default="{ row }">
+            <template v-if="row.recordType === 'application' && row.status === 'pending'">
+              <el-button size="small" type="primary" :loading="reviewingApplicationId === row.application?.id" @click="reviewGuestApplication(row.application!, 'approved')">通过</el-button>
+              <el-button size="small" :disabled="reviewingApplicationId === row.application?.id" @click="reviewGuestApplication(row.application!, 'rejected')">拒绝</el-button>
+            </template>
+            <template v-else>
+              <el-button size="small" link @click="showGuestDetail(row.guest!)">查看</el-button>
+              <el-button size="small" link type="primary" @click="openGuestEditDialog(row.guest!)">编辑</el-button>
+              <el-button size="small" link type="danger" @click="handleDeleteGuest(row.guest!)">删除</el-button>
+            </template>
+          </template></el-table-column>
         </el-table>
-        <el-dialog v-model="guestCreateDialogVisible" title="新增嘉宾" width="min(520px, calc(100% - 32px))"><el-form label-position="top" @submit.prevent><div class="form-grid"><el-form-item label="姓名"><el-input v-model="guestForm.name" /></el-form-item><el-form-item label="手机号"><el-input v-model="guestForm.phone" /></el-form-item></div><div class="form-grid"><el-form-item label="单位"><el-input v-model="guestForm.organization" /></el-form-item><el-form-item label="职务"><el-input v-model="guestForm.title" /></el-form-item></div><div class="form-grid"><el-form-item label="身份"><el-input v-model="guestForm.tag" /></el-form-item><el-form-item label="座位"><el-input v-model="guestForm.seat" /></el-form-item></div><div class="action-row"><el-button type="primary" :loading="creatingGuest" @click="handleCreateGuest">保存嘉宾</el-button></div></el-form></el-dialog>
+        </section>
+        <el-dialog v-model="guestImportDialogVisible" title="导入 Excel 嘉宾名单" width="min(560px, calc(100% - 32px))" align-center>
+          <div class="admin-import-dialog__guide">
+            <strong>按模板整理名单后上传</strong>
+            <p>文件首行必须包含“姓名”和“手机号”列，系统会保留合法行并反馈错误行。</p>
+          </div>
+          <div class="admin-import-dialog__actions">
+            <el-button @click="downloadGuestImportTemplate">下载 Excel 模板</el-button>
+            <el-button type="primary" :loading="importing" @click="openGuestImportFilePicker">选择文件并导入</el-button>
+            <input ref="guestImportInput" class="visually-hidden" type="file" accept=".xlsx" @change="handleGuestImportFileChange" />
+          </div>
+          <el-alert v-if="importMessage" class="top-gap" :type="importMessageType" :closable="false" :title="importMessage" />
+        </el-dialog>
+        <el-dialog v-model="guestCreateDialogVisible" title="新增嘉宾" width="min(620px, calc(100% - 32px))" align-center>
+          <el-form label-position="top" @submit.prevent>
+            <div class="form-grid"><el-form-item label="姓名" required><el-input v-model="guestForm.name" /></el-form-item><el-form-item label="手机号" required><el-input v-model="guestForm.phone" /></el-form-item></div>
+            <div class="form-grid"><el-form-item label="单位"><el-input v-model="guestForm.organization" /></el-form-item><el-form-item label="职务"><el-input v-model="guestForm.title" /></el-form-item></div>
+            <div class="form-grid"><el-form-item label="身份"><el-input v-model="guestForm.tag" /></el-form-item><el-form-item label="座位"><el-input v-model="guestForm.seat" /></el-form-item></div>
+            <div v-if="enabledDynamicGuestFields.length" class="form-grid guest-dynamic-fields">
+              <el-form-item v-for="field in enabledDynamicGuestFields" :key="field.key" :label="field.label" :required="field.required">
+                <el-input v-model="guestForm.values[field.key]" />
+              </el-form-item>
+            </div>
+            <div class="action-row"><el-button @click="guestCreateDialogVisible = false">取消</el-button><el-button type="primary" :loading="creatingGuest" @click="handleCreateGuest">保存嘉宾</el-button></div>
+          </el-form>
+        </el-dialog>
+        <el-dialog v-model="guestEditDialogVisible" title="编辑嘉宾信息" width="min(620px, calc(100% - 32px))" align-center>
+          <el-form v-loading="guestEditLoading" label-position="top" @submit.prevent>
+            <div class="form-grid"><el-form-item label="姓名" required><el-input v-model="guestEditForm.name" /></el-form-item><el-form-item label="手机号" required><el-input v-model="guestEditForm.phone" /></el-form-item></div>
+            <div class="form-grid"><el-form-item label="单位"><el-input v-model="guestEditForm.organization" /></el-form-item><el-form-item label="职务"><el-input v-model="guestEditForm.title" /></el-form-item></div>
+            <div class="form-grid"><el-form-item label="身份"><el-input v-model="guestEditForm.tag" /></el-form-item><el-form-item label="座位"><el-input v-model="guestEditForm.seat" /></el-form-item></div>
+            <div v-if="enabledDynamicGuestFields.length" class="form-grid guest-dynamic-fields">
+              <el-form-item v-for="field in enabledDynamicGuestFields" :key="field.key" :label="field.label" :required="field.required">
+                <el-input v-model="guestEditForm.values[field.key]" />
+              </el-form-item>
+            </div>
+            <div class="action-row"><el-button @click="guestEditDialogVisible = false">取消</el-button><el-button type="primary" :loading="updatingGuest" @click="handleUpdateGuest">保存修改</el-button></div>
+          </el-form>
+        </el-dialog>
         <el-dialog v-model="guestDetailDialogVisible" title="嘉宾信息" width="min(420px, calc(100% - 32px))" align-center>
           <div v-loading="guestDetailLoading" class="guest-detail-content">
-            <dl v-if="selectedGuest" class="info-list"><dt>姓名</dt><dd>{{ selectedGuest.name }}</dd><dt>手机号</dt><dd>{{ selectedGuest.phone }}</dd><dt>单位</dt><dd>{{ selectedGuest.organization }}</dd><dt>职务</dt><dd>{{ selectedGuest.title }}</dd><dt>身份</dt><dd>{{ selectedGuest.tag }}</dd><dt>座位</dt><dd>{{ selectedGuest.seat }}</dd></dl>
+            <dl v-if="selectedGuest" class="info-list"><dt>姓名</dt><dd>{{ selectedGuest.name }}</dd><dt>手机号</dt><dd>{{ selectedGuest.phone }}</dd><dt>单位</dt><dd>{{ selectedGuest.organization || '—' }}</dd><dt>职务</dt><dd>{{ selectedGuest.title || '—' }}</dd><dt>身份</dt><dd>{{ selectedGuest.tag || '—' }}</dd><dt>座位</dt><dd>{{ selectedGuest.seat || '—' }}</dd><template v-for="item in selectedGuestDynamicRows" :key="item.key"><dt>{{ item.label }}</dt><dd>{{ item.value || '—' }}</dd></template></dl>
             <img v-if="guestQrCode" class="meeting-entry-qr" :src="guestQrCode" alt="嘉宾签到二维码" />
           </div>
         </el-dialog>
       </el-tab-pane>
-      <el-tab-pane label="导入嘉宾" name="import">
-        <el-alert type="info" :closable="false" title="第一版嘉宾固定使用姓名和手机号登录；导入文件首行需包含“姓名”和“手机号”列。" />
-        <div class="action-row top-gap">
-          <el-button @click="downloadGuestImportTemplate">下载 Excel 模板</el-button>
-          <el-button type="primary" :loading="importing" @click="openGuestImportFilePicker">导入 Excel 名单</el-button>
-          <input ref="guestImportInput" class="visually-hidden" type="file" accept=".xlsx" @change="handleGuestImportFileChange" />
-        </div>
-        <el-alert v-if="importMessage" class="top-gap" :type="importMessageType" :closable="false" :title="importMessage" />
-      </el-tab-pane>
-      <el-tab-pane label="字段" name="fields">
-        <el-alert type="info" :closable="false" title="姓名和手机号固定用于身份核验；下方列出全部嘉宾信息，可选择哪些字段在嘉宾端呈现。" />
+      <el-tab-pane class="admin-tab-panel" label="字段" name="fields">
+        <el-alert type="info" :closable="false" title="姓名和手机号固定用于身份核验。可配置字段是否必填、是否出现在报名表单、嘉宾个人信息页，以及是否启用。" />
         <div class="action-row top-gap">
           <el-button @click="addGuestFieldDraft">新增字段</el-button>
-          <el-button :disabled="!fieldsChanged" @click="resetGuestFieldDrafts(fields, savedVisibleGuestFieldKeys)">重置</el-button>
+          <el-button :disabled="!fieldsChanged" @click="resetGuestFieldDrafts(fields, savedVisibleGuestFieldKeys, savedGuestRegistrationSettings)">重置</el-button>
           <el-button type="primary" :loading="savingGuestFields" :disabled="!fieldsChanged" @click="saveGuestFields">保存字段</el-button>
         </div>
         <el-alert v-if="guestFieldMessage" class="top-gap" :type="guestFieldMessageType" :closable="false" :title="guestFieldMessage" />
         <h3 class="guest-field-section-title">固定嘉宾信息</h3>
         <el-table :data="fixedGuestFieldDrafts" row-key="key">
           <el-table-column prop="label" label="字段名称" min-width="180" />
-          <el-table-column prop="key" label="字段标识" min-width="180" />
-          <el-table-column label="用途" min-width="160"><template #default="{ row }">{{ row.loginRequired ? '登录核验、嘉宾资料' : '嘉宾资料' }}</template></el-table-column>
-          <el-table-column label="嘉宾端呈现" width="140"><template #default="{ row }"><el-switch v-model="row.visibleToGuest" /></template></el-table-column>
+          <el-table-column label="必填" width="110"><template #default="{ row }"><el-switch v-model="row.required" :disabled="row.loginRequired" /></template></el-table-column>
+          <el-table-column label="报名表单" width="130"><template #default="{ row }"><el-switch v-model="row.registrationVisible" :disabled="row.loginRequired" /></template></el-table-column>
+          <el-table-column label="个人信息页" width="140"><template #default="{ row }"><el-switch v-model="row.visibleToGuest" :disabled="!row.isEnabled" /></template></el-table-column>
+          <el-table-column label="启用" width="110"><template #default="{ row }"><el-switch v-model="row.isEnabled" :disabled="row.loginRequired" /></template></el-table-column>
         </el-table>
         <h3 class="guest-field-section-title">扩展嘉宾信息</h3>
         <el-table class="top-gap" :data="guestFieldDrafts" row-key="clientId">
           <el-table-column label="字段名称" min-width="180"><template #default="{ row }"><el-input v-model="row.label" placeholder="例如：饮食偏好" /></template></el-table-column>
-          <el-table-column label="字段标识" min-width="180"><template #default="{ row }"><el-input v-model="row.key" placeholder="例如：diet_preference" /></template></el-table-column>
-          <el-table-column label="字段类型" width="120"><template #default>文本</template></el-table-column>
-          <el-table-column label="嘉宾端呈现" width="140"><template #default="{ row }"><el-switch v-model="row.visibleToGuest" /></template></el-table-column>
+          <el-table-column label="必填" width="110"><template #default="{ row }"><el-switch v-model="row.required" /></template></el-table-column>
+          <el-table-column label="报名表单" width="130"><template #default="{ row }"><el-switch v-model="row.visibleToGuest" :disabled="!row.isEnabled" /></template></el-table-column>
+          <el-table-column label="个人信息页" width="140"><template #default="{ row }"><el-switch v-model="row.profileVisible" :disabled="!row.isEnabled" /></template></el-table-column>
+          <el-table-column label="启用" width="110"><template #default="{ row }"><el-switch v-model="row.isEnabled" /></template></el-table-column>
           <el-table-column label="操作" width="100"><template #default="{ $index }"><el-button type="danger" link @click="removeGuestFieldDraft($index)">删除</el-button></template></el-table-column>
         </el-table>
       </el-tab-pane>
-      <el-tab-pane label="会议助手" name="assistant">
+      <el-tab-pane class="admin-tab-panel" label="会议助手" name="assistant">
         <el-alert type="info" :closable="false" title="每项功能由管理员编辑并独立发布；未发布时，嘉宾点击后会看到对应提醒。" />
         <el-alert v-if="assistantError" class="top-gap" type="error" :closable="false" :title="assistantError" />
         <el-table v-loading="assistantLoading" class="top-gap" :data="assistantFeatures" row-key="key">
@@ -189,7 +318,7 @@
           </el-form>
         </el-dialog>
       </el-tab-pane>
-      <el-tab-pane label="工作人员" name="staff">
+      <el-tab-pane class="admin-tab-panel" label="工作人员" name="staff">
         <el-form class="edit-form" label-position="top" @submit.prevent>
           <div class="form-grid">
             <el-form-item label="姓名"><el-input v-model="staffForm.name" placeholder="请输入姓名" /></el-form-item>
@@ -216,7 +345,7 @@
           </el-form>
         </el-dialog>
       </el-tab-pane>
-      <el-tab-pane label="签到记录" name="checkins">
+      <el-tab-pane class="admin-tab-panel" label="签到记录" name="checkins">
         <el-alert v-if="checkInError" type="error" :closable="false" :title="checkInError" />
         <el-table v-loading="checkInLoading" class="top-gap" :data="checkIns" row-key="guestId">
           <el-table-column prop="guestName" label="嘉宾" />
@@ -226,8 +355,9 @@
           <el-table-column label="签到时间"><template #default="{ row }">{{ formatDate(row.checkedInAt) }}</template></el-table-column>
         </el-table>
       </el-tab-pane>
-    </el-tabs>
-  </section>
+      </el-tabs>
+    </section>
+  </AdminWorkspaceLayout>
   <section v-else class="page">
     <el-skeleton v-if="detailLoading" :rows="6" animated />
     <template v-else>
@@ -240,23 +370,37 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Download } from '@element-plus/icons-vue'
+import { Download, Plus, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import QRCode from 'qrcode'
 
-import { downloadAdminCheckInExport, downloadAdminGuestImportTemplate, importAdminGuests } from '../../api/adminExcel'
+import {
+  downloadAdminCheckInExport,
+  downloadAdminGuestImportTemplate,
+  downloadAdminGuestStatusExport,
+  importAdminGuests,
+} from '../../api/adminExcel'
 import { getAdminCheckInSummary } from '../../api/adminCheckIns'
 import {
   createAdminGuest,
-  generateAdminGuestQrTokens,
+  deleteAdminGuest,
   getAdminGuestDisplayFields,
   getAdminGuest,
+  getAdminGuestRegistrationSettings,
   listAdminGuestFields,
   listAdminGuests,
   replaceAdminGuestFields,
   replaceAdminGuestDisplayFields,
+  replaceAdminGuestRegistrationSettings,
+  updateAdminGuest,
+  type AdminGuestRegistrationSettings,
   type AdminGuestFieldInput,
 } from '../../api/adminGuests'
+import {
+  listAdminGuestApplications,
+  reviewAdminGuestApplication,
+  type AdminGuestApplication,
+} from '../../api/adminGuestApplications'
 import {
   getAdminMeeting,
   searchMeetingLocationOptions,
@@ -266,8 +410,27 @@ import {
 import { listAdminMeetingAssistantFeatures, updateAdminMeetingAssistantFeature } from '../../api/meetingAssistant'
 import { createAdminStaff, listAdminStaff, removeAdminStaffAssignment, updateAdminStaff } from '../../api/adminStaff'
 import { getApiErrorMessage } from '../../api/client'
+import AdminWorkspaceLayout from '../../components/AdminWorkspaceLayout.vue'
 import { useSessionStore } from '../../stores/session'
 import type { AdminCheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingAssistantFeature, MeetingStatus, StaffUser } from '../../types'
+
+interface GuestManagementRow {
+  id: string
+  recordType: 'guest' | 'application'
+  name: string
+  phone: string
+  organization: string
+  title: string
+  source: Guest['source']
+  status: 'pending' | 'approved' | 'entered' | 'rejected'
+  checkedIn: boolean
+  guest?: Guest
+  application?: AdminGuestApplication
+}
+
+interface GuestFormState extends GuestImportInput {
+  values: Record<string, string | null>
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -278,15 +441,16 @@ const detailError = ref('')
 const guests = ref<Guest[]>([])
 const fields = ref<GuestField[]>([])
 const fixedGuestFieldDrafts = ref([
-  { key: 'name', label: '姓名', loginRequired: true, visibleToGuest: true },
-  { key: 'phone', label: '手机号', loginRequired: true, visibleToGuest: true },
-  { key: 'organization', label: '单位', loginRequired: false, visibleToGuest: true },
-  { key: 'title', label: '职务', loginRequired: false, visibleToGuest: true },
-  { key: 'tag', label: '身份', loginRequired: false, visibleToGuest: true },
-  { key: 'seat', label: '座位', loginRequired: false, visibleToGuest: true },
+  { key: 'name', label: '姓名', loginRequired: true, required: true, registrationVisible: true, visibleToGuest: true, isEnabled: true },
+  { key: 'phone', label: '手机号', loginRequired: true, required: true, registrationVisible: true, visibleToGuest: true, isEnabled: true },
+  { key: 'organization', label: '单位', loginRequired: false, required: false, registrationVisible: true, visibleToGuest: true, isEnabled: true },
+  { key: 'title', label: '职务', loginRequired: false, required: false, registrationVisible: true, visibleToGuest: true, isEnabled: true },
+  { key: 'tag', label: '身份', loginRequired: false, required: false, registrationVisible: false, visibleToGuest: true, isEnabled: true },
+  { key: 'seat', label: '座位号', loginRequired: false, required: false, registrationVisible: false, visibleToGuest: true, isEnabled: true },
 ])
-const guestFieldDrafts = ref<Array<AdminGuestFieldInput & { clientId: string }>>([])
+const guestFieldDrafts = ref<Array<AdminGuestFieldInput & { clientId: string; profileVisible: boolean }>>([])
 const savedVisibleGuestFieldKeys = ref<string[]>([])
+const savedGuestRegistrationSettings = ref<AdminGuestRegistrationSettings>({ fields: [], requiredFields: [], enabledFields: [] })
 const savingGuestFields = ref(false)
 const guestFieldMessage = ref('')
 const guestFieldMessageType = ref<'success' | 'error' | 'info'>('success')
@@ -304,16 +468,25 @@ const importing = ref(false)
 const creatingStaff = ref(false)
 const savingStaff = ref(false)
 const savingAssistantFeature = ref(false)
-const generatingGuestQr = ref(false)
-const guestQrMessage = ref('')
-const guestQrMessageType = ref<'success' | 'info' | 'error'>('success')
+const guestApplications = ref<AdminGuestApplication[]>([])
+const guestApplicationError = ref('')
+const reviewingApplicationId = ref('')
+const guestStatusFilter = ref<'all' | 'pending' | 'approved' | 'entered' | 'rejected'>('all')
+const guestCheckInFilter = ref<'all' | 'checked' | 'unchecked'>('all')
+const guestSearchKeyword = ref('')
 const selectedGuest = ref<Guest>()
 const guestDetailDialogVisible = ref(false)
 const guestDetailLoading = ref(false)
 const guestQrCode = ref('')
 const guestCreateDialogVisible = ref(false)
 const creatingGuest = ref(false)
-const guestForm = ref<GuestImportInput>({ name: '', phone: '', organization: '', title: '', tag: '', seat: '' })
+const guestForm = ref<GuestFormState>(createGuestFormState())
+const editingGuest = ref<Guest>()
+const guestEditDialogVisible = ref(false)
+const guestEditLoading = ref(false)
+const updatingGuest = ref(false)
+const guestEditForm = ref<GuestFormState>(createGuestFormState())
+const guestImportDialogVisible = ref(false)
 const staffMessage = ref('')
 const staffMessageType = ref<'success' | 'error'>('success')
 const staffForm = ref({ name: '', phone: '', account: '', initialPassword: '' })
@@ -347,12 +520,22 @@ const locationSearchError = ref('')
 const locationOptions = ref<MeetingLocationOption[]>([])
 
 const checkedCount = computed(() => checkIns.value.length)
-const guestFieldDefinitionsChanged = computed(() => JSON.stringify(guestFieldDrafts.value.map(({ clientId: _, visibleToGuest: __, ...field }) => field)) !== JSON.stringify(fields.value.map((field) => ({
+const enabledDynamicGuestFields = computed(() => fields.value.filter((field) => field.isEnabled))
+const selectedGuestDynamicRows = computed(() => enabledDynamicGuestFields.value.map((field) => ({
+  key: field.key,
+  label: field.label,
+  value: selectedGuest.value?.values?.[field.key] ?? '',
+})))
+const guestFieldDefinitionsChanged = computed(() => JSON.stringify(guestFieldDrafts.value.map(({ clientId: _, profileVisible: __, ...field }) => field)) !== JSON.stringify(fields.value.map((field) => ({
   label: field.label,
   key: field.key,
   type: field.type,
+  required: field.required,
+  visibleToGuest: field.visibleToGuest,
+  isEnabled: field.isEnabled,
 }))))
-const fieldsChanged = computed(() => guestFieldDefinitionsChanged.value || JSON.stringify(selectedGuestDisplayFieldKeys()) !== JSON.stringify(savedVisibleGuestFieldKeys.value))
+const fixedGuestRegistrationSettingsChanged = computed(() => JSON.stringify(currentFixedGuestRegistrationSettings()) !== JSON.stringify(savedGuestRegistrationSettings.value))
+const fieldsChanged = computed(() => guestFieldDefinitionsChanged.value || fixedGuestRegistrationSettingsChanged.value || JSON.stringify(selectedGuestDisplayFieldKeys()) !== JSON.stringify(savedVisibleGuestFieldKeys.value))
 const publicAppBaseUrl = resolvePublicAppBaseUrl()
 const meetingEntryUrl = computed(() => meeting.value && publicAppBaseUrl ? `${publicAppBaseUrl}/meetings/${meeting.value.id}` : '')
 const meetingQrCode = ref('')
@@ -361,6 +544,94 @@ const guestRows = computed(() => guests.value.map((guest) => ({
   ...guest,
   checkedIn: checkIns.value.some((record) => record.guestId === guest.id),
 })))
+const pendingGuestApplications = computed(() => guestApplications.value.filter((application) => application.status === 'pending'))
+const guestManagementRows = computed(resolveGuestManagementRows)
+const filteredGuestManagementRows = computed(filterGuestManagementRows)
+const activeSection = computed({ get: resolveActiveSection, set: selectActiveSection })
+const activeSectionTitle = computed(resolveActiveSectionTitle)
+const checkInRate = computed(resolveCheckInRate)
+
+const adminWorkspaceSections = new Set([
+  'overview',
+  'edit',
+  'guests',
+  'fields',
+  'assistant',
+  'staff',
+  'checkins',
+])
+
+/**
+ * 读取路由查询参数中的管理员工作台区块。
+ *
+ * 入参：无；函数读取当前路由的 `tab` 查询参数。
+ * 返回值：string：已知区块标识原样返回，缺失或未知时返回“overview”。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resolveActiveSection(): string {
+  const tab = String(route.query.tab || '')
+  return adminWorkspaceSections.has(tab) ? tab : 'overview'
+}
+
+/**
+ * 将管理员工作台区块同步到路由查询参数。
+ *
+ * 入参：section 为要展示的工作台区块标识，必填。
+ * 返回值：void：使用 replace 更新 URL，不新增浏览器历史记录。
+ * 异常：当前函数不主动抛出异常；未知区块会回退到“overview”。
+ */
+function selectActiveSection(section: string): void {
+  const tab = adminWorkspaceSections.has(section) ? section : 'overview'
+  if (tab === resolveActiveSection()) {
+    return
+  }
+  void router.replace({ query: { ...route.query, tab } })
+}
+
+/**
+ * 处理管理员工作台侧边栏发出的区块切换请求。
+ *
+ * 入参：section 为侧边栏菜单对应的工作台区块标识，必填。
+ * 返回值：void：更新当前激活区块。
+ * 异常：当前函数不主动抛出异常。
+ */
+function handleWorkspaceNavigation(section: string): void {
+  selectActiveSection(section)
+}
+
+/**
+ * 将当前工作台区块转换为页面标题。
+ *
+ * 入参：无；函数读取激活区块。
+ * 返回值：string：适合页面标题展示的中文名称。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resolveActiveSectionTitle(): string {
+  const titleMap: Record<string, string> = {
+    overview: '数据总览',
+    edit: '会议信息',
+    guests: '嘉宾管理',
+    fields: '嘉宾字段',
+    assistant: '会议服务',
+    staff: '工作人员',
+    checkins: '签到记录',
+  }
+  return titleMap[resolveActiveSection()] || '数据总览'
+}
+
+/**
+ * 计算当前会议已签到人数所占的百分比。
+ *
+ * 入参：无；函数读取嘉宾总数和签到记录数。
+ * 返回值：number：范围为 0 到 100 的整数百分比；没有嘉宾时返回 0。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resolveCheckInRate(): number {
+  if (!totalGuestCount.value) {
+    return 0
+  }
+  return Math.min(100, Math.round((checkedCount.value / totalGuestCount.value) * 100))
+}
 
 /**
  * 解析提供给嘉宾访问的前端公开地址。
@@ -399,18 +670,20 @@ async function loadDetail(): Promise<void> {
   detailLoading.value = true
   detailError.value = ''
   try {
-    const [meetingData, guestData, fieldData, displayFieldData, staffData] = await Promise.all([
+    const [meetingData, guestData, fieldData, displayFieldData, registrationSettings, staffData] = await Promise.all([
       getAdminMeeting(meetingId),
       listAdminGuests(meetingId),
       listAdminGuestFields(meetingId),
       getAdminGuestDisplayFields(meetingId),
+      getAdminGuestRegistrationSettings(meetingId),
       listAdminStaff(meetingId),
     ])
     meeting.value = meetingData
     guests.value = guestData
     fields.value = fieldData
     savedVisibleGuestFieldKeys.value = displayFieldData
-    resetGuestFieldDrafts(fieldData, displayFieldData)
+    savedGuestRegistrationSettings.value = registrationSettings
+    resetGuestFieldDrafts(fieldData, displayFieldData, registrationSettings)
     staff.value = staffData
     totalGuestCount.value = guestData.length
     resetEditForm()
@@ -421,7 +694,7 @@ async function loadDetail(): Promise<void> {
     detailLoading.value = false
   }
   if (meeting.value) {
-    await Promise.all([loadAssistantFeatures(meetingId), loadCheckInSummary(meetingId)])
+    await Promise.all([loadAssistantFeatures(meetingId), loadCheckInSummary(meetingId), loadGuestApplications(meetingId)])
   }
 }
 
@@ -490,18 +763,31 @@ async function refreshGuestAndCheckInState(meetingId: string): Promise<void> {
  * 返回值：void：按原顺序更新固定和扩展字段编辑草稿，并清除字段操作提示。
  * 异常：当前函数不主动抛出异常。
  */
-function resetGuestFieldDrafts(sourceFields: GuestField[], visibleFieldKeys: string[]): void {
+function resetGuestFieldDrafts(
+  sourceFields: GuestField[],
+  visibleFieldKeys: string[],
+  registrationSettings: AdminGuestRegistrationSettings,
+): void {
   const visibleFieldSet = new Set(visibleFieldKeys)
+  const registrationFieldSet = new Set(registrationSettings.fields)
+  const requiredFieldSet = new Set(registrationSettings.requiredFields)
+  const enabledFieldSet = new Set(registrationSettings.enabledFields)
   fixedGuestFieldDrafts.value = fixedGuestFieldDrafts.value.map((field) => ({
     ...field,
     visibleToGuest: visibleFieldSet.has(field.key),
+    registrationVisible: registrationFieldSet.has(field.key),
+    required: requiredFieldSet.has(field.key),
+    isEnabled: enabledFieldSet.has(field.key),
   }))
   guestFieldDrafts.value = sourceFields.map((field) => ({
     clientId: field.id,
     label: field.label,
     key: field.key,
     type: field.type,
-    visibleToGuest: visibleFieldSet.has(field.key),
+    required: field.required,
+    visibleToGuest: field.visibleToGuest,
+    isEnabled: field.isEnabled,
+    profileVisible: visibleFieldSet.has(field.key),
   }))
   guestFieldMessage.value = ''
 }
@@ -515,11 +801,221 @@ function resetGuestFieldDrafts(sourceFields: GuestField[], visibleFieldKeys: str
  */
 function selectedGuestDisplayFieldKeys(): string[] {
   return [
-    ...fixedGuestFieldDrafts.value.filter((field) => field.visibleToGuest).map((field) => field.key),
+    ...fixedGuestFieldDrafts.value.filter((field) => field.visibleToGuest && field.isEnabled).map((field) => field.key),
     ...guestFieldDrafts.value
-      .filter((field) => field.visibleToGuest && field.key.trim())
+      .filter((field) => field.profileVisible && field.isEnabled && field.key.trim())
       .map((field) => field.key.trim()),
   ]
+}
+
+/**
+ * 汇总固定嘉宾字段在公开报名页中的当前配置。
+ *
+ * 入参：无；函数读取固定字段编辑草稿。
+ * 返回值：AdminGuestRegistrationSettings：报名表单、必填和启用字段 key 列表。
+ * 异常：当前函数不主动抛出异常；姓名和手机号由后端再次强制保护。
+ */
+function currentFixedGuestRegistrationSettings(): AdminGuestRegistrationSettings {
+  return {
+    fields: fixedGuestFieldDrafts.value
+      .filter((field) => field.registrationVisible && field.isEnabled)
+      .map((field) => field.key),
+    requiredFields: fixedGuestFieldDrafts.value
+      .filter((field) => field.required && field.registrationVisible && field.isEnabled)
+      .map((field) => field.key),
+    enabledFields: fixedGuestFieldDrafts.value
+      .filter((field) => field.isEnabled)
+      .map((field) => field.key),
+  }
+}
+
+/**
+ * 加载当前会议的自主报名申请，用于嘉宾管理页审核。
+ *
+ * 入参：meetingId 为会议 ID，必填。
+ * 返回值：Promise<void>：成功后更新申请列表；失败时仅设置独立错误提示。
+ * 异常：接口异常在函数内转换为页面提示，不影响正式嘉宾列表。
+ */
+async function loadGuestApplications(meetingId: string): Promise<void> {
+  guestApplicationError.value = ''
+  try {
+    guestApplications.value = await listAdminGuestApplications(meetingId)
+  } catch (error) {
+    guestApplications.value = []
+    guestApplicationError.value = getApiErrorMessage(error, '自主报名申请加载失败。')
+  }
+}
+
+/**
+ * 审核一条嘉宾自主报名申请，并在通过后刷新正式嘉宾与签到统计。
+ *
+ * 入参：application 为待审核申请；status 为通过或拒绝结果，均必填。
+ * 返回值：Promise<void>：审核完成后刷新申请和嘉宾列表。
+ * 异常：申请已处理、字段不完整、权限或网络异常时展示消息提示。
+ */
+async function reviewGuestApplication(
+  application: AdminGuestApplication,
+  status: 'approved' | 'rejected',
+): Promise<void> {
+  if (!meeting.value) {
+    return
+  }
+  reviewingApplicationId.value = application.id
+  try {
+    await reviewAdminGuestApplication(meeting.value.id, application.id, status)
+    await Promise.all([loadGuestApplications(meeting.value.id), refreshGuestAndCheckInState(meeting.value.id)])
+    ElMessage.success(status === 'approved' ? '报名已通过，嘉宾二维码已生成。' : '报名申请已拒绝。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '报名审核失败。'))
+  } finally {
+    reviewingApplicationId.value = ''
+  }
+}
+
+/**
+ * 将后端嘉宾来源编码转换为后台表格中的中文文字。
+ *
+ * 入参：source 为嘉宾来源编码，可为空。
+ * 返回值：string：自主报名、后台导入或后台录入的可读文字。
+ * 异常：当前函数不主动抛出异常；未知来源回退为“后台录入”。
+ */
+function guestSourceText(source?: Guest['source']): string {
+  if (source === 'self_registration') {
+    return '自主报名'
+  }
+  if (source === 'admin_import') {
+    return '后台导入'
+  }
+  return '后台录入'
+}
+
+/**
+ * 将正式嘉宾与尚未转化为嘉宾的自主报名申请组合为统一列表行。
+ *
+ * 入参：无；函数读取嘉宾、报名申请和签到记录。
+ * 返回值：GuestManagementRow[]：正式嘉宾与待审核、已拒绝报名申请组成的管理列表。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resolveGuestManagementRows(): GuestManagementRow[] {
+  const guestEntries = guestRows.value.map((guest) => ({
+    id: `guest-${guest.id}`,
+    recordType: 'guest' as const,
+    name: guest.name,
+    phone: guest.phone,
+    organization: guest.organization,
+    title: guest.title,
+    source: guest.source,
+    status: guest.source === 'self_registration' ? 'approved' as const : 'entered' as const,
+    checkedIn: guest.checkedIn,
+    guest,
+  }))
+  const applicationEntries = guestApplications.value
+    .filter((application) => application.status !== 'approved')
+    .map((application) => ({
+      id: `application-${application.id}`,
+      recordType: 'application' as const,
+      name: application.name,
+      phone: application.phone,
+      organization: application.organization,
+      title: application.title,
+      source: 'self_registration' as const,
+      status: application.status,
+      checkedIn: false,
+      application,
+    }))
+  return [...applicationEntries, ...guestEntries]
+}
+
+/**
+ * 按页面筛选条件过滤统一嘉宾管理列表。
+ *
+ * 入参：无；函数读取状态、签到和关键字筛选条件。
+ * 返回值：GuestManagementRow[]：满足全部条件的列表行。
+ * 异常：当前函数不主动抛出异常；空搜索条件表示不限制关键字。
+ */
+function filterGuestManagementRows(): GuestManagementRow[] {
+  const keyword = guestSearchKeyword.value.trim().toLowerCase()
+  return guestManagementRows.value.filter((row) => {
+    if (guestStatusFilter.value !== 'all' && row.status !== guestStatusFilter.value) {
+      return false
+    }
+    if (guestCheckInFilter.value === 'checked' && !row.checkedIn) {
+      return false
+    }
+    if (guestCheckInFilter.value === 'unchecked' && row.checkedIn) {
+      return false
+    }
+    if (!keyword) {
+      return true
+    }
+    return [row.name, row.phone, row.organization, row.title, guestSourceText(row.source)]
+      .join(' ')
+      .toLowerCase()
+      .includes(keyword)
+  })
+}
+
+/**
+ * 将统一列表的审核状态转换为中文文字。
+ *
+ * 入参：status 为管理行状态，必填。
+ * 返回值：string：适合状态标签呈现的中文文字。
+ * 异常：当前函数不主动抛出异常。
+ */
+function guestManagementStatusText(status: GuestManagementRow['status']): string {
+  const statusMap: Record<GuestManagementRow['status'], string> = {
+    pending: '待审核',
+    approved: '已通过',
+    entered: '已录入',
+    rejected: '已拒绝',
+  }
+  return statusMap[status]
+}
+
+/**
+ * 将统一列表的审核状态转换为主题一致的 Element Plus 标签类型。
+ *
+ * 入参：status 为管理行状态，必填。
+ * 返回值：'success' | 'warning' | 'info' | 'danger'：状态标签视觉类型。
+ * 异常：当前函数不主动抛出异常。
+ */
+function guestManagementStatusTagType(
+  status: GuestManagementRow['status'],
+): 'success' | 'warning' | 'info' | 'danger' {
+  if (status === 'approved') {
+    return 'success'
+  }
+  if (status === 'pending') {
+    return 'warning'
+  }
+  if (status === 'rejected') {
+    return 'danger'
+  }
+  return 'info'
+}
+
+/**
+ * 为新增扩展字段生成页面不可见的稳定唯一标识。
+ *
+ * 入参：无；函数读取当前已保存字段和字段草稿中的 key。
+ * 返回值：string：以 `custom_` 开头、满足后端格式约束且在当前会议内不重复的字段 key。
+ * 异常：当前函数不主动抛出异常；同一毫秒连续新增时通过递增后缀消除冲突。
+ * 使用示例：新增字段时可能返回 `custom_1784567890123`。
+ */
+function createGuestFieldKey(): string {
+  const existingKeys = new Set([
+    ...fields.value.map((field) => field.key),
+    ...guestFieldDrafts.value.map((field) => field.key).filter(Boolean),
+  ])
+  const timestamp = Date.now()
+  let suffix = 0
+  let candidate = `custom_${timestamp}`
+  // 极短时间内连续新增字段时递增后缀，确保稳定标识不会重复。
+  while (existingKeys.has(candidate)) {
+    suffix += 1
+    candidate = `custom_${timestamp}_${suffix}`
+  }
+  return candidate
 }
 
 /**
@@ -530,12 +1026,16 @@ function selectedGuestDisplayFieldKeys(): string[] {
  * 异常：当前函数不主动抛出异常。
  */
 function addGuestFieldDraft(): void {
+  const fieldKey = createGuestFieldKey()
   guestFieldDrafts.value.push({
-    clientId: `new-${Date.now()}-${guestFieldDrafts.value.length}`,
+    clientId: `new-${fieldKey}`,
     label: '',
-    key: '',
+    key: fieldKey,
     type: 'text',
+    required: false,
     visibleToGuest: true,
+    isEnabled: true,
+    profileVisible: true,
   })
   guestFieldMessage.value = ''
 }
@@ -556,26 +1056,34 @@ function removeGuestFieldDraft(index: number): void {
 }
 
 /**
- * 校验并全量保存当前会议的动态嘉宾字段。
+ * 校验并增量保存当前会议的动态嘉宾字段。
  *
  * 入参：无；读取当前会议与字段编辑草稿。
  * 返回值：Promise<void>：保存成功后以服务端返回结果刷新字段定义和嘉宾端呈现选择。
- * 异常：名称为空、字段标识格式错误或重复时展示本地提示；字段已有值无法替换、权限或网络异常时展示后端错误。
+ * 异常：名称为空、字段标识格式错误或重复时展示本地提示；删除含值字段、修改含值字段类型、权限或网络异常时展示后端错误。
  * 使用示例：新增“饮食偏好 / diet_preference”后点击“保存字段”。
  */
 async function saveGuestFields(): Promise<void> {
   if (!meeting.value) {
     return
   }
-  const normalizedFields = guestFieldDrafts.value.map(({ label, key, type, visibleToGuest }) => ({
+  // 兼容热更新前已经添加但尚未保存的空 key 草稿，由系统在保存前自动补齐标识。
+  guestFieldDrafts.value.forEach((field) => {
+    if (!field.key.trim()) {
+      field.key = createGuestFieldKey()
+    }
+  })
+  const normalizedFields = guestFieldDrafts.value.map(({ label, key, type, required, visibleToGuest, isEnabled }) => ({
     label: label.trim(),
     key: key.trim(),
     type,
+    required,
     visibleToGuest,
+    isEnabled,
   }))
-  if (normalizedFields.some((field) => !field.label || !field.key)) {
+  if (normalizedFields.some((field) => !field.label)) {
     guestFieldMessageType.value = 'error'
-    guestFieldMessage.value = '请完整填写每个字段的名称和标识。'
+    guestFieldMessage.value = '请填写每个新增字段的名称。'
     return
   }
   if (normalizedFields.some((field) => !/^[a-z][a-z0-9_]*$/.test(field.key))) {
@@ -594,7 +1102,7 @@ async function saveGuestFields(): Promise<void> {
   guestFieldMessage.value = ''
   try {
     let savedFields = fields.value
-    // 只切换呈现状态时不替换动态字段，避免已有字段值触发全量替换保护。
+    // 只有字段定义发生变化时才同步动态字段，减少不必要的接口请求。
     if (guestFieldDefinitionsChanged.value) {
       savedFields = await replaceAdminGuestFields(meeting.value.id, normalizedFields)
     }
@@ -602,9 +1110,14 @@ async function saveGuestFields(): Promise<void> {
       meeting.value.id,
       selectedGuestDisplayFieldKeys(),
     )
+    const savedRegistrationSettings = await replaceAdminGuestRegistrationSettings(
+      meeting.value.id,
+      currentFixedGuestRegistrationSettings(),
+    )
     fields.value = savedFields
     savedVisibleGuestFieldKeys.value = savedDisplayFields
-    resetGuestFieldDrafts(savedFields, savedDisplayFields)
+    savedGuestRegistrationSettings.value = savedRegistrationSettings
+    resetGuestFieldDrafts(savedFields, savedDisplayFields, savedRegistrationSettings)
     guestFieldMessageType.value = 'success'
     guestFieldMessage.value = '嘉宾字段及嘉宾端呈现设置已保存。'
   } catch (error) {
@@ -674,6 +1187,23 @@ async function saveAssistantFeature(): Promise<void> {
   } finally {
     savingAssistantFeature.value = false
   }
+}
+
+/**
+ * 在草稿与已发布状态之间切换会议编辑表单。
+ *
+ * 入参：无；函数读取当前表单中的会议状态。
+ * 返回值：void：草稿切换为已发布，已发布切换为草稿；已结束会议保持不变。
+ * 异常：当前函数不主动抛出异常；最终状态仍需点击保存并由后端校验。
+ */
+function toggleMeetingPublishStatus(): void {
+  // 已结束会议不允许通过发布按钮重新进入草稿或发布状态。
+  if (editForm.value.status === 'ended') {
+    return
+  }
+  editForm.value.status = editForm.value.status === 'published' ? 'draft' : 'published'
+  saveMessage.value = '发布状态已调整，请保存会议信息后生效。'
+  saveMessageType.value = 'info'
 }
 
 /**
@@ -830,28 +1360,51 @@ function clearNavigationLocation(): void {
 }
 
 /**
- * 为当前会议所有缺少凭证的嘉宾批量生成个人二维码。
+ * 创建包含当前启用动态字段的嘉宾表单初始值。
  *
- * 入参：无；函数读取当前会议。
- * 返回值：Promise<void>：生成完成后展示数量摘要。
- * 异常：会议未加载时直接返回；权限、登录或网络异常时展示后端错误。
+ * 入参：sourceValues 为已有动态字段值，可为空；缺少的当前启用字段初始化为空字符串。
+ * 返回值：GuestFormState：固定字段为空且动态字段结构完整的表单对象。
+ * 异常：当前函数不主动抛出异常；未知历史字段不会进入当前编辑表单。
  */
-async function handleGenerateGuestQrTokens(): Promise<void> {
-  if (!meeting.value) {
-    return
+function createGuestFormState(sourceValues: Record<string, string | null> = {}): GuestFormState {
+  return {
+    name: '',
+    phone: '',
+    organization: '',
+    title: '',
+    tag: '',
+    seat: '',
+    values: Object.fromEntries(
+      fields.value
+        .filter((field) => field.isEnabled)
+        .map((field) => [field.key, sourceValues[field.key] ?? '']),
+    ),
   }
-  generatingGuestQr.value = true
-  guestQrMessage.value = ''
-  try {
-    const result = await generateAdminGuestQrTokens(meeting.value.id)
-    guestQrMessageType.value = result.generatedCount ? 'success' : 'info'
-    guestQrMessage.value = `本次生成 ${result.generatedCount} 个二维码；已有 ${result.existingCount} 个二维码保持不变。`
-  } catch (error) {
-    guestQrMessageType.value = 'error'
-    guestQrMessage.value = getApiErrorMessage(error, '嘉宾二维码生成失败。')
-  } finally {
-    generatingGuestQr.value = false
-  }
+}
+
+/**
+ * 校验嘉宾表单中的当前启用动态必填字段。
+ *
+ * 入参：form 为新增或编辑嘉宾表单，必填。
+ * 返回值：string：全部填写时返回空字符串，否则返回第一个缺失字段名称。
+ * 异常：当前函数不主动抛出异常；空值和纯空白文本均视为未填写。
+ */
+function findMissingRequiredDynamicField(form: GuestFormState): string {
+  return enabledDynamicGuestFields.value.find(
+    (field) => field.required && !String(form.values[field.key] ?? '').trim(),
+  )?.label ?? ''
+}
+
+/**
+ * 打开新增嘉宾弹窗并按当前字段配置重建空白表单。
+ *
+ * 入参：无。
+ * 返回值：void：显示弹窗并确保新增字段无需刷新页面即可填写。
+ * 异常：当前函数不主动抛出异常。
+ */
+function openGuestCreateDialog(): void {
+  guestForm.value = createGuestFormState()
+  guestCreateDialogVisible.value = true
 }
 
 /**
@@ -880,6 +1433,110 @@ async function showGuestDetail(guest: Guest): Promise<void> {
 }
 
 /**
+ * 打开嘉宾编辑弹窗并读取完整固定资料与动态字段值。
+ *
+ * 入参：guest 为列表中选中的正式嘉宾，必填。
+ * 返回值：Promise<void>：读取完成后填充表单并保持弹窗可编辑。
+ * 异常：权限、网络或嘉宾不存在时关闭弹窗并展示中文错误。
+ */
+async function openGuestEditDialog(guest: Guest): Promise<void> {
+  editingGuest.value = guest
+  guestEditDialogVisible.value = true
+  guestEditLoading.value = true
+  try {
+    const detail = await getAdminGuest(guest.meetingId, guest.id)
+    guestEditForm.value = {
+      ...createGuestFormState(detail.values),
+      name: detail.name,
+      phone: detail.phone,
+      organization: detail.organization,
+      title: detail.title,
+      tag: detail.tag,
+      seat: detail.seat,
+    }
+  } catch (error) {
+    guestEditDialogVisible.value = false
+    editingGuest.value = undefined
+    ElMessage.error(getApiErrorMessage(error, '嘉宾完整信息加载失败。'))
+  } finally {
+    guestEditLoading.value = false
+  }
+}
+
+/**
+ * 保存嘉宾编辑弹窗中的固定资料并刷新列表。
+ *
+ * 入参：无；函数读取当前会议、编辑目标和编辑表单。
+ * 返回值：Promise<void>：保存成功后关闭弹窗并刷新嘉宾与签到状态。
+ * 异常：姓名或手机号为空时提示补充；权限、字段或网络异常时展示错误提示。
+ */
+async function handleUpdateGuest(): Promise<void> {
+  if (!meeting.value || !editingGuest.value) {
+    return
+  }
+  if (!guestEditForm.value.name.trim() || !guestEditForm.value.phone.trim()) {
+    ElMessage.warning('请填写嘉宾姓名和手机号。')
+    return
+  }
+  const missingDynamicField = findMissingRequiredDynamicField(guestEditForm.value)
+  if (missingDynamicField) {
+    ElMessage.warning(`请填写${missingDynamicField}。`)
+    return
+  }
+  updatingGuest.value = true
+  try {
+    await updateAdminGuest(meeting.value.id, editingGuest.value.id, guestEditForm.value)
+    await refreshGuestAndCheckInState(meeting.value.id)
+    guestEditDialogVisible.value = false
+    editingGuest.value = undefined
+    ElMessage.success('嘉宾信息已保存。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '嘉宾信息保存失败。'))
+  } finally {
+    updatingGuest.value = false
+  }
+}
+
+/**
+ * 经管理员确认后软删除嘉宾并刷新当前名单。
+ *
+ * 入参：guest 为待删除的正式嘉宾，必填。
+ * 返回值：Promise<void>：确认并删除成功后刷新嘉宾与签到状态。
+ * 异常：管理员取消时静默结束；权限、资源或网络异常时展示错误提示。
+ */
+async function handleDeleteGuest(guest: Guest): Promise<void> {
+  if (!meeting.value) {
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `删除“${guest.name}”后，该嘉宾将无法登录或签到，历史签到记录仍会保留。是否继续？`,
+      '删除嘉宾',
+      {
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+    await deleteAdminGuest(meeting.value.id, guest.id)
+    await refreshGuestAndCheckInState(meeting.value.id)
+    if (selectedGuest.value?.id === guest.id) {
+      guestDetailDialogVisible.value = false
+      selectedGuest.value = undefined
+    }
+    if (editingGuest.value?.id === guest.id) {
+      guestEditDialogVisible.value = false
+      editingGuest.value = undefined
+    }
+    ElMessage.success('嘉宾已删除。')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(getApiErrorMessage(error, '嘉宾删除失败。'))
+    }
+  }
+}
+
+/**
  * 创建嘉宾并刷新当前会议嘉宾列表。
  *
  * 入参：无；读取当前会议和新增嘉宾表单。
@@ -891,11 +1548,16 @@ async function handleCreateGuest(): Promise<void> {
     ElMessage.warning('请填写嘉宾姓名和手机号。')
     return
   }
+  const missingDynamicField = findMissingRequiredDynamicField(guestForm.value)
+  if (missingDynamicField) {
+    ElMessage.warning(`请填写${missingDynamicField}。`)
+    return
+  }
   creatingGuest.value = true
   try {
     await createAdminGuest(meeting.value.id, guestForm.value)
     await refreshGuestAndCheckInState(meeting.value.id)
-    guestForm.value = { name: '', phone: '', organization: '', title: '', tag: '', seat: '' }
+    guestForm.value = createGuestFormState()
     guestCreateDialogVisible.value = false
     ElMessage.success('嘉宾已新增，并已生成个人二维码。')
   } catch (error) {
@@ -1039,6 +1701,18 @@ async function downloadGuestImportTemplate(): Promise<void> {
 }
 
 /**
+ * 打开嘉宾 Excel 导入弹窗并清理上一次导入结果。
+ *
+ * 入参：无。
+ * 返回值：void：保持当前嘉宾管理区块不变并显示导入弹窗。
+ * 异常：当前函数不主动抛出异常。
+ */
+function openGuestImportDialog(): void {
+  importMessage.value = ''
+  guestImportDialogVisible.value = true
+}
+
+/**
  * 打开系统文件选择器，以便管理员选择待导入的 Excel 文件。
  *
  * 入参：无。
@@ -1117,6 +1791,39 @@ async function handleExportCheckInSheet(): Promise<void> {
     ElMessage.success('嘉宾签到表已开始下载。')
   } catch (error) {
     ElMessage.error(getApiErrorMessage(error, '签到表导出失败，请稍后重试。'))
+  } finally {
+    exporting.value = false
+  }
+}
+
+/**
+ * 将当前会议的嘉宾信息与管理状态导出为 xlsx 文件。
+ *
+ * 入参：
+ *   无；函数读取当前已加载会议。
+ *
+ * 返回值：
+ *   Promise<void>：后端生成并下载嘉宾状态表后结束。
+ *
+ * 异常：
+ *   会议未加载、权限或网络失败时展示页面提示，不向页面外抛出异常。
+ *
+ * 示例：
+ *   await handleExportGuestStatusSheet()
+ */
+async function handleExportGuestStatusSheet(): Promise<void> {
+  if (!meeting.value) {
+    ElMessage.warning('未找到会议，无法导出嘉宾状态表。')
+    return
+  }
+
+  exporting.value = true
+
+  try {
+    await downloadAdminGuestStatusExport(meeting.value.id, meeting.value.title)
+    ElMessage.success('嘉宾状态表已开始下载。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '嘉宾状态表导出失败，请稍后重试。'))
   } finally {
     exporting.value = false
   }
@@ -1296,6 +2003,22 @@ async function generateMeetingEntryQrCode(entryUrl: string): Promise<void> {
  */
 function formatDate(value: string): string {
   return new Date(value).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+/**
+ * 将会议状态转换为当前会议卡片使用的中文说明。
+ *
+ * 入参：status 为会议状态，必填。
+ * 返回值：string：草稿、已发布或已结束对应的中文状态文本。
+ * 异常：当前函数不主动抛出异常。
+ */
+function statusText(status: MeetingStatus): string {
+  const statusMap: Record<MeetingStatus, string> = {
+    draft: '筹备中',
+    published: '进行中',
+    ended: '已结束',
+  }
+  return statusMap[status]
 }
 
 /**

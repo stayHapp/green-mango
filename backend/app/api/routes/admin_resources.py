@@ -12,6 +12,8 @@ from app.schemas.admin_resources import (
     AdminResponse,
     GuestDisplayFieldsRequest,
     GuestDisplayFieldsResponse,
+    GuestRegistrationFieldsRequest,
+    GuestRegistrationFieldsResponse,
     GuestLoginFieldsResponse,
     OperationResponse,
     StaffUpdate,
@@ -19,7 +21,6 @@ from app.schemas.admin_resources import (
 from app.schemas.guest import (
     GuestLoginFieldsRequest,
     GuestProfileResponse,
-    GuestQrGenerationResponse,
     GuestResponse,
     GuestUpdate,
 )
@@ -32,10 +33,11 @@ from app.services.admin_resources import (
     get_guest_display_fields,
     get_login_fields,
     list_meeting_admins,
-    regenerate_missing_guest_tokens,
     remove_meeting_admin,
     remove_staff_assignment,
     save_login_fields,
+    get_guest_registration_settings,
+    save_guest_registration_settings,
     save_guest_display_fields,
     update_guest,
     update_staff,
@@ -86,6 +88,7 @@ def build_guest_profile(db: DatabaseSession, guest: Guest) -> GuestProfileRespon
         title=guest.title,
         tag=guest.tag,
         seat=guest.seat,
+        source=guest.source,
         qr_token=guest.qr_token,
         is_active=guest.is_active,
         created_at=guest.created_at,
@@ -195,16 +198,52 @@ def put_guest_display_field_settings(
     return GuestDisplayFieldsResponse(fields=fields)
 
 
-@router.post("/{meeting_id}/guest-qrcodes/generate", response_model=GuestQrGenerationResponse)
-def generate_guest_qrcodes(meeting_id: int, db: DatabaseSession, admin: CurrentAdmin) -> GuestQrGenerationResponse:
-    """为会议嘉宾补齐二维码 token。
+@router.get("/{meeting_id}/guest-registration-fields", response_model=GuestRegistrationFieldsResponse)
+def get_guest_registration_field_settings(
+    meeting_id: int, db: DatabaseSession, admin: CurrentAdmin
+) -> GuestRegistrationFieldsResponse:
+    """获取固定嘉宾字段在公开报名表单中的配置。
 
     入参：meeting_id 为会议 ID；db 与 admin 由 FastAPI 注入。
-    返回值：GuestQrGenerationResponse：生成数量和已有数量。
+    返回值：GuestRegistrationFieldsResponse：报名、必填与启用固定字段列表。
     异常：会议不存在或无权限时返回 404。
     """
-    generated_count, existing_count = regenerate_missing_guest_tokens(db, load_meeting(db, admin, meeting_id))
-    return GuestQrGenerationResponse(generated_count=generated_count, existing_count=existing_count)
+    fields, required_fields, enabled_fields = get_guest_registration_settings(load_meeting(db, admin, meeting_id))
+    return GuestRegistrationFieldsResponse(
+        fields=fields,
+        required_fields=required_fields,
+        enabled_fields=enabled_fields,
+    )
+
+
+@router.put("/{meeting_id}/guest-registration-fields", response_model=GuestRegistrationFieldsResponse)
+def put_guest_registration_field_settings(
+    meeting_id: int,
+    payload: GuestRegistrationFieldsRequest,
+    db: DatabaseSession,
+    admin: CurrentAdmin,
+) -> GuestRegistrationFieldsResponse:
+    """保存固定嘉宾字段在公开报名表单中的配置。
+
+    入参：meeting_id 为会议 ID；payload 为固定字段的报名、必填和启用配置；db 与 admin 由 FastAPI 注入。
+    返回值：GuestRegistrationFieldsResponse：保存后的规范化配置。
+    异常：会议不存在或无权限时返回 404；字段无效时返回 422。
+    """
+    try:
+        fields, required_fields, enabled_fields = save_guest_registration_settings(
+            db,
+            load_meeting(db, admin, meeting_id),
+            payload.fields,
+            payload.required_fields,
+            payload.enabled_fields,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+    return GuestRegistrationFieldsResponse(
+        fields=fields,
+        required_fields=required_fields,
+        enabled_fields=enabled_fields,
+    )
 
 
 @router.patch("/{meeting_id}/staff/{staff_id}", response_model=StaffResponse)

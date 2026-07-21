@@ -57,6 +57,18 @@ class GuestDisplayFieldsResponse(BaseModel):
     fields: list[str]
 
 
+class GuestRegistrationFieldsRequest(BaseModel):
+    """保存固定嘉宾字段在公开报名页中的配置。"""
+
+    fields: list[str]
+    required_fields: list[str]
+    enabled_fields: list[str]
+
+
+class GuestRegistrationFieldsResponse(GuestRegistrationFieldsRequest):
+    """固定嘉宾字段的公开报名配置响应。"""
+
+
 class ImportRowError(BaseModel):
     """Excel 嘉宾导入单行错误。"""
 

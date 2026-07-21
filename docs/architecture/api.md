@@ -44,18 +44,22 @@
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| GET / PUT | `/api/admin/meetings/{meeting_id}/guest-fields` | 获取或全量保存动态字段配置 |
+| GET / PUT | `/api/admin/meetings/{meeting_id}/guest-fields` | 获取或按稳定 key 增量保存动态字段配置 |
 | GET / PUT | `/api/admin/meetings/{meeting_id}/guest-display-fields` | 获取或全量保存嘉宾端呈现字段，支持固定字段与动态字段 |
+| GET / PUT | `/api/admin/meetings/{meeting_id}/guest-registration-fields` | 获取或保存固定字段在自主报名表单中的呈现、必填和启用配置 |
 | GET / PUT | `/api/admin/meetings/{meeting_id}/guest-login-fields` | 获取或确认登录字段，MVP 固定为 `name + phone` |
 | GET / POST | `/api/admin/meetings/{meeting_id}/guests` | 查询或录入单个嘉宾 |
 | GET / PATCH / DELETE | `/api/admin/meetings/{meeting_id}/guests/{guest_id}` | 查询完整资料、修改或软停用嘉宾 |
 | GET | `/api/admin/meetings/{meeting_id}/guests/import-template` | 下载当前会议 XLSX 导入模板 |
 | POST | `/api/admin/meetings/{meeting_id}/guests/import` | 上传 XLSX 并返回成功数和逐行错误 |
-| POST | `/api/admin/meetings/{meeting_id}/guest-qrcodes/generate` | 为缺少凭证的嘉宾补生成二维码 token |
 
-嘉宾固定字段为姓名、手机号、单位、职务、身份和座位号。动态值通过 `values` 对象传递。呈现字段接口使用有序字段 key 数组；固定 key 为 `name`、`phone`、`organization`、`title`、`tag`、`seat`，动态 key 必须属于当前会议。导入模板还会包含会议配置的动态字段；姓名和手机号必填，文件最大 10MB、单次最多 10,000 行。合法行会导入，错误行不会阻断其他合法行。
+嘉宾固定字段为姓名、手机号、单位、职务、身份和座位号。动态值通过 `values` 对象传递，后台单个新增、编辑、详情和 Excel 导入导出均支持当前启用的动态字段。呈现字段接口使用有序字段 key 数组；固定 key 为 `name`、`phone`、`organization`、`title`、`tag`、`seat`，动态 key 必须属于当前会议。固定字段报名配置接口返回 `fields`、`required_fields` 和 `enabled_fields` 三个数组；姓名和手机号不可关闭。导入模板只包含当前启用的动态字段；姓名、手机号和启用的动态必填字段必须填写，文件最大 10MB、单次最多 10,000 行。合法行会导入，错误行不会阻断其他合法行。
 
-嘉宾创建和导入时自动生成全局唯一的随机 `qr_token`，其中不包含个人信息。删除操作为软停用，保留历史签到记录。
+动态字段 PUT 接口接收完整目标集合，但会按稳定 `key` 增量对账：已有字段原位更新并保留 ID 与嘉宾值，新字段新增，无非空填写内容的字段可删除。已有非空嘉宾值的字段不能删除或修改字段类型；名称、排序、必填、报名展示、个人信息展示和启用状态可以安全修改。
+
+`GET /api/admin/meetings/{meeting_id}/guests` 的正式嘉宾响应新增 `source`：`admin_entry`（后台录入）、`admin_import`（后台导入）或 `self_registration`（自主报名审核通过）。
+
+嘉宾在后台新增、Excel 导入或自主报名审核通过时自动生成全局唯一的随机 `qr_token`，其中不包含个人信息。`qr_token` 是正式嘉宾的必填数据，不提供管理员手动或批量补生成入口。同一会议内姓名和手机号相同的启用嘉宾不能重复创建。删除操作为软停用并保留历史签到记录；停用嘉宾不再进入当前嘉宾列表、签到统计、工作人员搜索和当前名单导出，停用后允许重新录入相同身份。
 
 ## 管理员工作人员接口
 
@@ -73,8 +77,9 @@
 | --- | --- | --- |
 | GET | `/api/admin/meetings/{meeting_id}/check-ins` | 获取总数、已签到数、未签到数和明细 |
 | GET | `/api/admin/meetings/{meeting_id}/check-ins/export` | 导出全量嘉宾签到 XLSX |
+| GET | `/api/admin/meetings/{meeting_id}/guests/export` | 导出嘉宾信息、来源、管理状态和签到状态 XLSX |
 
-导出文件同时包含已签到和未签到嘉宾，以及签到时间、方式和执行工作人员。
+签到导出文件同时包含当前启用的已签到和未签到嘉宾，以及签到时间、方式和执行工作人员。嘉宾状态表同时包含当前启用正式嘉宾、待审核和已拒绝报名申请；已通过报名以正式嘉宾记录呈现，避免重复。软停用嘉宾及其历史签到仍保留在数据库中，但不进入当前名单导出。
 
 ## 管理员会议助手接口
 
@@ -127,6 +132,8 @@
 | PATCH | `/api/admin/meetings/{meeting_id}/guest-applications/{application_id}` | 会议管理员 | 批准或拒绝待审核申请 |
 
 同一会议和手机号只能存在一条待审核申请。批准后系统创建正式嘉宾、动态字段值和随机二维码 token，并将正式嘉宾 ID 写回申请；申请不能重复审核。
+
+`GET /api/meetings/{meeting_id}` 的公开响应包含 `registration_fields`，由固定字段报名配置和已启用的动态字段共同组成。嘉宾端应按此字段集合渲染报名表单并提交动态值，确保后台字段配置能够直接作用于自主报名链路。
 
 ## 状态码和设计原则
 

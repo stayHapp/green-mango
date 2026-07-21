@@ -1,6 +1,6 @@
 /** 三端登录、嘉宾入口资料和统一退出 API。 */
 
-import type { AdminUser, ClientRole, Guest, GuestCheckInQr, Meeting, StaffUser } from '../types'
+import type { AdminUser, ClientRole, Guest, GuestCheckInQr, GuestRegistrationField, Meeting, StaffUser } from '../types'
 import type { AccessSession } from './authStorage'
 import { apiClient, authorizationConfig } from './client'
 
@@ -35,6 +35,11 @@ interface PublicMeetingApiResponse {
   status: 'draft' | 'published' | 'ended'
   registration_enabled: boolean
   guest_login_fields: string[]
+  registration_fields: Array<{
+    key: string
+    label: string
+    required: boolean
+  }>
 }
 
 interface GuestProfileApiResponse {
@@ -46,6 +51,7 @@ interface GuestProfileApiResponse {
   title: string | null
   tag: string | null
   seat: string | null
+  source: 'admin_entry' | 'admin_import' | 'self_registration'
   qr_token: string
   values: Record<string, string | null>
   visible_fields: string[]
@@ -141,6 +147,11 @@ export async function getPublicMeeting(meetingId: string): Promise<Meeting> {
     endTime: data.end_time || '',
     status: data.status,
     registrationEnabled: data.registration_enabled,
+    registrationFields: data.registration_fields.map((field): GuestRegistrationField => ({
+      key: field.key,
+      label: field.label,
+      required: field.required,
+    })),
     adminIds: [],
     staffIds: [],
   }
