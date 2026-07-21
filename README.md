@@ -145,7 +145,8 @@ npm run dev -- --host 0.0.0.0
 
 启动成功后，按终端输出的本地地址在浏览器中访问前端页面。首次运行或依赖变更后执行 `npm install`。
 
-需要使用两个终端分别保持前后端运行。电脑和手机访问、环境变量、停止服务及故障排查详见[本地手动启动](docs/development/local-startup.md)。
+需要使用两个终端分别保持前后端运行。电脑和手机访问、环境变量、停止服务及故障排查详见[本地手动启动](docs/development/local-startup.md)。  
+测试环境部署见[测试环境部署文档](docs/development/test-deployment.md)；使用 Docker 部署到腾讯云 OpenCloudOS 见[腾讯云 Docker 部署文档](docs/development/tencent-cloud-deployment.md)。
 
 ### 运行检查
 

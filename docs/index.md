@@ -9,7 +9,6 @@
 - `decisions/`：技术和工程决策记录，说明为什么这样选择。
 - `exec-plans/`：复杂任务的执行计划。进行中的计划放在 `active/`，完成后移到 `completed/`。
 - `development/`：本地启动、联调和开发环境操作说明。
-
 ## 推荐阅读顺序
 
 开发者或 AI 开始任务前，建议先读：
@@ -27,6 +26,8 @@
 11. `architecture/overview.md`
 12. 与任务相关的具体架构文档
 13. `development/local-startup.md`：手动启动前后端和手机访问
+14. `development/test-deployment.md`：测试环境部署（Nginx + systemd）
+15. `development/tencent-cloud-deployment.md`：腾讯云 OpenCloudOS + Docker 部署
 
 如果任务涉及数据库结构，请同步阅读并更新 `architecture/database.md`。
 
