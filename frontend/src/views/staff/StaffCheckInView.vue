@@ -35,7 +35,14 @@
 
         <section v-if="activeMode === 'scan'" class="staff-scan-view">
           <div class="staff-scan-stage" :class="{ 'is-scanning': cameraScanning }">
-            <div id="staff-qr-reader" class="staff-scan-camera" />
+            <video
+              v-show="cameraScanning"
+              id="staff-qr-reader"
+              class="staff-scan-camera"
+              playsinline
+              autoplay
+              muted
+            />
             <div v-if="!cameraScanning" class="staff-scan-placeholder">
               <el-icon><Camera /></el-icon>
               <span>开启摄像头扫描嘉宾二维码</span>
@@ -188,7 +195,7 @@ import { computed, onMounted, onUnmounted, ref, watch, type Component } from 'vu
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Camera, InfoFilled, Postcard, Search, SwitchButton, Tickets } from '@element-plus/icons-vue'
-import { Html5Qrcode } from 'html5-qrcode'
+import jsQR from 'jsqr'
 
 import { getApiErrorMessage } from '../../api/client'
 import { logoutClientSession } from '../../api/sessions'
@@ -207,8 +214,6 @@ interface CheckInRow extends CheckInRecord {
   guestName: string
   phone: string
 }
-
-interface BarcodeDetectorLike { detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>> }
 
 type StaffWorkspaceMode = 'scan' | 'manual' | 'records'
 
@@ -237,8 +242,10 @@ const pageError = ref('')
 const activeMode = ref<StaffWorkspaceMode>('scan')
 const selectedManualGuest = ref<StaffGuest>()
 let guestSearchTimer: number | undefined
-let qrScanner: Html5Qrcode | undefined
+let qrScanner: undefined
 let cameraScanGeneration = 0
+let scanStream: MediaStream | null = null
+let scanAnimationId: number | null = null
 const scanResult = ref<ScanResult>()
 const resultAlertType = computed(alertType)
 const activeModeTitle = computed(currentModeTitle)
@@ -440,19 +447,54 @@ async function startCameraScan(): Promise<void> {
       return
     }
 
-    const scanner = new Html5Qrcode('staff-qr-reader')
-    qrScanner = scanner
-    await scanner.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 240, height: 240 } },
-      (decodedText) => { void handleCameraDecoded(decodedText, scanGeneration) },
-      ignoreCameraDecodeError,
-    )
+    const video = document.getElementById('staff-qr-reader') as HTMLVideoElement | null
+    if (!video) {
+      throw new Error('无法找到视频容器。')
+    }
+
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' },
+    })
+    video.srcObject = scanStream
+    video.setAttribute('playsinline', '')
+    await video.play()
+
     if (scanGeneration !== cameraScanGeneration) {
-      await releaseQrScanner(scanner)
+      scanStream.getTracks().forEach((t) => t.stop())
+      scanStream = null
       return
     }
     cameraStarting.value = false
+
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+
+    const scanLoop = (): void => {
+      if (scanGeneration !== cameraScanGeneration) return
+      if (!ctx) return
+      if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+        scanAnimationId = requestAnimationFrame(scanLoop)
+        return
+      }
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      ctx.drawImage(video, 0, 0)
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'dontInvert',
+      })
+      if (code && code.data) {
+        if (scanGeneration === cameraScanGeneration) {
+          qrToken.value = code.data
+          void stopCameraScan().then(() => {
+            void handleScan()
+          })
+        }
+        return
+      }
+      scanAnimationId = requestAnimationFrame(scanLoop)
+    }
+    scanAnimationId = requestAnimationFrame(scanLoop)
   } catch {
     if (scanGeneration === cameraScanGeneration) {
       await stopCameraScan()
@@ -489,43 +531,23 @@ function ignoreCameraDecodeError(): void {
 }
 
 /**
- * 停止并清理一个二维码扫描器实例，释放摄像头媒体轨道和页面资源。
- *
- * 入参：scanner 为需要释放的 Html5Qrcode 实例，必填。
- * 返回值：Promise<void>：无论库方法是否报错，最终都会尝试清理实例。
- * 异常：停止或清理异常会在函数内部吸收，避免关闭操作阻断页面离开。
- */
-async function releaseQrScanner(scanner: Html5Qrcode): Promise<void> {
-  try {
-    if (scanner.isScanning) {
-      await scanner.stop()
-    }
-  } catch {
-    // 浏览器可能在媒体轨道已结束时再次抛错，此时继续执行资源清理。
-  }
-  try {
-    scanner.clear()
-  } catch {
-    // 扫描容器已卸载时清理可能失败，不影响摄像头关闭结果。
-  }
-}
-
-/**
  * 停止摄像头扫码并释放媒体设备资源。
  *
  * 入参：无。
  * 返回值：Promise<void>：立即退出扫码界面，并停止视频轨道和扫描循环。
- * 异常：二维码库停止或清理异常由 releaseQrScanner 吸收。
  */
 async function stopCameraScan(): Promise<void> {
   cameraScanGeneration += 1
-  const scanner = qrScanner
-  qrScanner = undefined
+  if (scanAnimationId !== null) {
+    cancelAnimationFrame(scanAnimationId)
+    scanAnimationId = null
+  }
+  if (scanStream) {
+    scanStream.getTracks().forEach((t) => t.stop())
+    scanStream = null
+  }
   cameraStarting.value = false
   cameraScanning.value = false
-  if (scanner) {
-    await releaseQrScanner(scanner)
-  }
 }
 
 /**
