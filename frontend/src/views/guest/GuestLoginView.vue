@@ -21,6 +21,7 @@
               ref="nameInput"
               v-model="name"
               autocomplete="name"
+              enterkeyhint="next"
               placeholder="请输入姓名"
               @input="clearNameError"
             />
@@ -29,8 +30,11 @@
             <el-input
               ref="phoneInput"
               v-model="phone"
+              type="tel"
               autocomplete="tel"
-              inputmode="tel"
+              inputmode="numeric"
+              enterkeyhint="go"
+              maxlength="11"
               placeholder="请输入手机号"
               @input="clearPhoneError"
             />

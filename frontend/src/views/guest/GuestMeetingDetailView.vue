@@ -86,18 +86,16 @@
             </div>
           </div>
 
-          <div v-if="isCheckedIn" class="zone">
-            <div class="done-ck" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
+          <div class="qr-zone" :class="{ 'is-checked-in': isCheckedIn }">
+            <div v-if="isCheckedIn" class="checked-row">
+              <div class="done-ck" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
+              <div class="st">已签到</div>
             </div>
-            <div class="st">已签到</div>
-            <div class="tm">签到时间 {{ formattedCheckInTime }}</div>
-          </div>
-
-          <div v-else class="qr-zone">
-            <span class="pill">
+            <span v-else class="pill">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="9" />
                 <polyline points="12 7 12 12 15 14" />
@@ -107,7 +105,8 @@
             <div class="qr-box">
               <GuestQrCode :meeting-id="meeting.id" :token="session.guest.qrToken" compact />
             </div>
-            <div class="tip">请向工作人员出示二维码，<b>扫码完成签到</b></div>
+            <div v-if="isCheckedIn" class="tip tip--checked">签到时间 {{ formattedCheckInTime }}</div>
+            <div v-else class="tip">请向工作人员出示二维码，<b>扫码完成签到</b></div>
           </div>
         </template>
       </main>
@@ -117,7 +116,7 @@
         v-model="serviceDrawerVisible"
         class="guest-service-drawer-shell"
         direction="ltr"
-        size="min(420px, 88vw)"
+        size="min(360px, 78vw)"
         title="会议服务"
         :show-close="false"
         :with-header="false"
@@ -126,16 +125,7 @@
         @closed="handleServiceDrawerClosed"
       >
         <aside class="guest-service-drawer" aria-label="会议服务菜单">
-          <header class="guest-service-drawer__header">
-            <div>
-              <h2>{{ meeting.title }}</h2>
-              <p>会议服务</p>
-            </div>
-            <button type="button" aria-label="关闭会议服务" @click="closeServiceDrawer">
-              <el-icon><Close /></el-icon>
-            </button>
-          </header>
-
+          <header class="guest-service-drawer__title">会议服务</header>
           <div class="guest-service-drawer__content">
             <MeetingAssistantShortcutGrid
               :meeting-id="meeting.id"
@@ -159,7 +149,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Close, House } from '@element-plus/icons-vue'
+import { House } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { getApiErrorMessage } from '../../api/client'
@@ -424,6 +414,8 @@ function handleVisibilityRefresh(): void {
   width: 100%;
   display: flex;
   flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
   background:
     radial-gradient(1000px 600px at 15% 10%, rgba(18, 120, 84, 0.16), transparent 60%),
     radial-gradient(900px 700px at 88% 85%, rgba(9, 84, 58, 0.20), transparent 60%),
@@ -431,6 +423,7 @@ function handleVisibilityRefresh(): void {
   color: var(--text-title);
   font-family: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .guest-home-shell {
@@ -466,19 +459,19 @@ function handleVisibilityRefresh(): void {
   text-align: center;
 }
 
-/* 顶栏：汉堡按钮与退出按钮均为无边框轻量样式 */
+/* 顶栏：汉堡按钮与退出按钮均为无边框轻量样式，触控目标 ≥ 44px */
 .guest-home-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 18px;
-  height: 54px;
+  min-height: 54px;
   flex: none;
 }
 
 .guest-home-menu-button {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   border: none;
   background: transparent;
   border-radius: 10px;
@@ -627,38 +620,43 @@ function handleVisibilityRefresh(): void {
 }
 
 .done-ck {
-  width: 52px;
-  height: 52px;
-  margin: 0 auto 14px;
+  width: 40px;
+  height: 40px;
+  margin: 0;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--green-mid-2), var(--green-strong));
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 22px -8px rgba(10, 85, 60, 0.5);
+  box-shadow: 0 8px 18px -8px rgba(10, 85, 60, 0.5);
+  flex: none;
 }
 
 .done-ck svg {
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
   stroke: #fff;
   stroke-width: 3;
 }
 
-.zone .st {
-  font-size: 19px;
+.checked-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 auto 12px;
+}
+
+.qr-zone .st {
+  font-size: 16px;
   font-weight: 700;
   color: var(--green-strong);
   letter-spacing: 2px;
+  margin: 0;
+  line-height: 1;
 }
 
-.zone .tm {
-  font-size: 12.5px;
-  color: var(--text-soft);
-  margin-top: 7px;
-}
-
-/* 未签到二维码区 */
+/* 二维码区（签到前后始终显示） */
 .qr-zone {
   margin-top: 2px;
   text-align: center;
@@ -677,6 +675,12 @@ function handleVisibilityRefresh(): void {
   border: 1px solid var(--pill-border);
   padding: 5px 13px;
   border-radius: 999px;
+}
+
+.qr-zone .pill.is-checked-in {
+  color: #0a553c;
+  background: #e7f5ef;
+  border-color: #b7dfcb;
 }
 
 .qr-zone .qr-box {
@@ -721,6 +725,11 @@ function handleVisibilityRefresh(): void {
   color: #5b7266;
 }
 
+.qr-zone .tip--checked {
+  color: var(--green-strong);
+  font-weight: 600;
+}
+
 .qr-zone .tip b {
   color: var(--green-strong);
 }
@@ -743,17 +752,142 @@ function handleVisibilityRefresh(): void {
   }
 }
 
-/* PC 端：以手机宽度居中展示，更大屏可被遮挡，让嘉宾视角仍然聚焦 */
+/* 平板竖屏：加宽内容区，放大字号与触控区，仍保持单栏 */
 @media (min-width: 768px) {
   .guest-home-page {
     align-items: center;
   }
 
   .guest-home-shell {
+    max-width: 720px;
     min-height: 100vh;
+    min-height: 100dvh;
     box-shadow:
       0 24px 64px -12px rgba(20, 50, 35, 0.22),
       0 4px 16px rgba(20, 50, 35, 0.08);
+  }
+
+  .guest-home-toolbar {
+    min-height: 64px;
+    padding: 0 28px;
+  }
+
+  .conf-title {
+    font-size: 22px;
+    padding: 0 28px;
+  }
+
+  .who {
+    margin-top: 18px;
+  }
+
+  .who__name {
+    font-size: 34px;
+  }
+
+  .badge-vip {
+    font-size: 13px;
+    padding: 4px 12px;
+  }
+
+  .fields {
+    margin: 28px 48px 0;
+  }
+
+  .f-row {
+    padding: 16px 6px;
+  }
+
+  .f-row .fl {
+    font-size: 15px;
+  }
+
+  .f-row .fv {
+    font-size: 16px;
+  }
+
+  .f-row .fv.seat {
+    font-size: 22px;
+  }
+
+  .zone,
+  .qr-zone {
+    margin-top: 32px;
+    padding-left: 40px;
+    padding-right: 40px;
+  }
+
+  .qr-zone .qr-box {
+    width: 280px;
+    height: 280px;
+  }
+
+  .qr-zone .tip {
+    font-size: 15px;
+  }
+
+  .zone .st {
+    font-size: 22px;
+  }
+}
+
+/* 平板横屏 / 大平板：信息与二维码左右分栏，空间利用更充分 */
+@media (min-width: 900px) and (orientation: landscape),
+  (min-width: 1024px) {
+  .guest-home-shell {
+    max-width: 980px;
+  }
+
+  .guest-home-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+    grid-template-rows: auto auto 1fr;
+    column-gap: 28px;
+    row-gap: 8px;
+    align-content: start;
+    padding: 8px 36px 40px;
+  }
+
+  .guest-home-toolbar {
+    grid-column: 1 / -1;
+  }
+
+  .conf-title {
+    grid-column: 1 / -1;
+    margin-bottom: 8px;
+  }
+
+  .who {
+    grid-column: 1;
+    margin-top: 8px;
+    text-align: left;
+  }
+
+  .who__name {
+    font-size: 32px;
+  }
+
+  .fields {
+    grid-column: 1;
+    margin: 16px 0 0;
+  }
+
+  .zone,
+  .qr-zone {
+    grid-column: 2;
+    grid-row: 3;
+    margin-top: 0;
+    align-self: start;
+    padding: 24px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(223, 231, 226, 0.95);
+    box-shadow: 0 12px 30px rgba(22, 46, 38, 0.06);
+  }
+
+  .qr-zone .qr-box {
+    width: 260px;
+    height: 260px;
   }
 }
 </style>

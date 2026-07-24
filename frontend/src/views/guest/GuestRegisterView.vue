@@ -51,8 +51,11 @@
                 <el-input
                   ref="phoneInput"
                   v-model="form.phone"
+                  type="tel"
                   autocomplete="tel"
-                  inputmode="tel"
+                  inputmode="numeric"
+                  enterkeyhint="next"
+                  maxlength="11"
                   placeholder="用于审核通过后的参会登录"
                   @input="clearPhoneError"
                 />

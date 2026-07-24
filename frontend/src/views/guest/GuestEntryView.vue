@@ -10,11 +10,6 @@
         </div>
 
         <template v-else-if="meeting">
-          <p v-if="!hasCurrentSession" class="guest-entry-hint">
-            <el-icon><InfoFilled /></el-icon>
-            <span>首次浏览会议服务前，请先完成身份核验。</span>
-          </p>
-
           <GuestMeetingSummary :meeting="meeting" show-description />
 
           <section class="guest-entry-actions" aria-label="参会操作">
@@ -63,7 +58,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, type Component } from 'vue'
-import { ArrowRight, Calendar, InfoFilled, Location, PhoneFilled, Reading, Sunny } from '@element-plus/icons-vue'
+import { ArrowRight, Calendar, Location, PhoneFilled, Reading, Sunny } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ElMessageBox } from 'element-plus'

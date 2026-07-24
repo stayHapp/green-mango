@@ -3103,6 +3103,12 @@ html, body {
   overflow-x: hidden;
 }
 
+/* 移动端安全区变量：在有刘海/灵动岛的手机上由 viewport-fit=cover 接管 */
+:root {
+  --safe-top: env(safe-area-inset-top, 0);
+  --safe-bottom: env(safe-area-inset-bottom, 0);
+}
+
 html {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -3200,12 +3206,17 @@ a {
 .guest-main.el-main {
   --el-main-padding: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
   background: #f3f5f9;
   padding: 0;
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
 }
 
 .guest-main::-webkit-scrollbar,
@@ -3242,9 +3253,33 @@ a {
   width: 100%;
   max-width: 420px;
   min-height: 100vh;
+  min-height: 100dvh;
   background: linear-gradient(115deg, #3467e8 0%, #3b8eef 64%, #24b4cb 100%);
   box-shadow: 0 12px 40px rgba(15, 23, 42, 0.1);
   padding: 68px 24px 56px;
+}
+
+@media (min-width: 768px) {
+  .phone-wrapper {
+    max-width: 640px;
+    padding: 72px 36px 64px;
+    border-radius: 0;
+  }
+
+  .phone-wrapper.guest-login-wrapper {
+    max-width: 640px;
+    padding: 28px 28px 48px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .phone-wrapper {
+    max-width: 720px;
+  }
+
+  .phone-wrapper.guest-login-wrapper {
+    max-width: 720px;
+  }
 }
 
 .guest-logout-button {
@@ -6331,67 +6366,26 @@ h1 {
   height: 100%;
   background: #ffffff;
   color: var(--drawer-text);
+  padding-top: env(safe-area-inset-top, 0);
 }
 
-.guest-service-drawer__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 116px;
-  border-bottom: 1px solid var(--drawer-border);
-  padding: 25px 24px 20px;
-}
-
-.guest-service-drawer__header h2 {
-  margin: 0;
+.guest-service-drawer__title {
+  padding: 18px 20px 12px;
   color: var(--drawer-text);
-  font-size: 20px;
-  font-weight: 760;
-  line-height: 1.45;
-}
-
-.guest-service-drawer__header p {
-  margin: 9px 0 0;
-  color: var(--drawer-muted);
   font-size: 14px;
-  font-weight: 560;
+  font-weight: 700;
+  letter-spacing: 2px;
 }
 
-.guest-service-drawer__header button {
-  display: grid;
-  flex: 0 0 40px;
-  width: 40px;
-  height: 40px;
-  margin: -8px -8px 0 0;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: #52665e;
-  font: inherit;
-  cursor: pointer;
-}
-
-.guest-service-drawer__header button:hover {
-  background: #f3f6f4;
-  color: var(--drawer-primary);
-}
-
-.guest-service-drawer__header button:focus-visible,
 .guest-service-drawer__footer button:focus-visible,
 .guest-service-drawer .assistant-shortcut-item:focus-visible {
   outline: 3px solid rgba(0, 81, 59, 0.16);
   outline-offset: 2px;
 }
 
-.guest-service-drawer__header .el-icon {
-  font-size: 20px;
-}
-
 .guest-service-drawer__content {
   overflow-y: auto;
-  padding: 28px 20px;
+  padding: 4px 12px 12px;
   scrollbar-width: none;
 }
 
@@ -6408,7 +6402,7 @@ h1 {
 .guest-service-drawer .assistant-shortcut-shell.is-drawer .assistant-shortcut-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 2px;
   overflow: visible;
   width: 100%;
   margin: 0;
@@ -6417,39 +6411,39 @@ h1 {
 
 .guest-service-drawer .assistant-shortcut-shell.is-drawer .assistant-shortcut-item {
   display: grid;
-  grid-template-columns: 50px minmax(0, 1fr) 20px;
+  grid-template-columns: 44px minmax(0, 1fr) 18px;
   align-items: center;
   justify-items: stretch;
-  gap: 14px;
+  gap: 12px;
   width: 100%;
-  min-height: 82px;
+  min-height: 56px;
   margin: 0;
-  border: 1px solid var(--drawer-border);
-  border-radius: 20px;
-  background: #ffffff;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--drawer-text);
-  padding: 13px 16px;
+  padding: 10px 12px;
   text-align: left;
   cursor: pointer;
 }
 
 .guest-service-drawer .assistant-shortcut-shell.is-drawer .assistant-shortcut-item:hover {
-  border-color: #c6d4cd;
-  background: #f9fbfa;
+  border-color: transparent;
+  background: #f5f8f6;
 }
 
 .guest-service-drawer .assistant-shortcut-shell.is-drawer .assistant-shortcut-item__icon {
   display: grid;
-  width: 50px;
-  min-width: 50px;
-  height: 50px;
-  min-height: 50px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
   place-items: center;
-  border-radius: 16px;
+  border-radius: 12px;
   background: var(--drawer-soft);
   box-shadow: none;
   color: var(--drawer-primary);
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .guest-service-drawer .assistant-shortcut-shell.is-drawer .assistant-shortcut-item__copy {
@@ -6514,33 +6508,25 @@ h1 {
     height: 34px;
   }
 
-  .guest-service-drawer__header {
-    min-height: 108px;
-    padding: 22px 18px 18px;
-  }
-
-  .guest-service-drawer__header h2 {
-    font-size: 18px;
-  }
-
   .guest-service-drawer__content {
-    padding: 22px 14px;
+    padding: 14px 10px 10px;
   }
 
   .guest-service-drawer .assistant-shortcut-shell.is-drawer .assistant-shortcut-item {
-    grid-template-columns: 46px minmax(0, 1fr) 18px;
-    gap: 12px;
-    min-height: 76px;
-    border-radius: 17px;
-    padding: 11px 13px;
+    grid-template-columns: 42px minmax(0, 1fr) 16px;
+    gap: 10px;
+    min-height: 52px;
+    border-radius: 0;
+    border: 0;
+    padding: 8px 10px;
   }
 
   .guest-service-drawer .assistant-shortcut-shell.is-drawer .assistant-shortcut-item__icon {
-    width: 46px;
-    min-width: 46px;
-    height: 46px;
-    min-height: 46px;
-    border-radius: 14px;
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    min-height: 42px;
+    border-radius: 12px;
   }
 
   .guest-service-drawer .assistant-shortcut-shell.is-drawer .assistant-shortcut-item__copy strong {

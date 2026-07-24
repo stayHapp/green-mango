@@ -20,10 +20,10 @@
       <span>会议已结束，个人签到二维码不再有效。</span>
     </div>
 
-    <div v-else-if="!compact || !isCheckedIn" class="guest-qr-code__frame">
+    <div v-else class="guest-qr-code__frame">
       <template v-if="imageUrl">
         <img :src="imageUrl" alt="嘉宾签到二维码" class="guest-qr-code__image" />
-        <div v-if="isCheckedIn" class="guest-qr-code__checked-mark" aria-label="已签到">
+        <div v-if="isCheckedIn && !compact" class="guest-qr-code__checked-mark" aria-label="已签到">
           <strong>✓ 已签到</strong>
         </div>
       </template>

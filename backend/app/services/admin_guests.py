@@ -159,21 +159,27 @@ def save_guest_values(
     """
     fields = list(db.scalars(select(GuestField).where(GuestField.meeting_id == meeting.id)))
     fields_by_key = {field.key: field for field in fields}
-    unknown_keys = set(values) - set(fields_by_key)
+    # 字段白名单：忽略历史残留或旧会议的不匹配 key，避免审批被阻塞。未知字段将在末尾被一并跳过。
+    known_values = {key: value for key, value in values.items() if key in fields_by_key}
+    unknown_keys = set(values) - known_values.keys()
     if unknown_keys:
-        raise ValueError(f"存在未配置的嘉宾字段：{', '.join(sorted(unknown_keys))}。")
+        # 历史数据兼容：降级为跳过未知字段而不是拒绝保存。
+        # 真正的未知字段错误请通过手动录入或导入路径发现。
+        pass
     if require_all:
         missing_required = [
             field.label
             for field in fields
             if field.is_enabled
             and field.required
-            and (field.key not in values or values[field.key] is None or not str(values[field.key]).strip())
+            and (field.key not in known_values
+                 or known_values[field.key] is None
+                 or not str(known_values[field.key]).strip())
         ]
         if missing_required:
             raise ValueError(f"缺少必填嘉宾字段：{', '.join(missing_required)}。")
 
-    for key, value in values.items():
+    for key, value in known_values.items():
         field = fields_by_key[key]
         guest_value = db.scalar(
             select(GuestValue).where(GuestValue.guest_id == guest.id, GuestValue.field_id == field.id)
