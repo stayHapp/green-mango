@@ -77,7 +77,12 @@ async function generateQrCode(token: string): Promise<void> {
   }
 
   try {
-    imageUrl.value = await QRCode.toDataURL(token, { width: 240, margin: 1, errorCorrectionLevel: 'M' })
+    imageUrl.value = await QRCode.toDataURL(token, {
+      width: 240,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#0a553c', light: '#ffffff' },
+    })
   } catch {
     errorMessage.value = '二维码生成失败，请刷新页面后重试。'
   }

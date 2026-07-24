@@ -206,6 +206,34 @@ export async function loginGuest(
 }
 
 /**
+ * 读取当前嘉宾在指定会议中的完整个人资料（含字段显隐配置）。
+ *
+ * 入参：meetingId 为数字会议 ID 的字符串形式，必填。
+ * 返回值：Promise<Guest>：转换为页面兼容格式的嘉宾资料。
+ * 异常：未登录、跨会议访问、会话过期或网络失败时抛出异常。
+ */
+export async function getGuestProfile(meetingId: string): Promise<Guest> {
+  const { data: profile } = await apiClient.get<GuestProfileApiResponse>(
+    `/guest/meetings/${encodeURIComponent(meetingId)}/profile`,
+    authorizationConfig('guest'),
+  )
+  return {
+    id: String(profile.id),
+    meetingId: String(profile.meeting_id),
+    name: profile.name,
+    phone: profile.phone,
+    organization: profile.organization || '',
+    title: profile.title || '',
+    tag: profile.tag || '嘉宾',
+    seat: profile.seat || '',
+    qrToken: profile.qr_token,
+    values: profile.values,
+    visibleFields: profile.visible_fields,
+    fieldLabels: profile.field_labels,
+  }
+}
+
+/**
  * 获取当前嘉宾所属会议的二维码凭证、有效期和签到状态。
  *
  * 入参：meetingId 为数字会议 ID 的字符串形式，必填。

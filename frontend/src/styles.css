@@ -2356,6 +2356,12 @@
   gap: 10px;
 }
 
+/* compact 模式下隐藏组件自身的状态文字与提示文案，由外层页面按需呈现 */
+.guest-qr-code.is-compact .guest-qr-code__status,
+.guest-qr-code.is-compact .guest-qr-code__hint {
+  display: none !important;
+}
+
 .guest-qr-code.is-compact .guest-qr-code__status {
   justify-items: start;
   gap: 2px;
