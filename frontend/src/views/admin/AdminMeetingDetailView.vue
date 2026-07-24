@@ -105,85 +105,198 @@
         </section>
       </el-tab-pane>
       <el-tab-pane class="admin-tab-panel" label="编辑会议" name="edit">
-        <el-form class="edit-form meeting-edit-form" label-position="top" @submit.prevent>
-          <div class="meeting-fields-grid">
-            <el-form-item class="meeting-field-title" label="会议名称">
-              <el-input v-model="editForm.title" placeholder="请输入会议名称" />
-            </el-form-item>
-            <el-form-item class="meeting-field-location" label="会议地点">
-              <el-input v-model="editForm.location" placeholder="请输入会议地点" />
-            </el-form-item>
-            <el-form-item class="meeting-publish-field" label="会议发布">
-              <el-tag v-if="editForm.status === 'ended'" type="info" size="large">已结束</el-tag>
-              <el-button
-                v-else
-                :type="editForm.status === 'published' ? 'default' : 'primary'"
-                :plain="editForm.status === 'published'"
-                @click="toggleMeetingPublishStatus"
-              >
-                {{ editForm.status === 'published' ? '撤回为草稿' : '发布会议' }}
-              </el-button>
-            </el-form-item>
-            <el-form-item class="meeting-field-start" label="开始时间">
-              <el-input v-model="editForm.startTime" type="datetime-local" />
-            </el-form-item>
-            <el-form-item class="meeting-field-end" label="结束时间">
-              <el-input v-model="editForm.endTime" type="datetime-local" />
-            </el-form-item>
-            <el-form-item class="meeting-field-navigation" label="导航位置">
-              <div class="navigation-location-compact">
-                <span :title="editForm.navigationAddress">
-                  {{ editForm.navigationName || '未选择，天气将按会议地点匹配' }}
-                </span>
-                <el-button link type="primary" @click="openLocationDialog">{{ editForm.navigationName ? '更换' : '选择' }}</el-button>
-                <el-button v-if="editForm.navigationName" link @click="clearNavigationLocation">清除</el-button>
+        <div class="meeting-edit-page">
+          <div class="meeting-edit-layout">
+            <section class="meeting-edit-form-card" aria-label="会议信息表单">
+              <div class="meeting-edit-section">
+                <div class="meeting-edit-section-head">
+                  <div class="meeting-edit-section-index">01</div>
+                  <div>
+                    <h2>基础信息</h2>
+                    <p>先确认会议名称与线下地点，保证嘉宾看到的信息一致。</p>
+                  </div>
+                </div>
+                <div class="meeting-edit-grid">
+                  <label class="meeting-edit-field meeting-edit-field--full">
+                    <span class="meeting-edit-label-row">
+                      会议名称 <span class="meeting-edit-hint">将展示在嘉宾首页与分享页</span>
+                    </span>
+                    <el-input v-model="editForm.title" placeholder="请输入会议名称" maxlength="200" show-word-limit />
+                  </label>
+                  <label class="meeting-edit-field">
+                    <span class="meeting-edit-label-row">会议地点</span>
+                    <el-input v-model="editForm.location" placeholder="请输入会议地点" />
+                  </label>
+                  <div class="meeting-edit-field">
+                    <span class="meeting-edit-label-row">
+                      导航位置 <span class="meeting-edit-hint">用于嘉宾出行导航</span>
+                    </span>
+                    <div class="meeting-edit-nav-control">
+                      <div class="meeting-edit-nav-name">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          <path d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z" stroke="currentColor" stroke-width="1.8" />
+                          <path d="M12 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" stroke="currentColor" stroke-width="1.8" />
+                        </svg>
+                        <span>{{ editForm.navigationName || '未设置，将按会议地点匹配' }}</span>
+                      </div>
+                      <div class="meeting-edit-nav-actions">
+                        <el-button size="small" type="primary" plain @click="openLocationDialog">
+                          {{ editForm.navigationName ? '更换' : '选择' }}
+                        </el-button>
+                        <el-button v-if="editForm.navigationName" size="small" @click="clearNavigationLocation">清除</el-button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </el-form-item>
-            <el-form-item class="meeting-field-description" label="会议说明">
-              <el-input v-model="editForm.description" type="textarea" :rows="2" placeholder="请输入会议说明" />
-            </el-form-item>
+
+              <div class="meeting-edit-section">
+                <div class="meeting-edit-section-head">
+                  <div class="meeting-edit-section-index">02</div>
+                  <div>
+                    <h2>时间安排</h2>
+                    <p>统一时间字段宽度，便于核对会期。</p>
+                  </div>
+                </div>
+                <div class="meeting-edit-grid">
+                  <label class="meeting-edit-field">
+                    <span class="meeting-edit-label-row">开始时间</span>
+                    <el-input v-model="editForm.startTime" type="datetime-local" />
+                  </label>
+                  <label class="meeting-edit-field">
+                    <span class="meeting-edit-label-row">结束时间</span>
+                    <el-input v-model="editForm.endTime" type="datetime-local" />
+                  </label>
+                </div>
+              </div>
+
+              <div class="meeting-edit-section">
+                <div class="meeting-edit-section-head">
+                  <div class="meeting-edit-section-index">03</div>
+                  <div>
+                    <h2>会议说明</h2>
+                    <p>说明文字单独成组，避免与短字段混排造成视觉跳跃。</p>
+                  </div>
+                </div>
+                <label class="meeting-edit-field meeting-edit-field--full">
+                  <span class="meeting-edit-label-row">
+                    说明内容 <span class="meeting-edit-hint">最多 200 字</span>
+                  </span>
+                  <el-input v-model="editForm.description" type="textarea" :rows="4" placeholder="请输入会议说明" maxlength="200" show-word-limit />
+                </label>
+              </div>
+
+              <footer class="meeting-edit-form-footer">
+                <p v-if="saveMessage" class="meeting-save-message" :class="`is-${saveMessageType}`">{{ saveMessage }}</p>
+                <span v-else class="meeting-edit-form-note">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M20 7 9 18l-5-5" stroke="#17865f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                  信息完整，可保存发布
+                </span>
+                <div class="meeting-edit-form-actions">
+                  <el-button @click="resetEditForm">重置</el-button>
+                  <el-button type="primary" :loading="saving" @click="saveMeeting">保存会议信息</el-button>
+                </div>
+              </footer>
+            </section>
+
+            <aside class="meeting-edit-side" aria-label="会议入口">
+              <section class="meeting-edit-share-card">
+                <div class="meeting-edit-side-head">
+                  <div>
+                    <div class="meeting-edit-eyebrow">Access</div>
+                    <h2>会议入口</h2>
+                    <p>已发布可分享时，向嘉宾复制链接或下载二维码。</p>
+                  </div>
+                  <span v-if="editForm.status === 'published'" class="meeting-edit-publish-badge">已发布</span>
+                  <span v-else-if="editForm.status === 'ended'" class="meeting-edit-publish-badge is-ended">已结束</span>
+                  <span v-else class="meeting-edit-publish-badge is-pending">待发布</span>
+                </div>
+
+                <div v-if="editForm.status === 'published'" class="meeting-edit-link-box">
+                  <span>公开访问链接</span>
+                  <div class="meeting-edit-link-row">
+                    <el-input
+                      v-model="publicUrlEdit"
+                      placeholder="如 https://cssat.wenguang.top"
+                      class="meeting-edit-link-input"
+                      clearable
+                    />
+                    <el-button size="small" type="primary" plain @click="copyMeetingEntryUrl">复制</el-button>
+                  </div>
+                  <code class="meeting-edit-link-preview" :title="meetingEntryUrl">
+                    {{ meetingEntryUrl }}
+                  </code>
+                </div>
+                <div v-else class="meeting-edit-link-box meeting-edit-link-box--empty">
+                  <span>发布后启用公开访问链接</span>
+                </div>
+
+                <div class="meeting-edit-qr-panel">
+                  <div class="meeting-edit-qr-frame" aria-label="会议入口二维码">
+                    <img v-if="meetingQrCode" :src="meetingQrCode" alt="会议入口二维码" />
+                    <span v-else class="meeting-edit-qr-placeholder">{{ qrPlaceholderText }}</span>
+                  </div>
+                  <div class="meeting-edit-qr-copy">
+                    <strong>嘉宾扫码进入</strong>
+                    <p>二维码可用于邀请函、现场大屏或签到台物料。</p>
+                    <el-button
+                      size="small"
+                      type="primary"
+                      :disabled="!meetingEntryUrl"
+                      :loading="regeneratingQr"
+                      @click="regenerateMeetingEntryQrCode"
+                    >
+                      {{ meetingQrCode ? '重新生成二维码' : '生成二维码' }}
+                    </el-button>
+                    <el-button
+                      v-if="meetingQrCode"
+                      size="small"
+                      :disabled="!meetingQrCode"
+                      @click="downloadMeetingQrCode"
+                    >
+                      下载二维码
+                    </el-button>
+                  </div>
+                </div>
+
+                <footer class="meeting-edit-share-footer">
+                  <el-button
+                    v-if="editForm.status !== 'ended'"
+                    :type="editForm.status === 'published' ? 'default' : 'primary'"
+                    :plain="editForm.status === 'published'"
+                    style="width: 100%"
+                    @click="toggleMeetingPublishStatus"
+                  >
+                    {{ editForm.status === 'published' ? '撤回为草稿' : '发布会议' }}
+                  </el-button>
+                </footer>
+              </section>
+            </aside>
           </div>
-          <div class="meeting-form-footer">
-            <p v-if="saveMessage" class="meeting-save-message" :class="`is-${saveMessageType}`">{{ saveMessage }}</p>
-            <div class="action-row meeting-save-actions">
-              <el-button @click="resetEditForm">重置</el-button>
-              <el-button type="primary" :loading="saving" @click="saveMeeting">保存会议信息</el-button>
+
+          <el-dialog v-model="locationDialogVisible" title="选择导航位置" width="min(680px, calc(100% - 32px))">
+            <div class="action-row">
+              <el-input v-model="locationSearchQuery" placeholder="输入场馆、学校、酒店或详细地址" @keyup.enter="searchLocationOptions" />
+              <el-button type="primary" :loading="locationSearching" @click="searchLocationOptions">搜索</el-button>
             </div>
-          </div>
-        </el-form>
-        <section v-if="meeting.status === 'published'" class="admin-entry-share-bar">
-          <div>
-            <strong>会议入口</strong>
-            <span>已发布，可分享给嘉宾和工作人员</span>
-          </div>
-          <el-input :model-value="meetingEntryUrl" readonly aria-label="会议入口链接" />
-          <el-button type="primary" @click="copyMeetingEntryUrl">复制链接</el-button>
-          <el-button @click="openMeetingQrDialog">下载二维码</el-button>
-        </section>
-        <el-dialog v-model="meetingQrDialogVisible" title="会议入口二维码" width="min(360px, calc(100% - 32px))" align-center>
-          <img v-if="meetingQrCode" class="meeting-entry-qr" :src="meetingQrCode" alt="会议入口二维码" />
-          <div class="action-row top-gap"><el-button type="primary" :disabled="!meetingQrCode" @click="downloadMeetingQrCode">下载二维码</el-button></div>
-        </el-dialog>
-        <el-dialog v-model="locationDialogVisible" title="选择导航位置" width="min(680px, calc(100% - 32px))">
-          <div class="action-row">
-            <el-input v-model="locationSearchQuery" placeholder="输入场馆、学校、酒店或详细地址" @keyup.enter="searchLocationOptions" />
-            <el-button type="primary" :loading="locationSearching" @click="searchLocationOptions">搜索</el-button>
-          </div>
-          <el-alert v-if="locationSearchError" class="top-gap" type="error" :closable="false" :title="locationSearchError" />
-          <el-empty v-else-if="!locationSearching && locationOptions.length === 0" description="输入地点关键词后搜索" />
-          <div v-else class="location-option-list">
-            <button
-              v-for="option in locationOptions"
-              :key="option.poiId || `${option.longitude}-${option.latitude}`"
-              type="button"
-              class="location-option-card"
-              @click="selectLocationOption(option)"
-            >
-              <strong>{{ option.name }}</strong>
-              <span>{{ option.district }}{{ option.address }}</span>
-            </button>
-          </div>
-        </el-dialog>
+            <el-alert v-if="locationSearchError" class="top-gap" type="error" :closable="false" :title="locationSearchError" />
+            <el-empty v-else-if="!locationSearching && locationOptions.length === 0" description="输入地点关键词后搜索" />
+            <div v-else class="location-option-list">
+              <button
+                v-for="option in locationOptions"
+                :key="option.poiId || `${option.longitude}-${option.latitude}`"
+                type="button"
+                class="location-option-card"
+                @click="selectLocationOption(option)"
+              >
+                <strong>{{ option.name }}</strong>
+                <span>{{ option.district }}{{ option.address }}</span>
+              </button>
+            </div>
+          </el-dialog>
+        </div>
       </el-tab-pane>
       <el-tab-pane class="admin-tab-panel" label="嘉宾" name="guests">
         <section class="admin-guest-filter-panel">
@@ -579,12 +692,16 @@ const editForm = ref({
   startTime: '',
   endTime: '',
   status: 'draft' as MeetingStatus,
+  publicUrl: '',
 })
 const locationDialogVisible = ref(false)
 const locationSearchQuery = ref('')
 const locationSearching = ref(false)
 const locationSearchError = ref('')
 const locationOptions = ref<MeetingLocationOption[]>([])
+
+/** 边栏中可编辑的公开访问链接：空时用默认地址生成二维码。 */
+const publicUrlEdit = ref('')
 
 const checkedCount = computed(() => checkIns.value.length)
 const enabledDynamicGuestFields = computed(() => fields.value.filter((field) => field.isEnabled))
@@ -604,9 +721,39 @@ const guestFieldDefinitionsChanged = computed(() => JSON.stringify(guestFieldDra
 const fixedGuestRegistrationSettingsChanged = computed(() => JSON.stringify(currentFixedGuestRegistrationSettings()) !== JSON.stringify(savedGuestRegistrationSettings.value))
 const fieldsChanged = computed(() => guestFieldDefinitionsChanged.value || fixedGuestRegistrationSettingsChanged.value || JSON.stringify(selectedGuestDisplayFieldKeys()) !== JSON.stringify(savedVisibleGuestFieldKeys.value))
 const publicAppBaseUrl = resolvePublicAppBaseUrl()
-const meetingEntryUrl = computed(() => meeting.value && publicAppBaseUrl ? `${publicAppBaseUrl}/meetings/${meeting.value.id}` : '')
+/** 完整访问链接：编辑框（base URL）后自动拼接 /meetings/{id}。 */
+const meetingEntryUrl = computed(() => {
+  if (!meeting.value) return ''
+  const customBase = publicUrlEdit.value.trim()
+  if (customBase) return `${customBase.replace(/\/+$/, '')}/meetings/${meeting.value.id}`
+  if (!publicAppBaseUrl) return ''
+  return `${publicAppBaseUrl.replace(/\/+$/, '')}/meetings/${meeting.value.id}`
+})
 const meetingQrCode = ref('')
-const meetingQrDialogVisible = ref(false)
+const regeneratingQr = ref(false)
+/** 编辑框为空时二维码占位文案（默认取当前浏览器访问的本机地址）。 */
+const qrPlaceholderText = computed(() => {
+  if (meeting.value) return '点击下方生成二维码'
+  return '暂未生成'
+})
+
+/**
+ * 默认公开访问地址：浏览器当前的 origin（如 http://192.168.10.171:5174），
+ * 管理员可根据部署环境修改后保存到后端。
+ */
+function getDefaultPublicBaseUrl(): string {
+  if (typeof window === 'undefined') return ''
+  return window.location.origin.replace(/\/+$/, '')
+}
+/** 会议信息页副标题：地点 + 起止时间，与 HTML 设计稿描述一致。 */
+const meetingSubtitle = computed(() => {
+  if (!meeting.value) return ''
+  const parts: string[] = []
+  if (meeting.value.location) parts.push(meeting.value.location)
+  const timeText = `${formatDate(meeting.value.startTime)} - ${formatDate(meeting.value.endTime)}`
+  parts.push(timeText)
+  return parts.join('｜')
+})
 const guestRows = computed(() => guests.value.map((guest) => ({
   ...guest,
   checkedIn: checkIns.value.some((record) => record.guestId === guest.id),
@@ -1305,14 +1452,32 @@ async function saveAssistantFeature(): Promise<void> {
  * 返回值：void：草稿切换为已发布，已发布切换为草稿；已结束会议保持不变。
  * 异常：当前函数不主动抛出异常；最终状态仍需点击保存并由后端校验。
  */
-function toggleMeetingPublishStatus(): void {
+async function toggleMeetingPublishStatus(): Promise<void> {
   // 已结束会议不允许通过发布按钮重新进入草稿或发布状态。
   if (editForm.value.status === 'ended') {
     return
   }
-  editForm.value.status = editForm.value.status === 'published' ? 'draft' : 'published'
-  saveMessage.value = '发布状态已调整，请保存会议信息后生效。'
-  saveMessageType.value = 'info'
+  const willPublish = editForm.value.status !== 'published'
+  const title = willPublish ? '发布会议' : '撤回为草稿'
+  const message = willPublish
+    ? '发布会场后，嘉宾和工作人员即可通过二维码或链接进入，是否继续？'
+    : '撤回为草稿后，访问入口将立即失效，嘉宾无法继续扫码或打开链接，是否继续？'
+  const confirmText = willPublish ? '发布' : '撤回为草稿'
+  const cancelText = '取消'
+  try {
+    await ElMessageBox.confirm(message, title, {
+      type: 'warning',
+      confirmButtonText: confirmText,
+      cancelButtonText: cancelText,
+      customClass: 'meeting-edit-publish-confirm',
+    })
+  } catch {
+    // 用户取消时不做任何调整
+    return
+  }
+  // 先在表单中切换状态，再立刻保存到后端
+  editForm.value.status = willPublish ? 'published' : 'draft'
+  await saveMeeting({ silent: true })
 }
 
 /**
@@ -1343,7 +1508,10 @@ function resetEditForm(): void {
     startTime: toDateTimeLocalValue(meeting.value.startTime),
     endTime: toDateTimeLocalValue(meeting.value.endTime),
     status: meeting.value.status,
+    publicUrl: meeting.value.publicUrl || '',
   }
+  // 编辑框默认显示当前浏览器地址（部署到服务器后即为本机 IP）；已保存的自定义地址优先
+  publicUrlEdit.value = meeting.value.publicUrl || getDefaultPublicBaseUrl()
   saveMessage.value = ''
 }
 
@@ -1351,15 +1519,15 @@ function resetEditForm(): void {
  * 保存会议基础信息编辑结果。
  *
  * 入参：
- *   无；函数从当前路由读取会议 ID，从编辑表单读取会议字段。
+ *   options.silent - 静默保存：用于发布/撤回场景，不展示顶部提示文案，避免与确认弹窗叠加。
  *
  * 返回值：
- *   Promise<void>：保存成功后刷新页面会议详情并展示结果提示。
+ *   Promise<void>：保存成功后刷新页面会议详情并展示结果提示；silent 为真时不展示顶部提示。
  *
  * 异常：
  *   字段、时间、权限、登录或网络无效时展示后端错误提示。
  */
-async function saveMeeting(): Promise<void> {
+async function saveMeeting(options: { silent?: boolean } = {}): Promise<void> {
   if (!editForm.value.title.trim() || !editForm.value.location.trim()) {
     saveMessageType.value = 'error'
     saveMessage.value = '会议名称和地点不能为空。'
@@ -1380,14 +1548,18 @@ async function saveMeeting(): Promise<void> {
       startTime: toIsoWithChinaTimezone(editForm.value.startTime),
       endTime: toIsoWithChinaTimezone(editForm.value.endTime),
       status: editForm.value.status,
+      publicUrl: publicUrlEdit.value.trim() || undefined,
     })
     meeting.value = savedMeeting
     resetEditForm()
-    saveMessageType.value = 'success'
-    saveMessage.value = '会议信息已保存。'
+    if (!options.silent) {
+      saveMessageType.value = 'success'
+      saveMessage.value = '会议信息已保存。'
+    }
   } catch (error) {
     saveMessageType.value = 'error'
     saveMessage.value = getApiErrorMessage(error, '会议信息保存失败。')
+    ElMessage.error(saveMessage.value)
   } finally {
     saving.value = false
   }
@@ -2009,7 +2181,7 @@ function copyMeetingEntryUrlBySelection(): void {
  * 异常：当前函数不主动抛出异常。
  */
 function openMeetingQrDialog(): void {
-  meetingQrDialogVisible.value = true
+  // 历史兼容保留，不再被调用
 }
 
 /**
@@ -2156,5 +2328,21 @@ function toIsoWithChinaTimezone(value: string): string {
 }
 
 onMounted(loadDetail)
-watch(meetingEntryUrl, generateMeetingEntryQrCode, { immediate: true })
+
+/**
+ * 主动触发会议入口二维码生成，调用方为边栏"生成二维码"按钮。
+ */
+async function regenerateMeetingEntryQrCode(): Promise<void> {
+  if (!meeting.value || !meetingEntryUrl.value) {
+    ElMessage.warning('请先填写公开访问链接。')
+    return
+  }
+  regeneratingQr.value = true
+  try {
+    await generateMeetingEntryQrCode(meetingEntryUrl.value)
+    ElMessage.success('二维码已生成。')
+  } finally {
+    regeneratingQr.value = false
+  }
+}
 </script>

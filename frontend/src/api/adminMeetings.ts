@@ -31,6 +31,7 @@ export interface MeetingWriteInput {
   startTime: string
   endTime: string
   status: MeetingStatus
+  publicUrl?: string
 }
 
 /**

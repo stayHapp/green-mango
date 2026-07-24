@@ -10,6 +10,7 @@ export interface Meeting {
   location: string
   navigationName: string
   navigationAddress: string
+  publicUrl?: string
   navigationLongitude?: number
   navigationLatitude?: number
   startTime: string
@@ -20,6 +21,13 @@ export interface Meeting {
   adminIds: string[]
   staffIds: string[]
 }
+
+export type MeetingUpdateInput = Pick<
+  Meeting,
+  'title' | 'description' | 'location' | 'startTime' | 'endTime' | 'status' | 'publicUrl'
+>
+
+export type MeetingCreateInput = MeetingUpdateInput
 
 export interface GuestRegistrationField {
   key: string
@@ -43,10 +51,6 @@ export interface GuestApplicationResult {
   status: 'pending' | 'approved' | 'rejected'
   createdAt: string
 }
-
-export type MeetingUpdateInput = Pick<Meeting, 'title' | 'description' | 'location' | 'startTime' | 'endTime' | 'status'>
-
-export type MeetingCreateInput = MeetingUpdateInput
 
 export interface AdminUser {
   id: string
