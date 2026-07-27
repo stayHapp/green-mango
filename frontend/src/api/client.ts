@@ -69,3 +69,14 @@ export function getApiErrorMessage(error: unknown, fallback = '请求失败，�
   }
   return fallback
 }
+
+/**
+ * 判断 API 异常是否表示当前访问凭证已经失效。
+ *
+ * 入参：error 为任意捕获到的异常，通常来自 Axios（HTTP 请求库）。
+ * 返回值：boolean：后端返回 HTTP 401 时返回 true，否则返回 false。
+ * 异常：当前函数不主动抛出异常；非 Axios 异常按非授权错误处理。
+ */
+export function isUnauthorizedApiError(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 401
+}

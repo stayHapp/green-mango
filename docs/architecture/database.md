@@ -7,9 +7,10 @@
 - Python：3.12
 - ORM：SQLAlchemy 2.x
 - 迁移工具：Alembic
-- 本地默认数据库：SQLite，`sqlite:///./dev.db`
+- 本地联调数据库：PostgreSQL，通过 `DATABASE_URL` 配置
+- 本地临时回退数据库：SQLite，`sqlite:///./dev.db`
 - 正式环境数据库：PostgreSQL，通过 `DATABASE_URL` 配置
-- 当前迁移头：`20260721_0008`
+- 当前迁移头：`20260721_0009`
 
 ## 表结构
 
@@ -18,7 +19,7 @@
 - `meetings`、`meeting_settings`：会议基础信息、导航名称与高德坐标、报名开关和会议级 JSON 配置。
 - `meeting_admins`：会议与管理员的多对多授权。
 - `staff_meetings`：会议与工作人员的多对多授权。
-- `meeting_assistant_features`：会议助手五项固定功能的正文、未发布提醒和发布状态。
+- `meeting_assistant_features`：会议助手五项固定功能的正文、联系人、未发布提醒和发布状态。
 - `guest_fields`：会议级动态嘉宾字段，包含报名页可见、必填和启用状态。
 - `guests`：正式嘉宾、固定资料、来源、启用状态和随机二维码凭证。
 - `guest_values`：正式嘉宾的动态字段值。
@@ -69,6 +70,7 @@ users --< auth_sessions
 6. `20260716_0006`：会议导航名称、地址和高德经纬度。
 7. `20260720_0007`：嘉宾来源与动态嘉宾字段启用状态。
 8. `20260721_0008`：启用嘉宾会议内姓名与手机号身份部分唯一索引。
+9. `20260721_0009`：会议助手功能增加联系人 JSON 字段。
 
 ## 会议助手结构
 
@@ -80,6 +82,7 @@ users --< auth_sessions
 | `meeting_id` | bigint / integer | 外键关联 `meetings.id`，会议删除时级联删除 |
 | `feature_key` | varchar(32) | 固定为 `agenda`、`manual`、`weather`、`route`、`contact` 之一 |
 | `content` | text | 管理员维护的纯文本草稿，默认空字符串 |
+| `contacts` | json / jsonb | 联系会务功能的联系人列表，默认空数组 |
 | `unpublished_message` | varchar(500) | 未发布时向嘉宾展示的提醒 |
 | `is_published` | boolean | 当前功能是否向嘉宾发布，默认 `false` |
 | `created_at` | datetime with timezone | 创建时间 |

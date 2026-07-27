@@ -94,8 +94,9 @@ backend/
 - `alembic/versions/20260715_0002_add_meeting_guest_checkin_models.py`：三端 MVP 的授权、嘉宾和签到数据结构迁移。
 - `alembic/versions/20260715_0003_add_auth_sessions.py`：可过期和撤销的统一会话表。
 - `alembic/versions/20260715_0004_add_guest_applications.py`：嘉宾补充报名和审核表。
+- `alembic/versions/20260721_0009_add_assistant_contacts.py`：会议助手联系人字段迁移。
 
-默认数据库为本地 SQLite，正式环境通过 `DATABASE_URL` 指向 PostgreSQL。
+本地联调和正式环境均通过 `DATABASE_URL` 指向 PostgreSQL；未提供 `.env` 时，代码默认回退到 SQLite 便于临时开发。
 
 ## core
 

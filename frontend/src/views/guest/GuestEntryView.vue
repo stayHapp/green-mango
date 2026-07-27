@@ -62,8 +62,8 @@ import { ArrowRight, Calendar, Location, PhoneFilled, Reading, Sunny } from '@el
 import { useRoute, useRouter } from 'vue-router'
 
 import { ElMessageBox } from 'element-plus'
-import { getApiErrorMessage } from '../../api/client'
-import { getPublicMeeting } from '../../api/sessions'
+import { getApiErrorMessage, isUnauthorizedApiError } from '../../api/client'
+import { getGuestProfile, getPublicMeeting } from '../../api/sessions'
 import GuestMeetingSummary from '../../components/GuestMeetingSummary.vue'
 import { useSessionStore } from '../../stores/session'
 import type { Meeting, MeetingAssistantFeatureKey } from '../../types'
@@ -130,11 +130,35 @@ async function loadMeeting(): Promise<void> {
   loading.value = true
   try {
     meeting.value = await getPublicMeeting(meetingId.value)
+    await validateCurrentGuestSession()
   } catch (error) {
     meeting.value = undefined
     errorMessage.value = getApiErrorMessage(error, '会议入口不存在或尚未发布。')
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * 校验本地嘉宾会话是否仍被服务端认可。
+ *
+ * 入参：无；函数读取当前会议 ID 和 Pinia 中的嘉宾会话。
+ * 返回值：Promise<void>：有效会话会刷新本地资料，失效会话会被清除。
+ * 异常：401 凭证失效会被内部处理；其他网络或服务端异常不阻断公开会议首页展示。
+ */
+async function validateCurrentGuestSession(): Promise<void> {
+  if (!meetingId.value || session.guest?.meetingId !== meetingId.value) {
+    return
+  }
+  try {
+    const profile = await getGuestProfile(meetingId.value)
+    if (session.guestAccess) {
+      session.setGuest(profile, session.guestAccess)
+    }
+  } catch (error) {
+    if (isUnauthorizedApiError(error)) {
+      session.clearRole('guest')
+    }
   }
 }
 

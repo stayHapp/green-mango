@@ -6,9 +6,16 @@
 
 - Python 3.12 和后端 `.venv` 已准备完成。
 - Node.js 和前端依赖已安装。
-- `backend/.env` 已按需配置数据库、和风天气及高德服务。
+- PostgreSQL 服务已启动，或已确认本轮仅使用 SQLite 临时回退。
+- `backend/.env` 已按需配置数据库、和风天气及高德服务；本地联调推荐使用 PostgreSQL。
 - `frontend/.env.local` 中 `VITE_API_BASE_URL=/api`。
 - 手机与电脑连接同一个 Wi-Fi 或局域网。
+
+本地 PostgreSQL 连接示例：
+
+```text
+DATABASE_URL=postgresql+psycopg://green_mango_user:本地开发密码@127.0.0.1:5432/green_mango
+```
 
 ## 第一步：启动后端
 

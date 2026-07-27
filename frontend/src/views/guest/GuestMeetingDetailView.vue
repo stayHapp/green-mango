@@ -152,7 +152,7 @@ import { ElMessage } from 'element-plus'
 import { House } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { getApiErrorMessage } from '../../api/client'
+import { getApiErrorMessage, isUnauthorizedApiError } from '../../api/client'
 import { getGuestMeeting } from '../../api/guestMeetings'
 import { getGuestCheckInQr, getGuestProfile, logoutClientSession } from '../../api/sessions'
 import GuestQrCode from '../../components/GuestQrCode.vue'
@@ -188,6 +188,10 @@ interface GuestDynamicDetail {
 
 /**
  * 把签到时间格式化为首页展示所需的 YYYY/MM/DD HH:MM。
+ *
+ * 入参：value 为服务端返回的签到时间字符串；为空时表示未签到。
+ * 返回值：string：合法时间返回本地格式化文本，非法时间原样返回，空值返回空字符串。
+ * 异常：当前函数不主动抛出异常；无法解析的时间按原始文本展示。
  */
 function formatCheckInTime(value: string): string {
   if (!value) return ''
@@ -203,6 +207,10 @@ function formatCheckInTime(value: string): string {
 
 /**
  * 打开嘉宾首页左侧会议服务抽屉。
+ *
+ * 入参：无。
+ * 返回值：void：更新抽屉可见状态。
+ * 异常：当前函数不主动抛出异常。
  */
 function openServiceDrawer(): void {
   serviceDrawerVisible.value = true
@@ -210,6 +218,10 @@ function openServiceDrawer(): void {
 
 /**
  * 关闭嘉宾首页左侧会议服务抽屉。
+ *
+ * 入参：无。
+ * 返回值：void：更新抽屉可见状态。
+ * 异常：当前函数不主动抛出异常。
  */
 function closeServiceDrawer(): void {
   serviceDrawerVisible.value = false
@@ -217,6 +229,10 @@ function closeServiceDrawer(): void {
 
 /**
  * 在会议服务抽屉完全关闭后清理路由中的自动打开标记。
+ *
+ * 入参：无；函数读取当前路由 query。
+ * 返回值：Promise<void>：需要清理时替换当前路由，否则直接结束。
+ * 异常：路由替换失败时由 Vue Router 抛出异常。
  */
 async function handleServiceDrawerClosed(): Promise<void> {
   if (route.query.services !== 'open') {
@@ -227,6 +243,10 @@ async function handleServiceDrawerClosed(): Promise<void> {
 
 /**
  * 在选择会议服务后收起抽屉。
+ *
+ * 入参：key 为被选择的会议服务标识，必填；当前由子组件负责跳转，本函数只消费事件。
+ * 返回值：void：关闭服务抽屉。
+ * 异常：当前函数不主动抛出异常。
  */
 function handleServiceSelected(key: MeetingAssistantFeatureKey): void {
   void key
@@ -235,6 +255,10 @@ function handleServiceSelected(key: MeetingAssistantFeatureKey): void {
 
 /**
  * 从会议服务抽屉返回当前会议的公开活动首页。
+ *
+ * 入参：无；函数读取已加载的会议详情。
+ * 返回值：Promise<void>：关闭抽屉并跳转到公开会议入口。
+ * 异常：路由跳转失败时由 Vue Router 抛出异常。
  */
 async function returnToMeetingEntry(): Promise<void> {
   if (!meeting.value) {
@@ -246,6 +270,10 @@ async function returnToMeetingEntry(): Promise<void> {
 
 /**
  * 判断一个固定或扩展嘉宾字段是否允许在嘉宾端呈现。
+ *
+ * 入参：fieldKey 为字段业务标识，必填。
+ * 返回值：boolean：字段存在于当前可见字段集合时返回 true。
+ * 异常：当前函数不主动抛出异常。
  */
 function isGuestFieldVisible(fieldKey: string): boolean {
   return visibleGuestFieldSet.value.has(fieldKey)
@@ -253,6 +281,10 @@ function isGuestFieldVisible(fieldKey: string): boolean {
 
 /**
  * 生成嘉宾首页需要呈现的非空动态字段列表。
+ *
+ * 入参：无；函数读取当前嘉宾动态字段值和字段标签。
+ * 返回值：GuestDynamicDetail[]：仅包含允许展示且值非空的动态字段。
+ * 异常：当前函数不主动抛出异常。
  */
 function buildVisibleDynamicDetails(): GuestDynamicDetail[] {
   const values = session.guest?.values ?? {}
@@ -264,6 +296,10 @@ function buildVisibleDynamicDetails(): GuestDynamicDetail[] {
 
 /**
  * 加载会话所属的当前会议详情，并阻止会议级嘉宾身份访问其他会议。
+ *
+ * 入参：无；函数读取当前路由会议 ID 和本地嘉宾会话。
+ * 返回值：Promise<void>：成功时刷新会议、嘉宾资料和签到状态；凭证失效时跳回身份核验页。
+ * 异常：API 请求失败时捕获并转换为页面错误；路由跳转失败时由 Vue Router 抛出异常。
  */
 async function loadDetail(): Promise<void> {
   if (!session.guest) {
@@ -292,6 +328,11 @@ async function loadDetail(): Promise<void> {
     serviceDrawerVisible.value = route.query.services === 'open'
     await loadCheckInStatus(routeMeetingId)
   } catch (error) {
+    if (isUnauthorizedApiError(error)) {
+      session.clearRole('guest')
+      await router.replace(`/guest/login?meetingId=${routeMeetingId}`)
+      return
+    }
     meeting.value = undefined
     errorMessage.value = getApiErrorMessage(error, '当前会议信息加载失败，请稍后重试。')
   } finally {
@@ -321,6 +362,10 @@ async function loadCheckInStatus(meetingId: string): Promise<void> {
 
 /**
  * 跳转到当前路由会议对应的嘉宾身份核验入口。
+ *
+ * 入参：无；函数读取当前路由会议 ID。
+ * 返回值：Promise<void>：替换到嘉宾登录路由。
+ * 异常：路由替换失败时由 Vue Router 抛出异常。
  */
 async function goLogin(): Promise<void> {
   await router.replace(`/guest/login?meetingId=${String(route.params.id)}`)
@@ -328,6 +373,10 @@ async function goLogin(): Promise<void> {
 
 /**
  * 撤销嘉宾服务端会话并返回当前会议身份核验入口。
+ *
+ * 入参：无；函数读取当前嘉宾会话或路由会议 ID。
+ * 返回值：Promise<void>：无论服务端退出是否成功，都会清理本地会话并返回登录页。
+ * 异常：服务端退出异常会转为页面提示；路由替换失败时由 Vue Router 抛出异常。
  */
 async function handleGuestLogout(): Promise<void> {
   const meetingId = session.guest?.meetingId || String(route.params.id)
@@ -346,6 +395,10 @@ async function handleGuestLogout(): Promise<void> {
 
 /**
  * 将嘉宾手机号转换为适合首页展示的脱敏形式。
+ *
+ * 入参：无；函数读取当前嘉宾手机号。
+ * 返回值：string：手机号为空时返回空字符串，长度足够时返回中间四位脱敏文本。
+ * 异常：当前函数不主动抛出异常。
  */
 function maskGuestPhone(): string {
   const phone = session.guest?.phone.trim() || ''
@@ -376,6 +429,10 @@ onUnmounted(() => {
 
 /**
  * 嘉宾端页面恢复可见时重新拉取最新嘉宾资料与签到状态。
+ *
+ * 入参：无；函数读取 document 可见状态、当前嘉宾会话和会议详情。
+ * 返回值：void：满足刷新条件时异步触发详情加载。
+ * 异常：刷新过程异常由 loadDetail 内部处理。
  */
 function handleVisibilityRefresh(): void {
   if (document.visibilityState !== 'visible') return

@@ -48,10 +48,10 @@ python -m pip install ".[dev]"
 
 ## 配置
 
-本地开发默认使用 SQLite：
+本地联调推荐使用 PostgreSQL；未创建 PostgreSQL 时，可临时把 `DATABASE_URL` 改回 `sqlite:///./dev.db`：
 
 ```text
-DATABASE_URL=sqlite:///./dev.db
+DATABASE_URL=postgresql+psycopg://green_mango_user:本地开发密码@127.0.0.1:5432/green_mango
 SESSION_EXPIRE_HOURS=12
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
@@ -84,7 +84,7 @@ alembic current
 alembic upgrade head
 ```
 
-当前迁移头为 `20260716_0006`。
+当前迁移头为 `20260721_0009`。
 
 ## 外部服务配置
 

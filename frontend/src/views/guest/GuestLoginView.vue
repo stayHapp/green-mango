@@ -70,8 +70,8 @@ import type { InputInstance } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { getApiErrorMessage } from '../../api/client'
-import { getPublicMeeting, loginGuest } from '../../api/sessions'
+import { getApiErrorMessage, isUnauthorizedApiError } from '../../api/client'
+import { getGuestProfile, getPublicMeeting, loginGuest } from '../../api/sessions'
 import { useSessionStore } from '../../stores/session'
 import type { Meeting } from '../../types'
 
@@ -109,13 +109,37 @@ async function loadMeeting(): Promise<void> {
     meeting.value = await getPublicMeeting(meetingId)
     // 嘉宾身份只属于当前会议，已有同会议会话时不重复展示登录表单。
     if (session.guest?.meetingId === meetingId) {
-      await router.replace(`/guest/meetings/${meetingId}`)
+      if (await validateExistingGuestSession()) {
+        await router.replace(`/guest/meetings/${meetingId}`)
+      }
     }
   } catch (error) {
     meeting.value = undefined
     errorMessage.value = getApiErrorMessage(error, '会议入口不存在或尚未发布。')
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * 跳转嘉宾中心前先确认本地嘉宾会话仍有效。
+ *
+ * 入参：无；函数读取当前会议 ID 和本地嘉宾会话。
+ * 返回值：Promise<boolean>：服务端认可当前 token 时返回 true；凭证失效或校验失败时返回 false。
+ * 异常：401 凭证失效会清除本地会话；其他异常不抛出到页面，保留登录表单供用户重新核验。
+ */
+async function validateExistingGuestSession(): Promise<boolean> {
+  try {
+    const profile = await getGuestProfile(meetingId)
+    if (session.guestAccess) {
+      session.setGuest(profile, session.guestAccess)
+    }
+    return true
+  } catch (error) {
+    if (isUnauthorizedApiError(error)) {
+      session.clearRole('guest')
+    }
+    return false
   }
 }
 
