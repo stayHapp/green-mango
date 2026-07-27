@@ -57,3 +57,18 @@ class StaffGuestResponse(BaseModel):
     is_active: bool
     checked_in: bool
     checked_in_at: datetime | None
+    visible_fields: list[str]
+
+
+class AlreadyCheckedInDetail(BaseModel):
+    """重复签到时返回给工作人员端的结构化提示。"""
+
+    code: str
+    message: str
+    guest_id: int
+    guest_name: str
+    phone: str
+    checked_in_at: datetime
+    method: str
+    staff_id: int | None
+    staff_name: str | None

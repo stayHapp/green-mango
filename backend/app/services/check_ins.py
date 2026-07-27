@@ -15,16 +15,24 @@ from app.models.user import User
 class CheckInBusinessError(Exception):
     """可映射为 HTTP 业务响应的签到异常。"""
 
-    def __init__(self, status_code: int, message: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        existing_check_in: CheckIn | None = None,
+        guest: Guest | None = None,
+    ) -> None:
         """初始化签到业务异常。
 
-        入参：status_code 为 HTTP 状态码；message 为面向调用方的中文错误信息，均必填。
+        入参：status_code 为 HTTP 状态码；message 为面向调用方的中文错误信息；existing_check_in 为重复签到时已存在的签到记录；guest 为重复签到对应的嘉宾。
         返回值：None：完成异常对象初始化。
         异常：当前构造函数不主动抛出业务异常。
         """
         super().__init__(message)
         self.status_code = status_code
         self.message = message
+        self.existing_check_in = existing_check_in
+        self.guest = guest
 
 
 def get_authorized_staff_meeting(db: Session, staff: User, meeting_id: int) -> Meeting | None:
@@ -68,8 +76,11 @@ def create_check_in(db: Session, meeting: Meeting, staff: User, guest: Guest, me
         raise CheckInBusinessError(422, "嘉宾不属于当前会议。")
     if not guest.is_active:
         raise CheckInBusinessError(422, "嘉宾已停用，无法签到。")
-    if db.scalar(select(CheckIn.id).where(CheckIn.meeting_id == meeting.id, CheckIn.guest_id == guest.id)) is not None:
-        raise CheckInBusinessError(409, "该嘉宾已签到，不能重复签到。")
+    existing_check_in = db.scalar(
+        select(CheckIn).where(CheckIn.meeting_id == meeting.id, CheckIn.guest_id == guest.id)
+    )
+    if existing_check_in is not None:
+        raise CheckInBusinessError(409, "该嘉宾已签到，不能重复签到。", existing_check_in, guest)
 
     check_in = CheckIn(meeting_id=meeting.id, guest_id=guest.id, staff_id=staff.id, method=method)
     db.add(check_in)
@@ -77,7 +88,10 @@ def create_check_in(db: Session, meeting: Meeting, staff: User, guest: Guest, me
         db.commit()
     except IntegrityError as error:
         db.rollback()
-        raise CheckInBusinessError(409, "该嘉宾已签到，不能重复签到。") from error
+        existing_check_in = db.scalar(
+            select(CheckIn).where(CheckIn.meeting_id == meeting.id, CheckIn.guest_id == guest.id)
+        )
+        raise CheckInBusinessError(409, "该嘉宾已签到，不能重复签到。", existing_check_in, guest) from error
     db.refresh(check_in)
     return check_in
 
@@ -89,14 +103,23 @@ def list_check_ins(db: Session, meeting: Meeting) -> list[CheckIn]:
     返回值：list[CheckIn]：按签到时间倒序排列的签到记录。
     异常：数据库查询失败时由 SQLAlchemy 抛出异常。
     """
-    statement = select(CheckIn).where(CheckIn.meeting_id == meeting.id).order_by(CheckIn.checked_in_at.desc(), CheckIn.id.desc())
+    statement = (
+        select(CheckIn)
+        .where(CheckIn.meeting_id == meeting.id)
+        .order_by(CheckIn.checked_in_at.desc(), CheckIn.id.desc())
+    )
     return list(db.scalars(statement))
 
 
-def search_guests_with_check_in_status(db: Session, meeting: Meeting, query: str) -> list[tuple[Guest, CheckIn | None]]:
+def search_guests_with_check_in_status(
+    db: Session,
+    meeting: Meeting,
+    query: str,
+    enabled_fixed_fields: list[str],
+) -> list[tuple[Guest, CheckIn | None]]:
     """按现场关键词搜索会议嘉宾并附带签到状态。
 
-    入参：db 为数据库会话；meeting 为已授权会议；query 为可为空的搜索关键词，均必填。
+    入参：db 为数据库会话；meeting 为已授权会议；query 为可为空的搜索关键词；enabled_fixed_fields 为后台启用的固定字段 key 列表，均必填。
     返回值：list[tuple[Guest, CheckIn | None]]：嘉宾与其签到记录的组合，未签到时记录为 None。
     异常：数据库查询失败时由 SQLAlchemy 抛出异常。
     """
@@ -109,12 +132,10 @@ def search_guests_with_check_in_status(db: Session, meeting: Meeting, query: str
     normalized_query = query.strip().lower()
     if normalized_query:
         pattern = f"%{normalized_query}%"
-        statement = statement.where(
-            or_(
-                Guest.name.ilike(pattern),
-                Guest.phone.ilike(pattern),
-                Guest.organization.ilike(pattern),
-                Guest.seat.ilike(pattern),
-            )
-        )
+        search_conditions = [Guest.name.ilike(pattern), Guest.phone.ilike(pattern)]
+        if "organization" in enabled_fixed_fields:
+            search_conditions.append(Guest.organization.ilike(pattern))
+        if "seat" in enabled_fixed_fields:
+            search_conditions.append(Guest.seat.ilike(pattern))
+        statement = statement.where(or_(*search_conditions))
     return list(db.execute(statement).tuples())

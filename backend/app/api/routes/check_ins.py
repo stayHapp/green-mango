@@ -5,9 +5,23 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.dependencies import CurrentStaff, DatabaseSession
-from app.schemas.check_in import CheckInResponse, ManualCheckInRequest, ScanCheckInRequest, StaffGuestResponse
-from app.services.check_ins import CheckInBusinessError, create_check_in, get_authorized_staff_meeting, get_guest_by_token, list_check_ins, search_guests_with_check_in_status
 from app.models.guest import Guest
+from app.schemas.check_in import (
+    AlreadyCheckedInDetail,
+    CheckInResponse,
+    ManualCheckInRequest,
+    ScanCheckInRequest,
+    StaffGuestResponse,
+)
+from app.services.admin_resources import get_guest_registration_settings
+from app.services.check_ins import (
+    CheckInBusinessError,
+    create_check_in,
+    get_authorized_staff_meeting,
+    get_guest_by_token,
+    list_check_ins,
+    search_guests_with_check_in_status,
+)
 
 router = APIRouter(prefix="/staff/meetings")
 
@@ -39,6 +53,33 @@ def build_check_in_response(check_in) -> CheckInResponse:
     )
 
 
+def build_already_checked_in_detail(error: CheckInBusinessError) -> dict[str, object] | str:
+    """构建重复签到时返回给工作人员端的结构化错误明细。
+
+    入参：error 为签到业务异常，必填；重复签到时包含已存在签到记录和嘉宾对象。
+    返回值：dict[str, object] | str：上下文完整时返回可 JSON 序列化的结构化明细，否则回退为原始中文消息。
+    异常：当前函数不主动抛出异常；缺少上下文时使用字符串保持兼容。
+    """
+    check_in = error.existing_check_in
+    guest = error.guest
+    if check_in is None or guest is None:
+        return error.message
+    staff = check_in.staff
+    staff_name = (staff.display_name or staff.username) if staff else None
+    detail = AlreadyCheckedInDetail(
+        code="already_checked_in",
+        message=error.message,
+        guest_id=guest.id,
+        guest_name=guest.name,
+        phone=guest.phone,
+        checked_in_at=normalize_utc_datetime(check_in.checked_in_at),
+        method=check_in.method,
+        staff_id=check_in.staff_id,
+        staff_name=staff_name,
+    )
+    return detail.model_dump(mode="json")
+
+
 def load_staff_meeting_or_404(db: DatabaseSession, staff: CurrentStaff, meeting_id: int):
     """读取工作人员已授权会议，不存在或越权时返回 404。
 
@@ -62,11 +103,18 @@ def execute_check_in(db: DatabaseSession, meeting, staff: CurrentStaff, guest: G
     try:
         return build_check_in_response(create_check_in(db, meeting, staff, guest, method))
     except CheckInBusinessError as error:
-        raise HTTPException(status_code=error.status_code, detail=error.message) from error
+        detail = (
+            build_already_checked_in_detail(error)
+            if error.status_code == status.HTTP_409_CONFLICT
+            else error.message
+        )
+        raise HTTPException(status_code=error.status_code, detail=detail) from error
 
 
 @router.post("/{meeting_id}/check-ins/scan", response_model=CheckInResponse, status_code=status.HTTP_201_CREATED)
-def scan_check_in(meeting_id: int, payload: ScanCheckInRequest, db: DatabaseSession, staff: CurrentStaff) -> CheckInResponse:
+def scan_check_in(
+    meeting_id: int, payload: ScanCheckInRequest, db: DatabaseSession, staff: CurrentStaff
+) -> CheckInResponse:
     """使用嘉宾二维码 token 完成签到。
 
     入参：meeting_id 为会议 ID；payload 包含二维码 token；db 与 staff 由 FastAPI 注入。
@@ -81,7 +129,9 @@ def scan_check_in(meeting_id: int, payload: ScanCheckInRequest, db: DatabaseSess
 
 
 @router.post("/{meeting_id}/check-ins/manual", response_model=CheckInResponse, status_code=status.HTTP_201_CREATED)
-def manual_check_in(meeting_id: int, payload: ManualCheckInRequest, db: DatabaseSession, staff: CurrentStaff) -> CheckInResponse:
+def manual_check_in(
+    meeting_id: int, payload: ManualCheckInRequest, db: DatabaseSession, staff: CurrentStaff
+) -> CheckInResponse:
     """按嘉宾 ID 完成人工核验签到。
 
     入参：meeting_id 为会议 ID；payload 包含嘉宾 ID；db 与 staff 由 FastAPI 注入。
@@ -120,18 +170,21 @@ def search_meeting_guests(
     异常：无会议权限时返回 404。
     """
     meeting = load_staff_meeting_or_404(db, staff, meeting_id)
+    _, _, enabled_fixed_fields = get_guest_registration_settings(meeting)
+    enabled_field_set = set(enabled_fixed_fields)
     return [
         StaffGuestResponse(
             id=guest.id,
             name=guest.name,
             phone=guest.phone,
-            organization=guest.organization,
-            title=guest.title,
-            tag=guest.tag,
-            seat=guest.seat,
+            organization=guest.organization if "organization" in enabled_field_set else None,
+            title=guest.title if "title" in enabled_field_set else None,
+            tag=guest.tag if "tag" in enabled_field_set else None,
+            seat=guest.seat if "seat" in enabled_field_set else None,
             is_active=guest.is_active,
             checked_in=check_in is not None,
             checked_in_at=normalize_utc_datetime(check_in.checked_in_at) if check_in else None,
+            visible_fields=enabled_fixed_fields,
         )
-        for guest, check_in in search_guests_with_check_in_status(db, meeting, query)
+        for guest, check_in in search_guests_with_check_in_status(db, meeting, query, enabled_fixed_fields)
     ]

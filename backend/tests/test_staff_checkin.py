@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models.access import StaffMeeting
 from app.models.guest import CheckIn, Guest
-from app.models.meeting import Meeting
+from app.models.meeting import Meeting, MeetingSetting
 from app.models.user import User
 
 
@@ -133,6 +133,15 @@ def test_duplicate_scan_check_in_returns_409(
         json={"qr_token": "dup-scan-token"},
     )
     assert second.status_code == 409
+    detail = second.json()["detail"]
+    assert detail["code"] == "already_checked_in"
+    assert detail["guest_id"] == guest.id
+    assert detail["guest_name"] == "重复嘉宾"
+    assert detail["phone"] == "13900000032"
+    assert detail["method"] == "scan"
+    assert detail["staff_id"] == staff.id
+    assert detail["staff_name"] == staff.username
+    assert detail["checked_in_at"]
 
 
 def test_duplicate_manual_check_in_returns_409(
@@ -178,6 +187,13 @@ def test_duplicate_manual_check_in_returns_409(
         json={"guest_id": guest.id},
     )
     assert second.status_code == 409
+    detail = second.json()["detail"]
+    assert detail["code"] == "already_checked_in"
+    assert detail["guest_id"] == guest.id
+    assert detail["guest_name"] == "手工重复嘉宾"
+    assert detail["method"] == "manual"
+    assert detail["staff_id"] == staff.id
+    assert detail["staff_name"] == staff.username
 
 
 def test_expired_meeting_check_in_returns_422(
@@ -374,6 +390,68 @@ def test_staff_can_search_guests_with_check_in_status(
     assert len(response.json()) == 1
     assert response.json()[0]["name"] == "陈老师"
     assert response.json()[0]["checked_in"] is True
+    assert "seat" in response.json()[0]["visible_fields"]
+    assert response.json()[0]["seat"] == "A12"
+
+
+def test_staff_guest_search_hides_disabled_seat_field(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证后台未启用座位号时工作人员端不展示也不按座位号搜索。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示工作人员端字段显隐遵循会议配置。
+    异常：当前函数不主动抛出业务异常；断言失败表示座位号可能在关闭后泄露。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-hidden-seat")
+    staff = create_user(db, "staff-hidden-seat", role="staff")
+    meeting = Meeting(
+        title="隐藏座位会议",
+        created_by_id=admin.id,
+        status="published",
+        end_time=datetime.now(timezone.utc) + timedelta(days=1),
+    )
+    db.add(meeting)
+    db.flush()
+    db.add(StaffMeeting(meeting_id=meeting.id, user_id=staff.id))
+    db.add(
+        MeetingSetting(
+            meeting_id=meeting.id,
+            settings_json={
+                "guest_enabled_fixed_fields": ["name", "phone", "organization", "title", "tag"],
+            },
+        )
+    )
+    db.add(
+        Guest(
+            meeting_id=meeting.id,
+            name="隐藏座位嘉宾",
+            phone="13900000041",
+            organization="知会学院",
+            seat="B18",
+            qr_token="hidden-seat-token",
+        )
+    )
+    db.commit()
+
+    by_name = client.get(
+        f"/api/staff/meetings/{meeting.id}/guests?query=隐藏座位嘉宾",
+        headers=auth_headers(db, staff),
+    )
+    assert by_name.status_code == 200
+    assert len(by_name.json()) == 1
+    assert by_name.json()[0]["seat"] is None
+    assert "seat" not in by_name.json()[0]["visible_fields"]
+
+    by_seat = client.get(
+        f"/api/staff/meetings/{meeting.id}/guests?query=B18",
+        headers=auth_headers(db, staff),
+    )
+    assert by_seat.status_code == 200
+    assert by_seat.json() == []
 
 
 def test_unauthorized_staff_cannot_check_in(

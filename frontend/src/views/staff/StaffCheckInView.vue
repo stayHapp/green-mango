@@ -80,10 +80,20 @@
 
           <section v-if="scanResult" class="staff-scan-result" aria-live="polite">
             <el-alert :type="resultAlertType" :closable="false" :title="scanResult.message" />
-            <dl v-if="scanResult.guest">
+            <dl v-if="scanResult.duplicate">
+              <div><dt>嘉宾</dt><dd>{{ scanResult.duplicate.guestName }}</dd></div>
+              <div><dt>电话</dt><dd>{{ scanResult.duplicate.phone }}</dd></div>
+              <div><dt>已签到时间</dt><dd>{{ formatDate(scanResult.duplicate.checkedInAt) }}</dd></div>
+              <div><dt>签到方式</dt><dd>{{ methodText(scanResult.duplicate.method) }}</dd></div>
+              <div><dt>操作人员</dt><dd>{{ scanResult.duplicate.staffName }}</dd></div>
+            </dl>
+            <dl v-else-if="scanResult.guest">
               <div><dt>嘉宾</dt><dd>{{ scanResult.guest.name }}</dd></div>
               <div><dt>电话</dt><dd>{{ scanResult.guest.phone }}</dd></div>
-              <div><dt>座位</dt><dd>{{ scanResult.guest.seat || '待分配' }}</dd></div>
+              <div v-if="isStaffGuestFieldVisible(scanResult.guest, 'seat')">
+                <dt>座位</dt>
+                <dd>{{ scanResult.guest.seat || '待分配' }}</dd>
+              </div>
             </dl>
           </section>
         </section>
@@ -102,9 +112,18 @@
                 </div>
               </div>
               <dl class="staff-confirm-card__details">
-                <div><dt>单位</dt><dd>{{ selectedManualGuest.organization || '未填写' }}</dd></div>
-                <div><dt>身份</dt><dd>{{ selectedManualGuest.tag || '嘉宾' }}</dd></div>
-                <div><dt>座位</dt><dd>{{ selectedManualGuest.seat || '待分配' }}</dd></div>
+                <div v-if="isStaffGuestFieldVisible(selectedManualGuest, 'organization')">
+                  <dt>单位</dt>
+                  <dd>{{ selectedManualGuest.organization || '未填写' }}</dd>
+                </div>
+                <div v-if="isStaffGuestFieldVisible(selectedManualGuest, 'tag')">
+                  <dt>身份</dt>
+                  <dd>{{ selectedManualGuest.tag || '嘉宾' }}</dd>
+                </div>
+                <div v-if="isStaffGuestFieldVisible(selectedManualGuest, 'seat')">
+                  <dt>座位</dt>
+                  <dd>{{ selectedManualGuest.seat || '待分配' }}</dd>
+                </div>
               </dl>
             </article>
             <div class="staff-confirm-tip">
@@ -129,7 +148,7 @@
               v-model="guestQuery"
               clearable
               class="staff-guest-search"
-              placeholder="搜索姓名、手机号、单位或座位号"
+              :placeholder="staffGuestSearchPlaceholder"
               :prefix-icon="Search"
             />
             <div class="staff-manual-results">
@@ -139,7 +158,7 @@
                 <div class="staff-guest-row__copy">
                   <strong>{{ row.name }}</strong>
                   <p>{{ row.phone }}</p>
-                  <small>{{ row.organization || row.tag }} · 座位 {{ row.seat || '待分配' }}</small>
+                  <small>{{ buildStaffGuestSummary(row) }}</small>
                 </div>
                 <el-button
                   v-if="!row.checkedIn"
@@ -200,6 +219,7 @@ import jsQR from 'jsqr'
 import { getApiErrorMessage } from '../../api/client'
 import { logoutClientSession } from '../../api/sessions'
 import {
+  getAlreadyCheckedInDetail,
   listStaffCheckIns,
   listStaffMeetings,
   manualStaffCheckIn,
@@ -249,6 +269,7 @@ let scanAnimationId: number | null = null
 const scanResult = ref<ScanResult>()
 const resultAlertType = computed(alertType)
 const activeModeTitle = computed(currentModeTitle)
+const staffGuestSearchPlaceholder = computed(buildStaffGuestSearchPlaceholder)
 const checkedCount = computed(() => checkIns.value.length)
 const uncheckedCount = computed(() => Math.max(guests.value.length - checkedCount.value, 0))
 const filteredGuestRows = computed(() => displayedGuests.value)
@@ -265,6 +286,68 @@ const workspaceModes: StaffWorkspaceModeItem[] = [
   { key: 'manual', label: '手动签到', icon: Postcard },
   { key: 'records', label: '签到记录', icon: Tickets },
 ]
+
+/**
+ * 判断工作人员端是否允许展示指定嘉宾字段。
+ *
+ * 入参：guest 为工作人员端嘉宾或扫码结果嘉宾，可为空；fieldKey 为固定字段标识，必填。
+ * 返回值：boolean：后端返回的 visibleFields 包含该字段时返回 true；缺少配置时按兼容模式返回 true。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isStaffGuestFieldVisible(guest: { visibleFields?: string[] } | undefined, fieldKey: string): boolean {
+  return guest?.visibleFields ? guest.visibleFields.includes(fieldKey) : true
+}
+
+/**
+ * 判断当前会议工作人员端搜索是否启用了指定固定字段。
+ *
+ * 入参：fieldKey 为固定字段标识，必填。
+ * 返回值：boolean：已加载嘉宾配置包含该字段时返回 true；没有样本数据时按默认启用处理。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isStaffSearchFieldVisible(fieldKey: string): boolean {
+  const sourceGuest = guests.value[0] ?? displayedGuests.value[0]
+  return isStaffGuestFieldVisible(sourceGuest, fieldKey)
+}
+
+/**
+ * 生成工作人员端嘉宾搜索输入框占位提示。
+ *
+ * 入参：无；函数读取当前会议启用固定字段。
+ * 返回值：string：仅包含可搜索字段的中文提示。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildStaffGuestSearchPlaceholder(): string {
+  const labels = ['姓名', '手机号']
+  if (isStaffSearchFieldVisible('organization')) {
+    labels.push('单位')
+  }
+  if (isStaffSearchFieldVisible('seat')) {
+    labels.push('座位号')
+  }
+  return `搜索${labels.join('、')}`
+}
+
+/**
+ * 生成工作人员端嘉宾列表的辅助信息摘要。
+ *
+ * 入参：guest 为工作人员端嘉宾，必填。
+ * 返回值：string：按会议启用字段拼接单位、身份和座位信息；没有可展示扩展信息时返回核验提示。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildStaffGuestSummary(guest: StaffGuest): string {
+  const parts: string[] = []
+  if (isStaffGuestFieldVisible(guest, 'organization') && guest.organization) {
+    parts.push(guest.organization)
+  }
+  if (isStaffGuestFieldVisible(guest, 'tag') && guest.tag) {
+    parts.push(guest.tag)
+  }
+  if (isStaffGuestFieldVisible(guest, 'seat')) {
+    parts.push(`座位 ${guest.seat || '待分配'}`)
+  }
+  return parts.length ? parts.join(' · ') : '按姓名和手机号核对'
+}
 
 /**
  * 根据当前工作台模式返回页面标题。
@@ -626,6 +709,21 @@ async function refreshCheckIns(): Promise<void> {
 }
 
 /**
+ * 重复签到后尽量刷新本地签到状态。
+ *
+ * 入参：无；函数读取当前路由会议 ID 和搜索关键词。
+ * 返回值：Promise<void>：刷新成功或失败都会结束，不影响重复签到提示展示。
+ * 异常：刷新异常会被当前函数吸收，并通过轻量提示告知工作人员。
+ */
+async function refreshAfterDuplicateCheckIn(): Promise<void> {
+  try {
+    await refreshCheckIns()
+  } catch {
+    ElMessage.warning('重复签到信息已返回，但本地列表刷新失败，请稍后手动刷新页面。')
+  }
+}
+
+/**
  * 根据签到状态计算 Element Plus 提示类型。
  *
  * 入参：
@@ -693,6 +791,12 @@ async function handleScan(): Promise<void> {
       checkIn: record,
     }
   } catch (error) {
+    const duplicate = getAlreadyCheckedInDetail(error)
+    if (duplicate) {
+      await refreshAfterDuplicateCheckIn()
+      scanResult.value = { status: 'already_checked_in', message: duplicate.message, duplicate }
+      return
+    }
     const message = getApiErrorMessage(error, '扫码签到失败。')
     scanResult.value = { status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message }
   } finally {
@@ -735,6 +839,12 @@ async function handleManualCheckIn(guestId: string): Promise<void> {
       checkIn: record,
     }
   } catch (error) {
+    const duplicate = getAlreadyCheckedInDetail(error)
+    if (duplicate) {
+      await refreshAfterDuplicateCheckIn()
+      scanResult.value = { status: 'already_checked_in', message: duplicate.message, duplicate }
+      return
+    }
     const message = getApiErrorMessage(error, '人工签到失败。')
     scanResult.value = { status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message }
   } finally {

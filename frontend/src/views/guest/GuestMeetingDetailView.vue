@@ -171,6 +171,9 @@ const errorMessage = ref('')
 // 已从签到二维码接口读取；为空时默认呈现"未签到 + 二维码"分支。
 const checkInTimeText = ref('')
 const checkInStatusLoading = ref(false)
+const CHECK_IN_STATUS_POLL_INTERVAL_MS = 3000
+let checkInStatusPollTimer: number | undefined
+let checkInStatusPolling = false
 
 const maskedPhone = computed(maskGuestPhone)
 const visibleGuestFieldSet = computed(
@@ -304,6 +307,7 @@ function buildVisibleDynamicDetails(): GuestDynamicDetail[] {
 async function loadDetail(): Promise<void> {
   if (!session.guest) {
     meeting.value = undefined
+    stopCheckInStatusPolling()
     return
   }
 
@@ -327,12 +331,15 @@ async function loadDetail(): Promise<void> {
     }
     serviceDrawerVisible.value = route.query.services === 'open'
     await loadCheckInStatus(routeMeetingId)
+    restartCheckInStatusPolling()
   } catch (error) {
     if (isUnauthorizedApiError(error)) {
+      stopCheckInStatusPolling()
       session.clearRole('guest')
       await router.replace(`/guest/login?meetingId=${routeMeetingId}`)
       return
     }
+    stopCheckInStatusPolling()
     meeting.value = undefined
     errorMessage.value = getApiErrorMessage(error, '当前会议信息加载失败，请稍后重试。')
   } finally {
@@ -352,12 +359,91 @@ async function loadCheckInStatus(meetingId: string): Promise<void> {
   try {
     const status = await getGuestCheckInQr(meetingId)
     checkInTimeText.value = status.isCheckedIn ? status.checkedInAt || '已签到' : ''
-  } catch {
+    if (status.isCheckedIn) {
+      stopCheckInStatusPolling()
+    }
+  } catch (error) {
+    if (isUnauthorizedApiError(error)) {
+      stopCheckInStatusPolling()
+      session.clearRole('guest')
+      await router.replace(`/guest/login?meetingId=${meetingId}`)
+      return
+    }
     // 签到状态读取失败时不阻断首页其他信息展示，默认进入未签到分支。
-    checkInTimeText.value = ''
+    if (!checkInTimeText.value) {
+      checkInTimeText.value = ''
+    }
   } finally {
     checkInStatusLoading.value = false
   }
+}
+
+/**
+ * 判断当前嘉宾首页是否需要持续轮询签到状态。
+ *
+ * 入参：无；函数读取嘉宾会话、会议详情、签到状态和页面可见性。
+ * 返回值：boolean：嘉宾已登录、会议已加载、尚未签到且页面可见时返回 true。
+ * 异常：当前函数不主动抛出异常。
+ */
+function shouldPollCheckInStatus(): boolean {
+  return Boolean(session.guest && meeting.value && !isCheckedIn.value && document.visibilityState === 'visible')
+}
+
+/**
+ * 停止嘉宾端签到状态轮询。
+ *
+ * 入参：无。
+ * 返回值：void：清理 3 秒轮询计时器。
+ * 异常：当前函数不主动抛出异常。
+ */
+function stopCheckInStatusPolling(): void {
+  if (checkInStatusPollTimer !== undefined) {
+    window.clearInterval(checkInStatusPollTimer)
+    checkInStatusPollTimer = undefined
+  }
+}
+
+/**
+ * 执行一次嘉宾端签到状态轮询。
+ *
+ * 入参：无；函数读取当前路由会议 ID。
+ * 返回值：Promise<void>：轮询完成后根据最新状态决定是否继续。
+ * 异常：接口异常由 loadCheckInStatus 内部处理，当前函数不向外抛出。
+ */
+async function pollCheckInStatus(): Promise<void> {
+  if (!shouldPollCheckInStatus() || checkInStatusPolling) {
+    if (!shouldPollCheckInStatus()) {
+      stopCheckInStatusPolling()
+    }
+    return
+  }
+
+  checkInStatusPolling = true
+  try {
+    await loadCheckInStatus(String(route.params.id))
+  } finally {
+    checkInStatusPolling = false
+    if (!shouldPollCheckInStatus()) {
+      stopCheckInStatusPolling()
+    }
+  }
+}
+
+/**
+ * 重新启动嘉宾端 3 秒签到状态轮询。
+ *
+ * 入参：无；函数读取当前嘉宾会话、会议详情和签到状态。
+ * 返回值：void：满足轮询条件时创建计时器，否则保持停止状态。
+ * 异常：当前函数不主动抛出异常。
+ */
+function restartCheckInStatusPolling(): void {
+  stopCheckInStatusPolling()
+  if (!shouldPollCheckInStatus()) {
+    return
+  }
+  checkInStatusPollTimer = window.setInterval(() => {
+    void pollCheckInStatus()
+  }, CHECK_IN_STATUS_POLL_INTERVAL_MS)
 }
 
 /**
@@ -387,6 +473,7 @@ async function handleGuestLogout(): Promise<void> {
   } catch {
     ElMessage.warning('服务端会话可能已失效，本地登录状态已清除。')
   } finally {
+    stopCheckInStatusPolling()
     session.clearRole('guest')
     loggingOut.value = false
     await router.replace(`/guest/login?meetingId=${meetingId}`)
@@ -423,6 +510,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  stopCheckInStatusPolling()
   document.removeEventListener('visibilitychange', handleVisibilityRefresh)
   window.removeEventListener('focus', handleVisibilityRefresh)
 })
@@ -435,7 +523,10 @@ onUnmounted(() => {
  * 异常：刷新过程异常由 loadDetail 内部处理。
  */
 function handleVisibilityRefresh(): void {
-  if (document.visibilityState !== 'visible') return
+  if (document.visibilityState !== 'visible') {
+    stopCheckInStatusPolling()
+    return
+  }
   if (!session.guest || !meeting.value) return
   void loadDetail()
 }

@@ -157,6 +157,17 @@ export interface CheckInRecord {
   method: 'scan' | 'manual'
 }
 
+export interface AlreadyCheckedInInfo {
+  message: string
+  guestId: string
+  guestName: string
+  phone: string
+  checkedInAt: string
+  method: 'scan' | 'manual'
+  staffId: string
+  staffName: string
+}
+
 export interface AdminCheckInRecord {
   guestId: string
   guestName: string
@@ -180,4 +191,5 @@ export interface ScanResult {
   message: string
   guest?: Guest
   checkIn?: CheckInRecord
+  duplicate?: AlreadyCheckedInInfo
 }

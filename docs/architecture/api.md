@@ -116,12 +116,14 @@
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | GET | `/api/staff/meetings` | 查询负责会议 |
-| GET | `/api/staff/meetings/{meeting_id}/guests?query={keyword}` | 按姓名、手机号、单位或座位搜索嘉宾 |
+| GET | `/api/staff/meetings/{meeting_id}/guests?query={keyword}` | 按姓名、手机号和当前启用的单位、座位等字段搜索嘉宾 |
 | POST | `/api/staff/meetings/{meeting_id}/check-ins/scan` | 提交 `qr_token` 扫码签到 |
 | POST | `/api/staff/meetings/{meeting_id}/check-ins/manual` | 提交 `guest_id` 人工签到 |
 | GET | `/api/staff/meetings/{meeting_id}/check-ins` | 查询会议签到记录 |
 
-签到由后端判断工作人员授权、嘉宾归属、嘉宾启用状态、会议结束时间和重复签到。重复签到返回 409；无效、跨会议或过期二维码不会创建记录。
+工作人员嘉宾搜索响应包含 `visible_fields`，值来自会议的 `guest_enabled_fixed_fields`。姓名和手机号始终返回；单位、职务、身份、座位号仅在后台启用时返回实际值，否则返回 `null`，前端不得展示对应字段。搜索条件同样只覆盖姓名、手机号和当前启用的单位、座位等字段，避免关闭座位号后仍能按座位号检索。
+
+签到由后端判断工作人员授权、嘉宾归属、嘉宾启用状态、会议结束时间和重复签到。重复签到返回 409；无效、跨会议或过期二维码不会创建记录。重复签到的 409 `detail` 在上下文完整时返回结构化对象：`code=already_checked_in`、`message`、`guest_id`、`guest_name`、`phone`、`checked_in_at`、`method`、`staff_id` 和 `staff_name`，工作人员端据此展示已有签到时间、签到方式和执行人员；缺少历史上下文时可回退为字符串提示。
 
 ## 嘉宾补充报名接口
 

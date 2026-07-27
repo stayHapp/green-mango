@@ -1,6 +1,8 @@
 /** 工作人员负责会议、嘉宾搜索和签到 API。 */
 
-import type { CheckInRecord, Meeting } from '../types'
+import axios from 'axios'
+
+import type { AlreadyCheckedInInfo, CheckInRecord, Meeting } from '../types'
 import { apiClient, authorizationConfig } from './client'
 
 interface StaffMeetingApiResponse {
@@ -24,6 +26,7 @@ interface StaffGuestApiResponse {
   is_active: boolean
   checked_in: boolean
   checked_in_at: string | null
+  visible_fields: string[]
 }
 
 interface CheckInApiResponse {
@@ -33,6 +36,18 @@ interface CheckInApiResponse {
   staff_id: number | null
   method: 'scan' | 'manual'
   checked_in_at: string
+}
+
+interface AlreadyCheckedInApiDetail {
+  code: 'already_checked_in'
+  message: string
+  guest_id: number
+  guest_name: string
+  phone: string
+  checked_in_at: string
+  method: 'scan' | 'manual'
+  staff_id: number | null
+  staff_name: string | null
 }
 
 export interface StaffGuest {
@@ -46,6 +61,7 @@ export interface StaffGuest {
   isActive: boolean
   checkedIn: boolean
   checkedInAt: string
+  visibleFields: string[]
 }
 
 /**
@@ -109,6 +125,41 @@ function mapCheckIn(record: CheckInApiResponse): CheckInRecord {
 }
 
 /**
+ * 判断后端错误明细是否为重复签到结构化数据。
+ *
+ * 入参：detail 为后端 HTTP 错误 detail 字段，可为任意类型。
+ * 返回值：boolean：字段满足重复签到明细格式时返回 true。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isAlreadyCheckedInApiDetail(detail: unknown): detail is AlreadyCheckedInApiDetail {
+  if (!detail || typeof detail !== 'object') {
+    return false
+  }
+  const payload = detail as Partial<AlreadyCheckedInApiDetail>
+  return payload.code === 'already_checked_in' && typeof payload.guest_id === 'number'
+}
+
+/**
+ * 将重复签到错误明细转换为前端展示结构。
+ *
+ * 入参：detail 为后端重复签到明细，必填。
+ * 返回值：AlreadyCheckedInInfo：字段名已转换，时间补齐 UTC 时区。
+ * 异常：当前函数不主动抛出异常。
+ */
+function mapAlreadyCheckedInDetail(detail: AlreadyCheckedInApiDetail): AlreadyCheckedInInfo {
+  return {
+    message: detail.message,
+    guestId: String(detail.guest_id),
+    guestName: detail.guest_name,
+    phone: detail.phone,
+    checkedInAt: normalizeUtcDateTime(detail.checked_in_at),
+    method: detail.method,
+    staffId: detail.staff_id ? String(detail.staff_id) : '',
+    staffName: detail.staff_name || '未知工作人员',
+  }
+}
+
+/**
  * 查询当前工作人员负责的真实会议列表。
  *
  * 入参：无；工作人员 token 从本地会话读取。
@@ -136,13 +187,14 @@ export async function searchStaffGuests(meetingId: string, query: string): Promi
     id: String(guest.id),
     name: guest.name,
     phone: guest.phone,
-    organization: guest.organization || '',
-    title: guest.title || '',
-    tag: guest.tag || '嘉宾',
-    seat: guest.seat || '',
+    organization: guest.visible_fields.includes('organization') ? guest.organization || '' : '',
+    title: guest.visible_fields.includes('title') ? guest.title || '' : '',
+    tag: guest.visible_fields.includes('tag') ? guest.tag || '嘉宾' : '',
+    seat: guest.visible_fields.includes('seat') ? guest.seat || '' : '',
     isActive: guest.is_active,
     checkedIn: guest.checked_in,
     checkedInAt: normalizeUtcDateTime(guest.checked_in_at),
+    visibleFields: guest.visible_fields,
   }))
 }
 
@@ -191,4 +243,19 @@ export async function manualStaffCheckIn(meetingId: string, guestId: string): Pr
     authorizationConfig('staff'),
   )
   return mapCheckIn(data)
+}
+
+/**
+ * 从签到接口异常中提取重复签到明细。
+ *
+ * 入参：error 为扫码或人工签到接口抛出的异常，必填。
+ * 返回值：AlreadyCheckedInInfo | undefined：重复签到时返回结构化展示数据，其他错误返回 undefined。
+ * 异常：当前函数不主动抛出异常。
+ */
+export function getAlreadyCheckedInDetail(error: unknown): AlreadyCheckedInInfo | undefined {
+  if (!axios.isAxiosError(error)) {
+    return undefined
+  }
+  const detail = error.response?.data?.detail
+  return isAlreadyCheckedInApiDetail(detail) ? mapAlreadyCheckedInDetail(detail) : undefined
 }
