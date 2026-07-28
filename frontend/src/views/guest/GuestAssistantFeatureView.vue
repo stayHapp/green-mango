@@ -203,13 +203,17 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ArrowDown, ArrowLeft, ArrowUp, Location as LocationIcon, Phone, Sunny, Umbrella, User } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, ArrowUp, Clock, Location as LocationIcon, Phone, Sunny, Umbrella, User } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { getApiErrorMessage } from '../../api/client'
 import { getPublicMeeting } from '../../api/sessions'
-import { getGuestMeetingAssistantFeature, isMeetingAssistantFeatureKey } from '../../api/meetingAssistant'
-import { getGuestMeetingWeather, type MeetingWeather } from '../../api/meetingWeather'
+import {
+  getGuestMeetingAssistantFeature,
+  getPublicMeetingAssistantFeature,
+  isMeetingAssistantFeatureKey,
+} from '../../api/meetingAssistant'
+import { getGuestMeetingWeather, getPublicMeetingWeather, type MeetingWeather } from '../../api/meetingWeather'
 import type { Meeting, MeetingAssistantFeature } from '../../types'
 
 interface AgendaDisplayItem {
@@ -234,6 +238,7 @@ const contentBlocks = computed(buildContentBlocks)
 const navigationUrl = computed(buildNavigationUrl)
 const upcomingForecast = computed(buildUpcomingForecast)
 const contactPersons = computed(buildContactPersons)
+const isPublicAccess = computed(() => route.query.access === 'public')
 
 /**
  * 返回 7 日预报中从明天开始的列表，跳过与实时卡片重复的"今天"项。
@@ -274,14 +279,19 @@ async function loadFeature(): Promise<void> {
       errorMessage.value = '未找到对应的会议服务。'
       return
     }
+    const featureRequest = isPublicAccess.value
+      ? getPublicMeetingAssistantFeature(meetingId, featureKey)
+      : getGuestMeetingAssistantFeature(meetingId, featureKey)
     const [meetingData, featureData] = await Promise.all([
       getPublicMeeting(meetingId),
-      getGuestMeetingAssistantFeature(meetingId, featureKey),
+      featureRequest,
     ])
     meeting.value = meetingData
     feature.value = featureData
     if (featureKey === 'weather' && featureData.isPublished) {
-      weather.value = await getGuestMeetingWeather(meetingId)
+      weather.value = isPublicAccess.value
+        ? await getPublicMeetingWeather(meetingId)
+        : await getGuestMeetingWeather(meetingId)
     }
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, '会议服务加载失败，请稍后重试。')
@@ -294,10 +304,14 @@ async function loadFeature(): Promise<void> {
  * 返回当前会议的嘉宾首页，并自动展开会议服务列表。
  *
  * 入参：无；函数读取当前路由中的会议 ID。
- * 返回值：Promise<void>：完成嘉宾首页跳转，并通过查询参数触发会议服务抽屉。
+ * 返回值：Promise<void>：公开模式返回会议入口；登录模式返回嘉宾首页并展开服务抽屉。
  * 异常：路由跳转失败时由 Vue Router 抛出异常。
  */
 async function goBack(): Promise<void> {
+  if (isPublicAccess.value) {
+    await router.push(`/meetings/${String(route.params.id)}`)
+    return
+  }
   await router.push({
     path: `/guest/meetings/${String(route.params.id)}`,
     query: { services: 'open' },

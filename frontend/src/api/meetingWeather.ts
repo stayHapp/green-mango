@@ -77,17 +77,13 @@ interface MeetingWeatherApiResponse {
 }
 
 /**
- * 获取当前嘉宾会议的和风天气实况与七日预报。
+ * 将天气接口响应转换为页面统一使用的数据结构。
  *
- * 入参：meetingId 为数字会议 ID 的字符串形式，必填。
- * 返回值：Promise<MeetingWeather>：转换后的天气、地点、来源和降级提示。
- * 异常：嘉宾未登录、跨会议访问、天气未发布或网络失败时抛出异常。
+ * 入参：data 为后端天气接口响应，必填。
+ * 返回值：MeetingWeather：字段名已转换并补齐可选数组的页面数据。
+ * 异常：响应字段类型不符合约定时由调用链抛出异常。
  */
-export async function getGuestMeetingWeather(meetingId: string): Promise<MeetingWeather> {
-  const { data } = await apiClient.get<MeetingWeatherApiResponse>(
-    `/guest/meetings/${encodeURIComponent(meetingId)}/weather`,
-    authorizationConfig('guest'),
-  )
+function mapMeetingWeather(data: MeetingWeatherApiResponse): MeetingWeather {
   return {
     available: data.available,
     locationName: data.location_name,
@@ -123,4 +119,33 @@ export async function getGuestMeetingWeather(meetingId: string): Promise<Meeting
     })),
     tips: data.tips ?? [],
   }
+}
+
+/**
+ * 获取当前嘉宾会议的和风天气实况与七日预报。
+ *
+ * 入参：meetingId 为数字会议 ID 的字符串形式，必填。
+ * 返回值：Promise<MeetingWeather>：转换后的天气、地点、来源和降级提示。
+ * 异常：嘉宾未登录、跨会议访问、天气未发布或网络失败时抛出异常。
+ */
+export async function getGuestMeetingWeather(meetingId: string): Promise<MeetingWeather> {
+  const { data } = await apiClient.get<MeetingWeatherApiResponse>(
+    `/guest/meetings/${encodeURIComponent(meetingId)}/weather`,
+    authorizationConfig('guest'),
+  )
+  return mapMeetingWeather(data)
+}
+
+/**
+ * 获取公开天气服务的实况与预报。
+ *
+ * 入参：meetingId 为数字会议 ID 的字符串形式，必填。
+ * 返回值：Promise<MeetingWeather>：转换后的天气、地点、来源和降级提示。
+ * 异常：天气服务仅限登录、未发布、会议不可公开或网络失败时抛出异常。
+ */
+export async function getPublicMeetingWeather(meetingId: string): Promise<MeetingWeather> {
+  const { data } = await apiClient.get<MeetingWeatherApiResponse>(
+    `/meetings/${encodeURIComponent(meetingId)}/weather`,
+  )
+  return mapMeetingWeather(data)
 }

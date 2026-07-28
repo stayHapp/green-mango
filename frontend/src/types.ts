@@ -110,6 +110,7 @@ export interface GuestCheckInQr {
 }
 
 export type MeetingAssistantFeatureKey = 'agenda' | 'manual' | 'weather' | 'route' | 'contact'
+export type MeetingAssistantAccessLevel = 'public' | 'guest'
 
 export interface MeetingContactPerson {
   name: string
@@ -125,6 +126,7 @@ export interface MeetingAssistantFeature {
   content: string
   unpublishedMessage: string
   isPublished: boolean
+  accessLevel: MeetingAssistantAccessLevel
   contacts: MeetingContactPerson[]
 }
 

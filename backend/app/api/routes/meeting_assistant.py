@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, status
 
 from app.api.dependencies import CurrentAdmin, CurrentGuest, DatabaseSession
+from app.models.meeting import Meeting, MeetingAssistantFeature
 from app.schemas.meeting_assistant import (
     ContactPerson,
     GuestMeetingAssistantFeatureResponse,
@@ -22,6 +23,43 @@ from app.services.weather import get_weather
 
 admin_router = APIRouter(prefix="/admin/meetings")
 guest_router = APIRouter(prefix="/guest/meetings")
+public_router = APIRouter(prefix="/meetings")
+
+
+def get_public_meeting_or_404(db: DatabaseSession, meeting_id: int) -> Meeting:
+    """读取允许通过公开入口访问的会议。
+
+    入参：db 为数据库会话；meeting_id 为目标会议 ID，均必填。
+    返回值：Meeting：状态为已发布或已结束的会议。
+    异常：会议不存在或仍为草稿时抛出 404 HTTPException。
+    """
+    meeting = db.get(Meeting, meeting_id)
+    if meeting is None or meeting.status not in {"published", "ended"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会议入口不存在或尚未发布。")
+    return meeting
+
+
+def build_feature_response(
+    meeting_id: int,
+    feature_key: MeetingAssistantFeatureKey,
+    feature: MeetingAssistantFeature,
+) -> GuestMeetingAssistantFeatureResponse:
+    """构造对外会议服务响应并隔离全部未发布草稿。
+
+    入参：meeting_id 为会议 ID；feature_key 为固定服务标识；feature 为数据库配置记录，均必填。
+    返回值：GuestMeetingAssistantFeatureResponse：已发布内容或仅含提醒的未发布状态。
+    异常：联系人历史数据结构不合法时由 Pydantic 抛出校验异常。
+    """
+    return GuestMeetingAssistantFeatureResponse(
+        meeting_id=meeting_id,
+        feature_key=feature_key,
+        content=feature.content if feature.is_published else None,
+        unpublished_message=feature.unpublished_message,
+        is_published=feature.is_published,
+        access_level=feature.access_level,
+        # 联系人同样属于草稿内容，未发布时不得返回。
+        contacts=[ContactPerson(**item) for item in (feature.contacts or [])] if feature.is_published else [],
+    )
 
 
 @admin_router.get(
@@ -81,14 +119,32 @@ def get_guest_assistant_feature(
     if get_guest_meeting(db, guest, meeting_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会议不存在或无访问权限。")
     feature = get_meeting_assistant_feature(db, meeting_id, feature_key)
-    return GuestMeetingAssistantFeatureResponse(
-        meeting_id=meeting_id,
-        feature_key=feature_key,
-        content=feature.content if feature.is_published else None,
-        unpublished_message=feature.unpublished_message,
-        is_published=feature.is_published,
-        contacts=[ContactPerson(**item) for item in (feature.contacts or [])],
-    )
+    return build_feature_response(meeting_id, feature_key, feature)
+
+
+@public_router.get(
+    "/{meeting_id}/assistant-features/{feature_key}",
+    response_model=GuestMeetingAssistantFeatureResponse,
+)
+def get_public_assistant_feature(
+    meeting_id: int,
+    feature_key: MeetingAssistantFeatureKey,
+    db: DatabaseSession,
+) -> GuestMeetingAssistantFeatureResponse:
+    """获取无需登录即可查看的单项会议服务配置。
+
+    入参：meeting_id 为会议 ID；feature_key 为固定服务标识；db 由 FastAPI 注入。
+    返回值：GuestMeetingAssistantFeatureResponse：公开服务的已发布正文或未发布提醒。
+    异常：会议不可公开时返回 404；服务仅限登录嘉宾时返回 401；功能标识非法时返回 422。
+    """
+    get_public_meeting_or_404(db, meeting_id)
+    feature = get_meeting_assistant_feature(db, meeting_id, feature_key)
+    if feature.access_level != "public":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="该服务需要登录后查看。",
+        )
+    return build_feature_response(meeting_id, feature_key, feature)
 
 
 @guest_router.get("/{meeting_id}/weather", response_model=MeetingWeatherResponse)
@@ -103,6 +159,30 @@ def get_guest_weather(meeting_id: int, db: DatabaseSession, guest: CurrentGuest)
     if meeting is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会议不存在或无访问权限。")
     feature = get_meeting_assistant_feature(db, meeting_id, "weather")
+    if not feature.is_published:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="天气情况尚未发布。")
+    return get_weather(
+        meeting.location or "",
+        meeting.navigation_longitude,
+        meeting.navigation_latitude,
+    )
+
+
+@public_router.get("/{meeting_id}/weather", response_model=MeetingWeatherResponse)
+def get_public_weather(meeting_id: int, db: DatabaseSession) -> MeetingWeatherResponse:
+    """获取公开且已发布天气服务的真实天气数据。
+
+    入参：meeting_id 为会议 ID；db 由 FastAPI 注入。
+    返回值：MeetingWeatherResponse：和风天气实况、预报或降级信息。
+    异常：会议不可公开时返回 404；天气仅限登录嘉宾时返回 401；功能未发布时返回 404。
+    """
+    meeting = get_public_meeting_or_404(db, meeting_id)
+    feature = get_meeting_assistant_feature(db, meeting_id, "weather")
+    if feature.access_level != "public":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="该服务需要登录后查看。",
+        )
     if not feature.is_published:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="天气情况尚未发布。")
     return get_weather(

@@ -10,7 +10,7 @@
 - 本地联调数据库：PostgreSQL，通过 `DATABASE_URL` 配置
 - 本地临时回退数据库：SQLite，`sqlite:///./dev.db`
 - 正式环境数据库：PostgreSQL，通过 `DATABASE_URL` 配置
-- 当前迁移头：`20260721_0009`
+- 当前迁移头：`20260728_0010`
 
 ## 表结构
 
@@ -19,7 +19,7 @@
 - `meetings`、`meeting_settings`：会议基础信息、导航名称与高德坐标、报名开关和会议级 JSON 配置。
 - `meeting_admins`：会议与管理员的多对多授权。
 - `staff_meetings`：会议与工作人员的多对多授权。
-- `meeting_assistant_features`：会议助手五项固定功能的正文、联系人、未发布提醒和发布状态。
+- `meeting_assistant_features`：会议服务五项固定功能的正文、联系人、未发布提醒、发布状态和访问级别。
 - `guest_fields`：会议级动态嘉宾字段，包含报名页可见、必填和启用状态。
 - `guests`：正式嘉宾、固定资料、来源、启用状态和随机二维码凭证。
 - `guest_values`：正式嘉宾的动态字段值。
@@ -52,6 +52,7 @@ users --< auth_sessions
 - 同一会议内动态字段 key 唯一：`uq_guest_fields_meeting_id_key`。
 - 同一会议内姓名和手机号相同的启用嘉宾唯一：`uq_guests_active_meeting_name_phone`；停用历史记录不占用身份。
 - 同一会议内会议助手功能 key 唯一：`uq_meeting_assistant_features_meeting_id_feature_key`。
+- 会议服务访问级别只能为 `public` 或 `guest`：`ck_meeting_assistant_features_access_level`。
 - 嘉宾二维码 token 全局唯一，且只承载随机凭证，不写入姓名和手机号。
 - 同一嘉宾的同一动态字段值唯一：`uq_guest_values_guest_id_field_id`。
 - 同一嘉宾在同一会议只能签到一次：`uq_check_ins_meeting_id_guest_id`。
@@ -71,6 +72,7 @@ users --< auth_sessions
 7. `20260720_0007`：嘉宾来源与动态嘉宾字段启用状态。
 8. `20260721_0008`：启用嘉宾会议内姓名与手机号身份部分唯一索引。
 9. `20260721_0009`：会议助手功能增加联系人 JSON 字段。
+10. `20260728_0010`：会议服务增加公开或仅登录嘉宾可见的访问级别。
 
 ## 会议助手结构
 
@@ -85,10 +87,11 @@ users --< auth_sessions
 | `contacts` | json / jsonb | 联系会务功能的联系人列表，默认空数组 |
 | `unpublished_message` | varchar(500) | 未发布时向嘉宾展示的提醒 |
 | `is_published` | boolean | 当前功能是否向嘉宾发布，默认 `false` |
+| `access_level` | varchar(32) | `public` 表示公开可见，`guest` 表示仅登录嘉宾可见；默认 `guest` |
 | `created_at` | datetime with timezone | 创建时间 |
 | `updated_at` | datetime with timezone | 最后修改时间 |
 
-数据库唯一约束保证同一会议同一功能只有一条记录；应用服务负责为新会议创建五条默认配置，并在读取历史会议时补齐缺失配置。数据库不保存天气接口响应。
+数据库唯一约束保证同一会议同一功能只有一条记录；检查约束保证访问级别只能为 `public` 或 `guest`。应用服务负责为新会议创建五条默认配置，并在读取历史会议时补齐缺失配置。历史配置和新增配置默认使用 `guest`，避免升级或补齐时意外公开既有内容。数据库不保存天气接口响应。
 
 会议表使用 `navigation_name`、`navigation_address`、`navigation_longitude` 和 `navigation_latitude` 保存管理员确认的高德地点。路线页使用坐标生成导航链接，天气服务使用同一坐标查询和风天气；历史会议字段为空时继续按 `location` 文字匹配。
 

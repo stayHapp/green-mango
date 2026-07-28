@@ -1,6 +1,10 @@
 /** 会议助手管理员配置与嘉宾公开内容 API。 */
 
-import type { MeetingAssistantFeature, MeetingAssistantFeatureKey } from '../types'
+import type {
+  MeetingAssistantAccessLevel,
+  MeetingAssistantFeature,
+  MeetingAssistantFeatureKey,
+} from '../types'
 import { apiClient, authorizationConfig } from './client'
 
 interface MeetingAssistantFeatureApiResponse {
@@ -9,6 +13,7 @@ interface MeetingAssistantFeatureApiResponse {
   content: string | null
   unpublished_message: string
   is_published: boolean
+  access_level: MeetingAssistantAccessLevel
   updated_at?: string
   contacts?: Array<{ name: string; role: string; phone: string }>
 }
@@ -65,6 +70,7 @@ function mapMeetingAssistantFeature(response: MeetingAssistantFeatureApiResponse
     content: response.content ?? '',
     unpublishedMessage: normalizeUnpublishedMessage(response.feature_key, response.unpublished_message),
     isPublished: response.is_published,
+    accessLevel: response.access_level,
     contacts: (response.contacts ?? []).map((item) => ({
       name: item.name,
       role: item.role,
@@ -91,14 +97,17 @@ export async function listAdminMeetingAssistantFeatures(meetingId: string): Prom
 /**
  * 保存管理员编辑的单项会议助手配置。
  *
- * 入参：meetingId 为会议 ID；key 为固定功能标识；input 为正文、提醒和发布状态，均必填。
+ * 入参：meetingId 为会议 ID；key 为固定功能标识；input 为正文、提醒、发布状态和访问级别，均必填。
  * 返回值：Promise<MeetingAssistantFeature>：后端保存并转换后的完整配置。
  * 异常：字段超限、会议未授权、登录过期或网络失败时抛出异常。
  */
 export async function updateAdminMeetingAssistantFeature(
   meetingId: string,
   key: MeetingAssistantFeatureKey,
-  input: Pick<MeetingAssistantFeature, 'content' | 'unpublishedMessage' | 'isPublished' | 'contacts'>,
+  input: Pick<
+    MeetingAssistantFeature,
+    'content' | 'unpublishedMessage' | 'isPublished' | 'accessLevel' | 'contacts'
+  >,
 ): Promise<MeetingAssistantFeature> {
   const { data } = await apiClient.patch<MeetingAssistantFeatureApiResponse>(
     `/admin/meetings/${encodeURIComponent(meetingId)}/assistant-features/${key}`,
@@ -106,6 +115,7 @@ export async function updateAdminMeetingAssistantFeature(
       content: input.content,
       unpublished_message: input.unpublishedMessage,
       is_published: input.isPublished,
+      access_level: input.accessLevel,
       contacts: input.contacts,
     },
     authorizationConfig('admin'),
@@ -127,6 +137,23 @@ export async function getGuestMeetingAssistantFeature(
   const { data } = await apiClient.get<MeetingAssistantFeatureApiResponse>(
     `/guest/meetings/${encodeURIComponent(meetingId)}/assistant-features/${key}`,
     authorizationConfig('guest'),
+  )
+  return mapMeetingAssistantFeature(data)
+}
+
+/**
+ * 获取无需嘉宾登录即可查看的单项会议服务配置。
+ *
+ * 入参：meetingId 为会议 ID；key 为固定服务标识，均必填。
+ * 返回值：Promise<MeetingAssistantFeature>：公开服务的已发布正文或未发布提醒。
+ * 异常：服务仅限登录嘉宾、会议不可公开、功能不存在或网络失败时抛出异常。
+ */
+export async function getPublicMeetingAssistantFeature(
+  meetingId: string,
+  key: MeetingAssistantFeatureKey,
+): Promise<MeetingAssistantFeature> {
+  const { data } = await apiClient.get<MeetingAssistantFeatureApiResponse>(
+    `/meetings/${encodeURIComponent(meetingId)}/assistant-features/${key}`,
   )
   return mapMeetingAssistantFeature(data)
 }

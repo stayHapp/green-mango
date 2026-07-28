@@ -61,8 +61,9 @@ import { computed, onMounted, ref, type Component } from 'vue'
 import { ArrowRight, Calendar, Location, PhoneFilled, Reading, Sunny } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { getApiErrorMessage, isUnauthorizedApiError } from '../../api/client'
+import { getPublicMeetingAssistantFeature } from '../../api/meetingAssistant'
 import { getGuestProfile, getPublicMeeting } from '../../api/sessions'
 import GuestMeetingSummary from '../../components/GuestMeetingSummary.vue'
 import { useSessionStore } from '../../stores/session'
@@ -192,8 +193,8 @@ async function openRegistration(): Promise<void> {
  * 跳转到指定会议服务功能详情页。
  *
  * 入参：featureKey 为目标会议服务的英文标识，必填。
- * 返回值：Promise<void>：已登录时直接跳转到详情页；未登录时弹出友好提示框，确认后跳转到嘉宾登录页，取消则保留在入口页。
- * 异常：路由跳转失败时由 Vue Router 抛出异常；弹窗被关闭时直接返回。
+ * 返回值：Promise<void>：已登录或服务公开时进入详情页；受限服务引导登录。
+ * 异常：公开权限检查或路由失败时转换为页面提示；登录弹窗关闭时保留在入口页。
  */
 async function openServiceItem(featureKey: MeetingAssistantFeatureKey): Promise<void> {
   if (hasCurrentSession.value) {
@@ -201,8 +202,21 @@ async function openServiceItem(featureKey: MeetingAssistantFeatureKey): Promise<
     return
   }
   try {
+    await getPublicMeetingAssistantFeature(meetingId.value, featureKey)
+    await router.push({
+      path: `/guest/meetings/${meetingId.value}/assistant/${featureKey}`,
+      query: { access: 'public' },
+    })
+    return
+  } catch (error) {
+    if (!isUnauthorizedApiError(error)) {
+      ElMessage.error(getApiErrorMessage(error, '会议服务暂时无法打开，请稍后重试。'))
+      return
+    }
+  }
+  try {
     await ElMessageBox.confirm(
-      '查看会议服务内容需要先核验您的参会身份。完成登录后即可浏览会议日程、资料、天气、路线和会务联系信息。',
+      '该项会议服务仅向已核验嘉宾开放，完成登录后即可查看。',
       '请先完成身份核验',
       {
         confirmButtonText: '立即登录',

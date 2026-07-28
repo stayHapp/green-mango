@@ -18,6 +18,8 @@
 | --- | --- | --- | --- |
 | GET | `/api/health` | 公开 | 健康检查 |
 | GET | `/api/meetings/{meeting_id}` | 公开 | 嘉宾入口登录前读取已发布会议基础信息 |
+| GET | `/api/meetings/{meeting_id}/assistant-features/{feature_key}` | 公开 | 读取配置为公开可见的单项会议服务 |
+| GET | `/api/meetings/{meeting_id}/weather` | 公开 | 读取公开且已发布天气服务的实时天气 |
 | POST | `/api/admin/sessions` | 公开 | 管理员账号密码登录 |
 | POST | `/api/staff/sessions` | 公开 | 工作人员账号密码登录 |
 | POST | `/api/guest/sessions` | 公开 | 嘉宾按会议、姓名、手机号登录 |
@@ -86,9 +88,11 @@
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | GET | `/api/admin/meetings/{meeting_id}/assistant-features` | 获取会议固定五项会议助手配置 |
-| PATCH | `/api/admin/meetings/{meeting_id}/assistant-features/{feature_key}` | 修改单项正文、未发布提醒和发布状态 |
+| PATCH | `/api/admin/meetings/{meeting_id}/assistant-features/{feature_key}` | 修改单项正文、未发布提醒、发布状态和访问级别 |
 
-`feature_key` 只接受 `agenda`、`manual`、`weather`、`route`、`contact`。正文为纯文本且最长 20,000 字符，未发布提醒为纯文本且最长 500 字符。管理员必须拥有当前会议授权；不受支持的功能标识返回 422。
+`feature_key` 只接受 `agenda`、`manual`、`weather`、`route`、`contact`。`access_level` 只接受 `public` 或 `guest`，历史和新增配置默认使用 `guest`。正文为纯文本且最长 20,000 字符，未发布提醒为纯文本且最长 500 字符。管理员必须拥有当前会议授权；不受支持的功能标识或访问级别返回 422。
+
+公开会议服务接口只允许读取状态为已发布或已结束会议中 `access_level=public` 的功能；仅登录嘉宾可见的服务返回 401。公开功能未发布时仍可返回 `unpublished_message`，但 `content` 和 `contacts` 必须为空。草稿会议统一返回 404，不泄露服务配置。
 
 ## 嘉宾端接口
 
@@ -100,12 +104,12 @@
 | GET | `/api/guest/meetings/{meeting_id}` | 查询会议和个人参会概要 |
 | GET | `/api/guest/meetings/{meeting_id}/profile` | 查询固定资料、动态字段值、呈现字段 `visible_fields` 与动态标签 `field_labels` |
 | GET | `/api/guest/meetings/{meeting_id}/check-in-qr` | 获取个人签到二维码 token 与过期时间 |
-| GET | `/api/guest/meetings/{meeting_id}/assistant-features/{feature_key}` | 获取单项会议助手公开内容或未发布提醒 |
+| GET | `/api/guest/meetings/{meeting_id}/assistant-features/{feature_key}` | 获取所属会议单项服务内容或未发布提醒，不受公开访问级别限制 |
 | GET | `/api/guest/meetings/{meeting_id}/weather` | 获取已发布天气功能的和风天气实况与七日预报；优先使用管理员确认的导航坐标 |
 
 二维码图像由前端把 `qr_token` 编码为二维码；工作人员扫码后只把 token 交给后端校验。二维码在会议结束后失效。
 
-会议助手功能已发布时返回 `content`；未发布时只返回 `unpublished_message` 和发布状态，响应中的 `content` 必须为 `null`，避免草稿泄露。嘉宾只能访问自己所属会议的会议助手内容。
+会议服务功能已发布时返回 `content`；未发布时只返回 `unpublished_message`、发布状态和访问级别，响应中的 `content` 必须为 `null`、`contacts` 必须为空，避免正文和联系人草稿泄露。已登录嘉宾可以访问自己所属会议的全部会议服务，不受 `access_level` 的公开设置影响。
 
 二维码响应包含 `is_checked_in` 和可空的 `checked_in_at`，两个字段从 `check_ins` 读取，不改变二维码 token 与过期规则。SQLite 读取出的无时区签到时间在响应前按 UTC 恢复，前端按嘉宾本地时区展示。
 
@@ -141,6 +145,7 @@
 
 - `200/201`：请求成功或资源创建成功。
 - `401`：缺少、错误、过期或已撤销的登录凭证。
+- 公开会议服务返回 `401` 也表示目标服务配置为仅登录嘉宾可见，前端应引导完成当前会议身份核验。
 - `403`：会话主体角色错误或账号已停用。
 - `404`：资源不存在、会议未开放，或当前主体没有会议授权。
 - `409`：重复签到等资源状态冲突。

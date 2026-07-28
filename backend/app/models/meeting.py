@@ -88,7 +88,7 @@ class MeetingSetting(Base):
 
 
 class MeetingAssistantFeature(Base):
-    """会议下固定会议助手功能的正文、提醒和发布状态。"""
+    """会议下固定会议服务功能的正文、提醒、发布状态和访问级别。"""
 
     __tablename__ = "meeting_assistant_features"
     __table_args__ = (
@@ -99,6 +99,10 @@ class MeetingAssistantFeature(Base):
             "feature_key IN ('agenda', 'manual', 'weather', 'route', 'contact')",
             name="ck_meeting_assistant_features_feature_key",
         ),
+        CheckConstraint(
+            "access_level IN ('public', 'guest')",
+            name="ck_meeting_assistant_features_access_level",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -107,6 +111,7 @@ class MeetingAssistantFeature(Base):
     content: Mapped[str] = mapped_column(Text, default="", nullable=False)
     unpublished_message: Mapped[str] = mapped_column(String(500), nullable=False)
     is_published: Mapped[bool] = mapped_column(default=False, nullable=False)
+    access_level: Mapped[str] = mapped_column(String(32), default="guest", nullable=False)
     contacts: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

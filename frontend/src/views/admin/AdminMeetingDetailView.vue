@@ -418,6 +418,7 @@
         <el-table v-loading="assistantLoading" class="top-gap" :data="assistantFeatures" row-key="key">
           <el-table-column prop="title" label="功能" width="140" />
           <el-table-column prop="description" label="入口说明" min-width="220" />
+          <el-table-column label="访问权限" width="150"><template #default="{ row }"><el-tag :type="row.accessLevel === 'public' ? 'success' : 'info'">{{ row.accessLevel === 'public' ? '公开可见' : '仅登录嘉宾' }}</el-tag></template></el-table-column>
           <el-table-column label="发布状态" width="110"><template #default="{ row }"><el-tag :type="row.isPublished ? 'success' : 'info'">{{ row.isPublished ? '已发布' : '未发布' }}</el-tag></template></el-table-column>
           <el-table-column prop="unpublishedMessage" label="未发布提醒" min-width="260" show-overflow-tooltip />
           <el-table-column label="操作" width="100"><template #default="{ row }"><el-button size="small" @click="openAssistantEditDialog(row)">编辑</el-button></template></el-table-column>
@@ -425,6 +426,13 @@
         <el-dialog v-model="assistantEditDialogVisible" :title="`编辑${selectedAssistantFeature?.title ?? '会议助手'}`" width="min(620px, calc(100% - 32px))">
           <el-form label-position="top" @submit.prevent>
             <el-form-item label="发布状态"><el-switch v-model="assistantEditForm.isPublished" active-text="已发布" inactive-text="未发布" /></el-form-item>
+            <el-form-item label="访问权限">
+              <el-radio-group v-model="assistantEditForm.accessLevel">
+                <el-radio value="public">公开可见</el-radio>
+                <el-radio value="guest">仅登录嘉宾可见</el-radio>
+              </el-radio-group>
+              <div class="el-form-item__help">公开可见只影响已发布内容，未发布草稿不会公开。</div>
+            </el-form-item>
             <template v-if="selectedAssistantFeature?.key === 'contact'">
               <div class="admin-contact-table-panel">
                 <div class="admin-contact-table-panel__heading">
@@ -555,7 +563,7 @@ import { createAdminStaff, listAdminStaff, removeAdminStaffAssignment, updateAdm
 import { getApiErrorMessage } from '../../api/client'
 import AdminWorkspaceLayout from '../../components/AdminWorkspaceLayout.vue'
 import { useSessionStore } from '../../stores/session'
-import type { AdminCheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingAssistantFeature, MeetingStatus, StaffUser } from '../../types'
+import type { AdminCheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingAssistantAccessLevel, MeetingAssistantFeature, MeetingStatus, StaffUser } from '../../types'
 
 interface GuestManagementRow {
   id: string
@@ -642,6 +650,7 @@ const assistantEditForm = ref({
   content: '',
   unpublishedMessage: '',
   isPublished: false,
+  accessLevel: 'guest' as MeetingAssistantAccessLevel,
   contacts: [] as Array<{ __rowKey: string; name: string; role: string; phone: string }>,
 })
 
@@ -1355,6 +1364,7 @@ function openAssistantEditDialog(feature: MeetingAssistantFeature): void {
     content: feature.content,
     unpublishedMessage: feature.unpublishedMessage,
     isPublished: feature.isPublished,
+    accessLevel: feature.accessLevel,
     contacts: feature.contacts.length
       ? feature.contacts.map((item) => createContactRow(item))
       : [createContactRow()],
@@ -1431,6 +1441,7 @@ async function saveAssistantFeature(): Promise<void> {
         content: selectedAssistantFeature.value.key === 'contact' ? '' : content,
         unpublishedMessage,
         isPublished: assistantEditForm.value.isPublished,
+        accessLevel: assistantEditForm.value.accessLevel,
         contacts: selectedAssistantFeature.value.key === 'contact' ? contacts : [],
       },
     )

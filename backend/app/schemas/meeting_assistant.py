@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MeetingAssistantFeatureKey = Literal["agenda", "manual", "weather", "route", "contact"]
+MeetingAssistantAccessLevel = Literal["public", "guest"]
 
 
 class ContactPerson(BaseModel):
@@ -33,6 +34,7 @@ class MeetingAssistantFeatureUpdate(BaseModel):
     content: str = Field(max_length=20_000)
     unpublished_message: str = Field(min_length=1, max_length=500)
     is_published: bool
+    access_level: MeetingAssistantAccessLevel | None = None
     contacts: list[ContactPerson] | None = None
 
 
@@ -46,6 +48,7 @@ class MeetingAssistantFeatureResponse(BaseModel):
     content: str
     unpublished_message: str
     is_published: bool
+    access_level: MeetingAssistantAccessLevel
     updated_at: datetime
     contacts: list[ContactPerson] = Field(default_factory=list)
 
@@ -58,4 +61,5 @@ class GuestMeetingAssistantFeatureResponse(BaseModel):
     content: str | None
     unpublished_message: str
     is_published: bool
+    access_level: MeetingAssistantAccessLevel
     contacts: list[ContactPerson] = Field(default_factory=list)

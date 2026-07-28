@@ -35,6 +35,7 @@ def ensure_meeting_assistant_features(db: Session, meeting_id: int) -> list[Meet
                 meeting_id=meeting_id,
                 feature_key=feature_key,
                 unpublished_message=unpublished_message,
+                access_level="guest",
             )
             db.add(feature)
             by_key[feature_key] = feature
@@ -71,6 +72,9 @@ def update_meeting_assistant_feature(
     feature.content = payload.content
     feature.unpublished_message = payload.unpublished_message
     feature.is_published = payload.is_published
+    # 兼容尚未发送访问级别的旧客户端，避免普通内容更新意外覆盖既有权限。
+    if payload.access_level is not None:
+        feature.access_level = payload.access_level
     if payload.contacts is not None:
         feature.contacts = [contact.model_dump() for contact in payload.contacts]
     db.commit()

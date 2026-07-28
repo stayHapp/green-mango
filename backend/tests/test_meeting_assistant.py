@@ -51,6 +51,7 @@ def test_new_meeting_has_five_default_assistant_features(
         "contact",
     ]
     assert all(item["is_published"] is False for item in response.json())
+    assert all(item["access_level"] == "guest" for item in response.json())
     assert db.query(MeetingAssistantFeature).filter_by(meeting_id=meeting_id).count() == 5
 
 
@@ -115,8 +116,111 @@ def test_admin_can_publish_feature_and_guest_cannot_read_unpublished_draft(
         "content": None,
         "unpublished_message": "天气信息正在更新。",
         "is_published": False,
+        "access_level": "guest",
         "contacts": [],
     }
+
+
+def test_public_access_level_controls_anonymous_content_and_draft_isolation(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证公开访问级别允许匿名读取且未发布内容不会泄露。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 和 auth_headers 为测试辅助函数。
+    返回值：None：断言通过表示公开、登录受限和未发布三类权限行为正确。
+    异常：断言失败表示公开接口可能越权或泄露草稿。
+    """
+    client, db = client_and_session
+    meeting_id, admin_headers = create_meeting(client, db, create_user, auth_headers, "assistant-public")
+    restricted_response = client.get(
+        f"/api/meetings/{meeting_id}/assistant-features/agenda"
+    )
+    assert restricted_response.status_code == 401
+    assert restricted_response.json()["detail"] == "该服务需要登录后查看。"
+
+    public_payload = {
+        "content": "09:00 开幕致辞",
+        "unpublished_message": "日程正在准备。",
+        "is_published": True,
+        "access_level": "public",
+    }
+    publish_response = client.patch(
+        f"/api/admin/meetings/{meeting_id}/assistant-features/agenda",
+        headers=admin_headers,
+        json=public_payload,
+    )
+    anonymous_response = client.get(
+        f"/api/meetings/{meeting_id}/assistant-features/agenda"
+    )
+    assert publish_response.status_code == 200
+    assert publish_response.json()["access_level"] == "public"
+    assert anonymous_response.status_code == 200
+    assert anonymous_response.json()["content"] == "09:00 开幕致辞"
+
+    public_payload["is_published"] = False
+    client.patch(
+        f"/api/admin/meetings/{meeting_id}/assistant-features/agenda",
+        headers=admin_headers,
+        json=public_payload,
+    )
+    unpublished_response = client.get(
+        f"/api/meetings/{meeting_id}/assistant-features/agenda"
+    )
+    assert unpublished_response.status_code == 200
+    assert unpublished_response.json()["content"] is None
+    assert unpublished_response.json()["unpublished_message"] == "日程正在准备。"
+
+
+def test_unpublished_contact_does_not_expose_contact_draft(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证未发布联系会务不会通过联系人数组泄露草稿。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 和 auth_headers 为测试辅助函数。
+    返回值：None：断言通过表示嘉宾与公开响应都隐藏联系人草稿。
+    异常：断言失败表示未发布联系人仍可被未授权读取。
+    """
+    client, db = client_and_session
+    meeting_id, admin_headers = create_meeting(client, db, create_user, auth_headers, "assistant-contact-draft")
+    guest = Guest(
+        meeting_id=meeting_id,
+        name="联系人测试嘉宾",
+        phone="13910000003",
+        qr_token="assistant-contact-draft-token",
+    )
+    db.add(guest)
+    db.commit()
+    db.refresh(guest)
+    guest_headers = auth_headers(db, guest)
+    payload = {
+        "content": "",
+        "unpublished_message": "联系人正在整理。",
+        "is_published": False,
+        "access_level": "public",
+        "contacts": [{"name": "王会务", "role": "总协调", "phone": "13800000000"}],
+    }
+    client.patch(
+        f"/api/admin/meetings/{meeting_id}/assistant-features/contact",
+        headers=admin_headers,
+        json=payload,
+    )
+
+    guest_response = client.get(
+        f"/api/guest/meetings/{meeting_id}/assistant-features/contact",
+        headers=guest_headers,
+    )
+    public_response = client.get(
+        f"/api/meetings/{meeting_id}/assistant-features/contact"
+    )
+
+    assert guest_response.status_code == 200
+    assert guest_response.json()["contacts"] == []
+    assert public_response.status_code == 200
+    assert public_response.json()["contacts"] == []
 
 
 def test_assistant_feature_rejects_unauthorized_access_and_invalid_input(
@@ -158,6 +262,16 @@ def test_assistant_feature_rejects_unauthorized_access_and_invalid_input(
         headers=owner_headers,
         json={"content": "内容", "unpublished_message": "提" * 501, "is_published": False},
     )
+    invalid_access_level_response = client.patch(
+        f"/api/admin/meetings/{meeting_id}/assistant-features/agenda",
+        headers=owner_headers,
+        json={
+            "content": "内容",
+            "unpublished_message": "提醒",
+            "is_published": False,
+            "access_level": "staff",
+        },
+    )
     cross_meeting_response = client.get(
         f"/api/guest/meetings/{meeting_id + 1}/assistant-features/agenda", headers=guest_headers
     )
@@ -165,6 +279,7 @@ def test_assistant_feature_rejects_unauthorized_access_and_invalid_input(
     assert unauthorized_response.status_code == 404
     assert invalid_key_response.status_code == 422
     assert oversized_response.status_code == 422
+    assert invalid_access_level_response.status_code == 422
     assert cross_meeting_response.status_code == 404
 
 
