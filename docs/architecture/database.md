@@ -10,7 +10,7 @@
 - 本地联调数据库：PostgreSQL，通过 `DATABASE_URL` 配置
 - 本地临时回退数据库：SQLite，`sqlite:///./dev.db`
 - 正式环境数据库：PostgreSQL，通过 `DATABASE_URL` 配置
-- 当前迁移头：`20260728_0010`
+- 当前迁移头：`20260729_0012`
 
 ## 表结构
 
@@ -20,10 +20,12 @@
 - `meeting_admins`：会议与管理员的多对多授权。
 - `staff_meetings`：会议与工作人员的多对多授权。
 - `meeting_assistant_features`：会议服务五项固定功能的正文、联系人、未发布提醒、发布状态和访问级别。
+- `meeting_materials`：会议资料中的多条标题、正文、附件元数据与排序。
 - `guest_fields`：会议级动态嘉宾字段，包含报名页可见、必填和启用状态。
 - `guests`：正式嘉宾、固定资料、来源、启用状态和随机二维码凭证。
 - `guest_values`：正式嘉宾的动态字段值。
-- `check_ins`：嘉宾唯一签到记录及执行工作人员。
+- `check_in_sessions`：会议级签到场次，包含默认场次、时间范围和排序。
+- `check_ins`：嘉宾在某个签到场次中的唯一签到记录及执行工作人员。
 - `guest_applications`：公开报名申请、动态值快照、审核结果和转化后的嘉宾 ID。
 - `registration_fields`、`registrations`、`registration_values`：早期通用报名模型的历史基线，当前不作为三端主流程使用。
 
@@ -36,11 +38,13 @@ users --< auth_sessions
   |                           |              |
   +--< staff_meetings >-------+              +--< guest_values >-- guests
   |                           |                                     |
-  +--< check_ins >------------+-------------------------------------+
+  +--< check_ins >------------+--< check_in_sessions
   |
   +--< guest_applications >--- meetings
                   |
                   +--(批准后)--> guests
+
+meetings --< meeting_materials
 ```
 
 嘉宾会话通过 `auth_sessions.guest_id` 关联 `guests`；管理员和工作人员会话通过 `user_id` 关联 `users`。约束保证一个会话只对应其中一种主体。
@@ -53,9 +57,11 @@ users --< auth_sessions
 - 同一会议内姓名和手机号相同的启用嘉宾唯一：`uq_guests_active_meeting_name_phone`；停用历史记录不占用身份。
 - 同一会议内会议助手功能 key 唯一：`uq_meeting_assistant_features_meeting_id_feature_key`。
 - 会议服务访问级别只能为 `public` 或 `guest`：`ck_meeting_assistant_features_access_level`。
+- 每条会议资料必须至少包含正文或附件：`ck_meeting_materials_content_or_attachment`。
 - 嘉宾二维码 token 全局唯一，且只承载随机凭证，不写入姓名和手机号。
 - 同一嘉宾的同一动态字段值唯一：`uq_guest_values_guest_id_field_id`。
-- 同一嘉宾在同一会议只能签到一次：`uq_check_ins_meeting_id_guest_id`。
+- 同一会议内签到场次名称唯一：`uq_check_in_sessions_meeting_id_title`。
+- 同一嘉宾在同一签到场次只能签到一次：`uq_check_ins_session_id_guest_id`。
 - 会话 token 摘要全局唯一：`ix_auth_sessions_token_hash`。
 - `auth_sessions` 通过 `ck_auth_sessions_exactly_one_subject` 保证只设置 `user_id` 或 `guest_id` 之一。
 
@@ -73,6 +79,8 @@ users --< auth_sessions
 8. `20260721_0008`：启用嘉宾会议内姓名与手机号身份部分唯一索引。
 9. `20260721_0009`：会议助手功能增加联系人 JSON 字段。
 10. `20260728_0010`：会议服务增加公开或仅登录嘉宾可见的访问级别。
+11. `20260728_0011`：增加会议签到场次，历史签到记录回填到默认场次，签到唯一约束调整为场次级。
+12. `20260729_0012`：增加多条会议资料、附件元数据和会议外键索引，并将历史 `manual` 正文回填为首条资料。
 
 ## 会议助手结构
 
@@ -93,9 +101,31 @@ users --< auth_sessions
 
 数据库唯一约束保证同一会议同一功能只有一条记录；检查约束保证访问级别只能为 `public` 或 `guest`。应用服务负责为新会议创建五条默认配置，并在读取历史会议时补齐缺失配置。历史配置和新增配置默认使用 `guest`，避免升级或补齐时意外公开既有内容。数据库不保存天气接口响应。
 
+## 会议资料结构
+
+`meeting_materials` 采用以下字段：
+
+| 字段 | 类型 | 约束与含义 |
+| --- | --- | --- |
+| `id` | bigint / integer | 主键 |
+| `meeting_id` | bigint / integer | 外键关联 `meetings.id`，会议删除时级联删除并建立查询索引 |
+| `title` | varchar(200) | 资料标题，必填 |
+| `content` | text | 资料正文，默认空字符串；兼容历史普通文本与 `material-rich:` 前缀的受限文档编码，最长 20,000 字符由服务层校验 |
+| `original_filename` | varchar(255) | 嘉宾下载时使用的原始文件名，可空 |
+| `storage_key` | varchar(255) | 服务端生成的随机相对存储键，可空且不直接返回前端 |
+| `content_type` | varchar(150) | 附件媒体类型，可空 |
+| `size_bytes` | integer | 附件大小，可空 |
+| `sort_order` | integer | 会议内稳定排序，默认按新增顺序递增 |
+| `created_at` | datetime with timezone | 创建时间 |
+| `updated_at` | datetime with timezone | 最后修改时间 |
+
+检查约束保证正文和附件至少存在一项。资料文档不保存原始任意 HTML：前端先按标签白名单清洗，再使用 `material-rich:` 前缀和 URI 编码写入 `content`；首行缩进只保留固定 `material-first-line-indent` 类并在两端解释为 `2em`，其他属性和类名全部移除。历史普通文本在编辑与展示时安全转换为段落。附件文件使用随机存储键写入 `MATERIAL_STORAGE_DIR`，数据库只保存元数据；下载必须经过管理员会议授权、嘉宾会议归属或公开服务权限校验。单个附件默认上限 20MB，可通过 `MATERIAL_MAX_FILE_BYTES` 配置。当前文件系统存储适合单实例 MVP，多实例部署前应迁移到共享对象存储。
+
 会议表使用 `navigation_name`、`navigation_address`、`navigation_longitude` 和 `navigation_latitude` 保存管理员确认的高德地点。路线页使用坐标生成导航链接，天气服务使用同一坐标查询和风天气；历史会议字段为空时继续按 `location` 文字匹配。
 
 嘉宾端呈现字段保存在 `meeting_settings.settings_json.guest_visible_fields`，值为固定字段与当前会议动态字段 key 组成的有序数组。该配置复用既有 JSON 字段，不新增数据库迁移；历史会议缺少该键时，服务层默认呈现全部固定字段和原先标记为嘉宾可见的动态字段。
+
+会议级签到规则保存在同一 JSON 字段：`check_in_mode` 支持 `single`、`date`、`custom`。`single` 表示只使用一个默认签到场次；`date` 表示按日期场次自动解析当前有效场次；`custom` 表示由管理员手动维护当前默认场次。`check_in_manual_default_session_id` 只在 `date` 规则下表示管理员手动覆盖的默认场次，清空后恢复按服务端当前日期自动选择。
 
 固定嘉宾字段在公开报名页中的配置保存在同一 JSON 字段：`guest_registration_fields` 为报名表单字段、`guest_registration_required_fields` 为必填字段、`guest_enabled_fixed_fields` 为启用字段。姓名和手机号始终启用、展示并必填，保证嘉宾登录凭证稳定。动态字段使用 `guest_fields.required`、`guest_fields.visible_to_guest` 和 `guest_fields.is_enabled` 分别表达必填、报名页呈现与启用状态。
 
@@ -104,5 +134,9 @@ users --< auth_sessions
 `guests.source` 保存正式嘉宾进入系统的方式：`admin_entry` 为后台录入、`admin_import` 为 Excel 后台导入、`self_registration` 为自主报名审核通过后生成。该字段让后台列表能够区分名单来源，不影响嘉宾登录和签到规则。
 
 `guests.is_active=false` 表示嘉宾已软停用。停用记录及历史签到继续保存在数据库中，但不进入当前嘉宾列表、签到统计、工作人员搜索和当前名单导出。启用嘉宾使用部分唯一索引限制同一会议内 `name + phone` 身份重复；停用后允许重新录入相同身份。
+
+`check_in_sessions` 保存会议级签到场次。每个会议通过迁移或服务兜底拥有一条“默认签到”场次；工作人员端当前扫码和人工签到写入后端计算出的当前有效场次。管理员可以新增和更新场次，用于多天、多段或返场签到统计。
+
+`check_ins.session_id` 关联 `check_in_sessions.id`。数据库使用 `uq_check_ins_session_id_guest_id` 保证同一嘉宾在同一场次只能签到一次，但允许同一嘉宾在不同场次分别签到。管理员统计接口按选中场次计算已签到和待签到，并可比较当前场次与前一场次的新增签到和减少签到名单。
 
 使用唯一约束 `uq_meeting_assistant_features_meeting_id_feature_key` 保证同一会议内功能标识唯一。

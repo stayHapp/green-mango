@@ -77,9 +77,17 @@
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| GET | `/api/admin/meetings/{meeting_id}/check-ins` | 获取总数、已签到数、未签到数和明细 |
+| GET | `/api/admin/meetings/{meeting_id}/check-in-settings` | 查询会议级签到规则和当前有效场次 |
+| PATCH | `/api/admin/meetings/{meeting_id}/check-in-settings` | 更新会议级签到规则和手动默认场次覆盖 |
+| GET | `/api/admin/meetings/{meeting_id}/check-in-sessions` | 查询会议签到场次 |
+| POST | `/api/admin/meetings/{meeting_id}/check-in-sessions` | 创建会议签到场次 |
+| PATCH | `/api/admin/meetings/{meeting_id}/check-in-sessions/{session_id}` | 更新会议签到场次 |
+| DELETE | `/api/admin/meetings/{meeting_id}/check-in-sessions/{session_id}` | 删除会议签到场次 |
+| GET | `/api/admin/meetings/{meeting_id}/check-ins?session_id={session_id}` | 按场次获取总数、已签到数、未签到数、明细和相邻场次差异 |
 | GET | `/api/admin/meetings/{meeting_id}/check-ins/export` | 导出全量嘉宾签到 XLSX |
 | GET | `/api/admin/meetings/{meeting_id}/guests/export` | 导出嘉宾信息、来源、管理状态和签到状态 XLSX |
+
+签到规则 `mode` 支持 `single`、`date`、`custom`。`date` 表示按会议日期生成的日期场次，未设置 `manual_default_session_id` 时由后端按服务端当前日期自动解析当前有效场次；存在 `manual_default_session_id` 时使用管理员手动覆盖。未传 `session_id` 时，管理员签到统计默认使用会议当前有效签到场次。统计响应包含 `session_id`、`session_title`、`records` 和可空 `comparison`；`comparison` 表示当前场次相对后台排序中前一场次的新增签到嘉宾和减少签到嘉宾。新增表示当前场次已签到但前一场次未签到，减少表示前一场次已签到但当前场次未签到。删除默认签到场次后，后端会将剩余第一条场次提升为默认场次；如果会议没有剩余场次，后续读取场次时会重新创建系统默认签到场次。
 
 签到导出文件同时包含当前启用的已签到和未签到嘉宾，以及签到时间、方式和执行工作人员。嘉宾状态表同时包含当前启用正式嘉宾、待审核和已拒绝报名申请；已通过报名以正式嘉宾记录呈现，避免重复。软停用嘉宾及其历史签到仍保留在数据库中，但不进入当前名单导出。
 
@@ -89,10 +97,19 @@
 | --- | --- | --- |
 | GET | `/api/admin/meetings/{meeting_id}/assistant-features` | 获取会议固定五项会议助手配置 |
 | PATCH | `/api/admin/meetings/{meeting_id}/assistant-features/{feature_key}` | 修改单项正文、未发布提醒、发布状态和访问级别 |
+| GET | `/api/admin/meetings/{meeting_id}/materials` | 获取会议全部资料 |
+| POST | `/api/admin/meetings/{meeting_id}/materials` | 以多部分表单新增标题、正文和可选附件 |
+| PATCH | `/api/admin/meetings/{meeting_id}/materials/{material_id}` | 编辑资料并按需替换或移除附件 |
+| DELETE | `/api/admin/meetings/{meeting_id}/materials/{material_id}` | 删除资料及其附件 |
+| GET | `/api/admin/meetings/{meeting_id}/materials/{material_id}/download` | 下载资料附件 |
 
 `feature_key` 只接受 `agenda`、`manual`、`weather`、`route`、`contact`。`access_level` 只接受 `public` 或 `guest`，历史和新增配置默认使用 `guest`。正文为纯文本且最长 20,000 字符，未发布提醒为纯文本且最长 500 字符。管理员必须拥有当前会议授权；不受支持的功能标识或访问级别返回 422。
 
 公开会议服务接口只允许读取状态为已发布或已结束会议中 `access_level=public` 的功能；仅登录嘉宾可见的服务返回 401。公开功能未发布时仍可返回 `unpublished_message`，但 `content` 和 `contacts` 必须为空。草稿会议统一返回 404，不泄露服务配置。
+
+会议资料使用独立条目接口，不再通过 `manual.content` 维护多段资料。资料标题必填且最长 200 字，正文按字符串最长 20,000 字，正文和附件至少存在一项。新版正文由前端使用 `material-rich:` 前缀保存 URI 编码的受限文档 HTML，历史普通文本继续合法；客户端解码后只允许段落、加粗、项目符号、编号、首行缩进 2 字符和整段缩进，不能直接渲染未经清洗的内容。首行缩进只允许固定 `material-first-line-indent` 类，其他属性与类名一律移除。附件支持 PDF、Office 文档、图片、TXT 和 ZIP，单个文件默认不超过 20MB。附件存储键不进入响应，下载必须调用鉴权接口。
+
+公开读取使用 `GET /api/meetings/{meeting_id}/materials` 和对应 `/download` 接口，仅当会议公开、`manual` 已发布且访问级别为 `public` 时可用；不满足公开访问级别时返回 401，未发布时返回 404。
 
 ## 嘉宾端接口
 
@@ -105,13 +122,15 @@
 | GET | `/api/guest/meetings/{meeting_id}/profile` | 查询固定资料、动态字段值、呈现字段 `visible_fields` 与动态标签 `field_labels` |
 | GET | `/api/guest/meetings/{meeting_id}/check-in-qr` | 获取个人签到二维码 token 与过期时间 |
 | GET | `/api/guest/meetings/{meeting_id}/assistant-features/{feature_key}` | 获取所属会议单项服务内容或未发布提醒，不受公开访问级别限制 |
+| GET | `/api/guest/meetings/{meeting_id}/materials` | 获取所属会议已发布的多条会议资料 |
+| GET | `/api/guest/meetings/{meeting_id}/materials/{material_id}/download` | 下载所属会议已发布的资料附件 |
 | GET | `/api/guest/meetings/{meeting_id}/weather` | 获取已发布天气功能的和风天气实况与七日预报；优先使用管理员确认的导航坐标 |
 
 二维码图像由前端把 `qr_token` 编码为二维码；工作人员扫码后只把 token 交给后端校验。二维码在会议结束后失效。
 
 会议服务功能已发布时返回 `content`；未发布时只返回 `unpublished_message`、发布状态和访问级别，响应中的 `content` 必须为 `null`、`contacts` 必须为空，避免正文和联系人草稿泄露。已登录嘉宾可以访问自己所属会议的全部会议服务，不受 `access_level` 的公开设置影响。
 
-二维码响应包含 `is_checked_in` 和可空的 `checked_in_at`，两个字段从 `check_ins` 读取，不改变二维码 token 与过期规则。SQLite 读取出的无时区签到时间在响应前按 UTC 恢复，前端按嘉宾本地时区展示。
+二维码响应包含 `is_checked_in` 和可空的 `checked_in_at`，两个字段从当前有效签到场次的 `check_ins` 读取，不改变二维码 token 与过期规则。SQLite 读取出的无时区签到时间在响应前按 UTC 恢复，前端按嘉宾本地时区展示。
 
 ## 工作人员端接口
 
@@ -121,13 +140,14 @@
 | --- | --- | --- |
 | GET | `/api/staff/meetings` | 查询负责会议 |
 | GET | `/api/staff/meetings/{meeting_id}/guests?query={keyword}` | 按姓名、手机号和当前启用的单位、座位等字段搜索嘉宾 |
+| GET | `/api/staff/meetings/{meeting_id}/check-in-session` | 查询工作人员端当前有效签到场次 |
 | POST | `/api/staff/meetings/{meeting_id}/check-ins/scan` | 提交 `qr_token` 扫码签到 |
 | POST | `/api/staff/meetings/{meeting_id}/check-ins/manual` | 提交 `guest_id` 人工签到 |
-| GET | `/api/staff/meetings/{meeting_id}/check-ins` | 查询会议签到记录 |
+| GET | `/api/staff/meetings/{meeting_id}/check-ins` | 查询会议当前有效场次签到记录 |
 
 工作人员嘉宾搜索响应包含 `visible_fields`，值来自会议的 `guest_enabled_fixed_fields`。姓名和手机号始终返回；单位、职务、身份、座位号仅在后台启用时返回实际值，否则返回 `null`，前端不得展示对应字段。搜索条件同样只覆盖姓名、手机号和当前启用的单位、座位等字段，避免关闭座位号后仍能按座位号检索。
 
-签到由后端判断工作人员授权、嘉宾归属、嘉宾启用状态、会议结束时间和重复签到。重复签到返回 409；无效、跨会议或过期二维码不会创建记录。重复签到的 409 `detail` 在上下文完整时返回结构化对象：`code=already_checked_in`、`message`、`guest_id`、`guest_name`、`phone`、`checked_in_at`、`method`、`staff_id` 和 `staff_name`，工作人员端据此展示已有签到时间、签到方式和执行人员；缺少历史上下文时可回退为字符串提示。
+签到由后端判断工作人员授权、嘉宾归属、嘉宾启用状态、会议结束时间和当前有效场次内重复签到。重复签到返回 409；无效、跨会议或过期二维码不会创建记录。同一嘉宾允许在不同签到场次分别签到。重复签到的 409 `detail` 在上下文完整时返回结构化对象：`code=already_checked_in`、`message`、`guest_id`、`guest_name`、`phone`、`checked_in_at`、`method`、`staff_id` 和 `staff_name`，工作人员端据此展示已有签到时间、签到方式和执行人员；缺少历史上下文时可回退为字符串提示。
 
 ## 嘉宾补充报名接口
 

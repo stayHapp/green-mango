@@ -6,6 +6,7 @@
 
 - `product/`：产品背景、客户端模型、MVP 范围、用户角色、功能地图、三端工作流和嘉宾端体验规范。
 - `architecture/`：整体架构、前端规划、后端规划、数据库设计、API 设计和安全原则。
+- `design/`：关键页面的设计说明、交互约束和效果图留档。
 - `decisions/`：技术和工程决策记录，说明为什么这样选择。
 - `exec-plans/`：复杂任务的执行计划。进行中的计划放在 `active/`，完成后移到 `completed/`。
 - `development/`：本地启动、联调和开发环境操作说明。
@@ -23,12 +24,13 @@
 8. `product/staff-workflow.md`
 9. `product/check-in-flow.md`
 10. `product/mvp-scope.md`
-11. `architecture/overview.md`
-12. 与任务相关的具体架构文档
-13. `development/local-startup.md`：手动启动前后端和手机访问
-14. `development/server-sync-postgresql.md`：无 Git 服务器同步部署（PostgreSQL）
-15. `development/test-deployment.md`：旧测试环境部署（Nginx + systemd，SQLite）
-16. `development/tencent-cloud-deployment.md`：腾讯云 OpenCloudOS + Docker 部署（SQLite 演示环境）
+11. `design/check-in-management-and-staff-scan.md`
+12. `architecture/overview.md`
+13. 与任务相关的具体架构文档
+14. `development/local-startup.md`：手动启动前后端和手机访问
+15. `development/server-sync-postgresql.md`：无 Git 服务器同步部署（PostgreSQL）
+16. `development/test-deployment.md`：旧测试环境部署（Nginx + systemd，SQLite）
+17. `development/tencent-cloud-deployment.md`：腾讯云 OpenCloudOS + Docker 部署（SQLite 演示环境）
 
 如果任务涉及数据库结构，请同步阅读并更新 `architecture/database.md`。
 
