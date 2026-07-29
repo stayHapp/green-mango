@@ -63,3 +63,20 @@ class GuestMeetingAssistantFeatureResponse(BaseModel):
     is_published: bool
     access_level: MeetingAssistantAccessLevel
     contacts: list[ContactPerson] = Field(default_factory=list)
+
+
+class MeetingMaterialResponse(BaseModel):
+    """管理员与嘉宾读取的单条会议资料响应。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    meeting_id: int
+    title: str
+    content: str
+    original_filename: str | None
+    content_type: str | None
+    size_bytes: int | None
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime

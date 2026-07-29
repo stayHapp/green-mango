@@ -38,10 +38,22 @@ class CheckInResponse(BaseModel):
 
     id: int
     meeting_id: int
+    session_id: int
+    session_title: str
     guest_id: int
     staff_id: int | None
     method: str
     checked_in_at: datetime
+
+
+class StaffCheckInSessionResponse(BaseModel):
+    """工作人员端当前签到场次响应数据。"""
+
+    id: int
+    title: str
+    starts_at: datetime | None
+    ends_at: datetime | None
+    is_default: bool
 
 
 class StaffGuestResponse(BaseModel):

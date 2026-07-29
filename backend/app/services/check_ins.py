@@ -10,6 +10,7 @@ from app.models.access import StaffMeeting
 from app.models.guest import CheckIn, Guest
 from app.models.meeting import Meeting
 from app.models.user import User
+from app.services.check_in_sessions import get_current_check_in_session
 
 
 class CheckInBusinessError(Exception):
@@ -61,10 +62,10 @@ def get_guest_by_token(db: Session, qr_token: str) -> Guest | None:
 
 
 def create_check_in(db: Session, meeting: Meeting, staff: User, guest: Guest, method: str) -> CheckIn:
-    """为指定嘉宾创建唯一签到记录。
+    """为指定嘉宾在默认场次创建唯一签到记录。
 
     入参：db 为数据库会话；meeting 为已授权会议；staff 为已验证工作人员；guest 为待签到嘉宾；method 为 scan 或 manual，均必填。
-    返回值：CheckIn：已持久化的签到记录。
+    返回值：CheckIn：已持久化且关联默认场次的签到记录。
     异常：会议结束、嘉宾不属于会议、嘉宾停用或已签到时抛出 CheckInBusinessError；数据库写入失败时由 SQLAlchemy 抛出异常。
     """
     end_time = meeting.end_time
@@ -76,20 +77,27 @@ def create_check_in(db: Session, meeting: Meeting, staff: User, guest: Guest, me
         raise CheckInBusinessError(422, "嘉宾不属于当前会议。")
     if not guest.is_active:
         raise CheckInBusinessError(422, "嘉宾已停用，无法签到。")
+    session = get_current_check_in_session(db, meeting)
     existing_check_in = db.scalar(
-        select(CheckIn).where(CheckIn.meeting_id == meeting.id, CheckIn.guest_id == guest.id)
+        select(CheckIn).where(CheckIn.session_id == session.id, CheckIn.guest_id == guest.id)
     )
     if existing_check_in is not None:
         raise CheckInBusinessError(409, "该嘉宾已签到，不能重复签到。", existing_check_in, guest)
 
-    check_in = CheckIn(meeting_id=meeting.id, guest_id=guest.id, staff_id=staff.id, method=method)
+    check_in = CheckIn(
+        meeting_id=meeting.id,
+        session_id=session.id,
+        guest_id=guest.id,
+        staff_id=staff.id,
+        method=method,
+    )
     db.add(check_in)
     try:
         db.commit()
     except IntegrityError as error:
         db.rollback()
         existing_check_in = db.scalar(
-            select(CheckIn).where(CheckIn.meeting_id == meeting.id, CheckIn.guest_id == guest.id)
+            select(CheckIn).where(CheckIn.session_id == session.id, CheckIn.guest_id == guest.id)
         )
         raise CheckInBusinessError(409, "该嘉宾已签到，不能重复签到。", existing_check_in, guest) from error
     db.refresh(check_in)
@@ -103,9 +111,10 @@ def list_check_ins(db: Session, meeting: Meeting) -> list[CheckIn]:
     返回值：list[CheckIn]：按签到时间倒序排列的签到记录。
     异常：数据库查询失败时由 SQLAlchemy 抛出异常。
     """
+    session = get_current_check_in_session(db, meeting)
     statement = (
         select(CheckIn)
-        .where(CheckIn.meeting_id == meeting.id)
+        .where(CheckIn.session_id == session.id)
         .order_by(CheckIn.checked_in_at.desc(), CheckIn.id.desc())
     )
     return list(db.scalars(statement))
@@ -123,9 +132,10 @@ def search_guests_with_check_in_status(
     返回值：list[tuple[Guest, CheckIn | None]]：嘉宾与其签到记录的组合，未签到时记录为 None。
     异常：数据库查询失败时由 SQLAlchemy 抛出异常。
     """
+    session = get_current_check_in_session(db, meeting)
     statement = (
         select(Guest, CheckIn)
-        .outerjoin(CheckIn, (CheckIn.meeting_id == Guest.meeting_id) & (CheckIn.guest_id == Guest.id))
+        .outerjoin(CheckIn, (CheckIn.session_id == session.id) & (CheckIn.guest_id == Guest.id))
         .where(Guest.meeting_id == meeting.id, Guest.is_active.is_(True))
         .order_by(Guest.created_at, Guest.id)
     )

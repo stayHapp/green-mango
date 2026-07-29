@@ -4,13 +4,14 @@ from app.models.access import MeetingAdmin, StaffMeeting
 from app.models.auth import AuthSession
 from app.models.application import GuestApplication
 from app.models.guest import CheckIn, Guest, GuestField, GuestValue
-from app.models.meeting import Meeting, MeetingAssistantFeature, MeetingSetting
+from app.models.meeting import CheckInSession, Meeting, MeetingAssistantFeature, MeetingMaterial, MeetingSetting
 from app.models.registration import Registration, RegistrationField, RegistrationValue
 from app.models.user import User
 
 __all__ = [
     "AuthSession",
     "CheckIn",
+    "CheckInSession",
     "Guest",
     "GuestApplication",
     "GuestField",
@@ -18,6 +19,7 @@ __all__ = [
     "Meeting",
     "MeetingAdmin",
     "MeetingAssistantFeature",
+    "MeetingMaterial",
     "MeetingSetting",
     "Registration",
     "RegistrationField",

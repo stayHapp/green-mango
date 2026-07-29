@@ -5,14 +5,16 @@
 """
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.models.access import StaffMeeting
 from app.models.guest import CheckIn, Guest
-from app.models.meeting import Meeting, MeetingSetting
+from app.models.meeting import CheckInSession, Meeting, MeetingSetting
 from app.models.user import User
+from app.services.check_in_sessions import get_current_check_in_session, get_default_check_in_session
 
 
 def test_staff_can_scan_check_in(
@@ -379,7 +381,8 @@ def test_staff_can_search_guests_with_check_in_status(
     )
     db.add(guest)
     db.flush()
-    db.add(CheckIn(meeting_id=meeting.id, guest_id=guest.id, staff_id=staff.id, method="scan"))
+    default_session = get_default_check_in_session(db, meeting)
+    db.add(CheckIn(meeting_id=meeting.id, session_id=default_session.id, guest_id=guest.id, staff_id=staff.id, method="scan"))
     db.commit()
 
     response = client.get(
@@ -518,7 +521,8 @@ def test_staff_can_list_check_in_records(
     guest = Guest(meeting_id=meeting.id, name="记录嘉宾", phone="13900000039", qr_token="records-token")
     db.add(guest)
     db.flush()
-    db.add(CheckIn(meeting_id=meeting.id, guest_id=guest.id, staff_id=staff.id, method="scan"))
+    default_session = get_default_check_in_session(db, meeting)
+    db.add(CheckIn(meeting_id=meeting.id, session_id=default_session.id, guest_id=guest.id, staff_id=staff.id, method="scan"))
     db.commit()
 
     response = client.get(
@@ -529,3 +533,135 @@ def test_staff_can_list_check_in_records(
     assert len(response.json()) == 1
     assert response.json()[0]["guest_id"] == guest.id
     assert response.json()[0]["method"] == "scan"
+
+
+def test_date_mode_resolves_current_session_by_injected_date(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+) -> None:
+    """验证日期签到规则可按注入日期解析当前有效场次。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数。
+    返回值：None：断言通过表示日期规则不会固定停留在旧默认场次。
+    异常：当前函数不主动抛出业务异常；断言失败表示日期自动切换规则异常。
+    """
+    _, db = client_and_session
+    admin = create_user(db, "admin-date-current")
+    meeting = Meeting(title="日期自动切换会议", created_by_id=admin.id, status="published")
+    db.add(meeting)
+    db.flush()
+    db.add(MeetingSetting(meeting_id=meeting.id, settings_json={"check_in_mode": "date"}))
+    first_session = CheckInSession(
+        meeting_id=meeting.id,
+        title="第一天签到",
+        starts_at=datetime(2026, 8, 1, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        ends_at=datetime(2026, 8, 1, 23, 59, tzinfo=ZoneInfo("Asia/Shanghai")),
+        is_default=True,
+        sort_order=0,
+    )
+    second_session = CheckInSession(
+        meeting_id=meeting.id,
+        title="第二天签到",
+        starts_at=datetime(2026, 8, 2, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        ends_at=datetime(2026, 8, 2, 23, 59, tzinfo=ZoneInfo("Asia/Shanghai")),
+        is_default=False,
+        sort_order=1,
+    )
+    db.add_all([first_session, second_session])
+    db.commit()
+
+    current_session = get_current_check_in_session(
+        db,
+        meeting,
+        now=datetime(2026, 8, 2, 9, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+    )
+
+    assert current_session.id == second_session.id
+    assert current_session.is_default is True
+
+
+def test_staff_check_in_uses_today_session_in_date_mode(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证工作人员签到写入日期规则下的当天场次。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示工作人员端不再固定写入旧默认场次。
+    异常：当前函数不主动抛出业务异常；断言失败表示工作人员签到场次解析异常。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-date-staff")
+    staff = create_user(db, "staff-date-mode", role="staff")
+    china_now = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Shanghai"))
+    yesterday = china_now - timedelta(days=1)
+    meeting = Meeting(
+        title="工作人员日期场次会议",
+        created_by_id=admin.id,
+        status="published",
+        end_time=china_now + timedelta(days=2),
+    )
+    db.add(meeting)
+    db.flush()
+    db.add(StaffMeeting(meeting_id=meeting.id, user_id=staff.id))
+    db.add(MeetingSetting(meeting_id=meeting.id, settings_json={"check_in_mode": "date"}))
+    yesterday_session = CheckInSession(
+        meeting_id=meeting.id,
+        title="前一天签到",
+        starts_at=yesterday.replace(hour=0, minute=0, second=0, microsecond=0),
+        ends_at=yesterday.replace(hour=23, minute=59, second=0, microsecond=0),
+        is_default=True,
+        sort_order=0,
+    )
+    today_session = CheckInSession(
+        meeting_id=meeting.id,
+        title="当天签到",
+        starts_at=china_now.replace(hour=0, minute=0, second=0, microsecond=0),
+        ends_at=china_now.replace(hour=23, minute=59, second=0, microsecond=0),
+        is_default=False,
+        sort_order=1,
+    )
+    guest = Guest(meeting_id=meeting.id, name="日期规则嘉宾", phone="13900000042", qr_token="date-mode-token")
+    db.add_all([yesterday_session, today_session, guest])
+    db.commit()
+
+    response = client.post(
+        f"/api/staff/meetings/{meeting.id}/check-ins/scan",
+        headers=auth_headers(db, staff),
+        json={"qr_token": "date-mode-token"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["session_id"] == today_session.id
+
+
+def test_staff_can_get_current_check_in_session(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证工作人员可读取当前有效签到场次。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示工作人员端可在无签到记录时展示当前场次。
+    异常：当前函数不主动抛出业务异常；断言失败表示当前场次接口异常。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-staff-session")
+    staff = create_user(db, "staff-session-current", role="staff")
+    meeting = Meeting(title="工作人员当前场次会议", created_by_id=admin.id, status="published")
+    db.add(meeting)
+    db.flush()
+    db.add(StaffMeeting(meeting_id=meeting.id, user_id=staff.id))
+    default_session = get_default_check_in_session(db, meeting)
+    db.commit()
+
+    response = client.get(
+        f"/api/staff/meetings/{meeting.id}/check-in-session",
+        headers=auth_headers(db, staff),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == default_session.id
+    assert response.json()["title"] == "默认签到"

@@ -15,8 +15,9 @@ from sqlalchemy.orm import Session
 from app.models.access import MeetingAdmin, StaffMeeting
 from app.models.application import GuestApplication
 from app.models.guest import CheckIn, Guest, GuestField, GuestValue
-from app.models.meeting import Meeting, MeetingSetting
+from app.models.meeting import CheckInSession, Meeting, MeetingSetting
 from app.models.user import User
+from app.services.check_in_sessions import get_default_check_in_session
 
 
 def test_admin_can_create_list_get_and_update_meeting(
@@ -509,7 +510,16 @@ def test_admin_can_view_check_in_summary(
     second_guest = Guest(meeting_id=meeting.id, name="未签到嘉宾", phone="13900000011", qr_token="summary-two")
     db.add_all([first_guest, second_guest])
     db.flush()
-    db.add(CheckIn(meeting_id=meeting.id, guest_id=first_guest.id, staff_id=staff.id, method="scan"))
+    default_session = get_default_check_in_session(db, meeting)
+    db.add(
+        CheckIn(
+            meeting_id=meeting.id,
+            session_id=default_session.id,
+            guest_id=first_guest.id,
+            staff_id=staff.id,
+            method="scan",
+        )
+    )
     db.commit()
 
     response = client.get(f"/api/admin/meetings/{meeting.id}/check-ins", headers=auth_headers(db, admin))
@@ -519,6 +529,166 @@ def test_admin_can_view_check_in_summary(
     assert response.json()["unchecked_count"] == 1
     assert response.json()["records"][0]["staff_name"] == "staff-summary"
     assert response.json()["records"][0]["checked_in_at"].endswith("Z")
+
+
+def test_admin_can_manage_check_in_sessions_and_compare_records(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证管理员可维护签到场次并查看相邻场次差异。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示多场次设置、指定场次统计和新增减少名单可用。
+    异常：当前函数不主动抛出业务异常；断言失败表示签到场次管理或对比逻辑异常。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-session-compare")
+    staff = create_user(db, "staff-session-compare", role="staff")
+    meeting = Meeting(title="多场次会议", created_by_id=admin.id, status="published")
+    db.add(meeting)
+    db.flush()
+    db.add(MeetingAdmin(meeting_id=meeting.id, user_id=admin.id))
+    first_guest = Guest(meeting_id=meeting.id, name="第一场嘉宾", phone="13900000041", qr_token="session-one")
+    stable_guest = Guest(meeting_id=meeting.id, name="连续嘉宾", phone="13900000042", qr_token="session-two")
+    added_guest = Guest(meeting_id=meeting.id, name="第二场新增", phone="13900000043", qr_token="session-three")
+    db.add_all([first_guest, stable_guest, added_guest])
+    db.flush()
+    default_session = get_default_check_in_session(db, meeting)
+    second_session = CheckInSession(meeting_id=meeting.id, title="第二场签到", sort_order=1)
+    db.add(second_session)
+    db.flush()
+    db.add_all([
+        CheckIn(
+            meeting_id=meeting.id,
+            session_id=default_session.id,
+            guest_id=first_guest.id,
+            staff_id=staff.id,
+            method="scan",
+        ),
+        CheckIn(
+            meeting_id=meeting.id,
+            session_id=default_session.id,
+            guest_id=stable_guest.id,
+            staff_id=staff.id,
+            method="manual",
+        ),
+        CheckIn(
+            meeting_id=meeting.id,
+            session_id=second_session.id,
+            guest_id=stable_guest.id,
+            staff_id=staff.id,
+            method="scan",
+        ),
+        CheckIn(
+            meeting_id=meeting.id,
+            session_id=second_session.id,
+            guest_id=added_guest.id,
+            staff_id=staff.id,
+            method="manual",
+        ),
+    ])
+    db.commit()
+    headers = auth_headers(db, admin)
+
+    sessions_response = client.get(f"/api/admin/meetings/{meeting.id}/check-in-sessions", headers=headers)
+    assert sessions_response.status_code == 200
+    assert [item["title"] for item in sessions_response.json()] == ["默认签到", "第二场签到"]
+
+    summary_response = client.get(
+        f"/api/admin/meetings/{meeting.id}/check-ins?session_id={second_session.id}",
+        headers=headers,
+    )
+    assert summary_response.status_code == 200
+    summary = summary_response.json()
+    assert summary["session_id"] == second_session.id
+    assert summary["checked_in_count"] == 2
+    assert summary["comparison"]["previous_session_title"] == "默认签到"
+    assert [item["guest_name"] for item in summary["comparison"]["added_guests"]] == ["第二场新增"]
+    assert [item["guest_name"] for item in summary["comparison"]["removed_guests"]] == ["第一场嘉宾"]
+
+    create_response = client.post(
+        f"/api/admin/meetings/{meeting.id}/check-in-sessions",
+        headers=headers,
+        json={"title": "第三场签到", "description": "下午返场", "is_default": False},
+    )
+    assert create_response.status_code == 201
+    third_session_id = create_response.json()["id"]
+
+    update_response = client.patch(
+        f"/api/admin/meetings/{meeting.id}/check-in-sessions/{third_session_id}",
+        headers=headers,
+        json={"title": "第三场签到更新", "description": "下午返场", "is_default": True},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["is_default"] is True
+
+    delete_second_response = client.delete(
+        f"/api/admin/meetings/{meeting.id}/check-in-sessions/{second_session.id}",
+        headers=headers,
+    )
+    assert delete_second_response.status_code == 200
+    assert delete_second_response.json()["message"] == "签到场次已删除。"
+    deleted_summary_response = client.get(
+        f"/api/admin/meetings/{meeting.id}/check-ins?session_id={second_session.id}",
+        headers=headers,
+    )
+    assert deleted_summary_response.status_code == 404
+
+    delete_default_response = client.delete(
+        f"/api/admin/meetings/{meeting.id}/check-in-sessions/{third_session_id}",
+        headers=headers,
+    )
+    assert delete_default_response.status_code == 200
+    fallback_sessions_response = client.get(f"/api/admin/meetings/{meeting.id}/check-in-sessions", headers=headers)
+    assert fallback_sessions_response.status_code == 200
+    fallback_sessions = fallback_sessions_response.json()
+    assert [item["title"] for item in fallback_sessions] == ["默认签到"]
+    assert fallback_sessions[0]["is_default"] is True
+
+
+def test_admin_can_read_and_update_check_in_settings(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证管理员可读取和更新会议级签到规则。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示签到规则接口可用。
+    异常：当前函数不主动抛出业务异常；断言失败表示规则接口行为异常。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-checkin-settings")
+    meeting = Meeting(title="签到规则会议", created_by_id=admin.id, status="published")
+    db.add(meeting)
+    db.flush()
+    db.add(MeetingAdmin(meeting_id=meeting.id, user_id=admin.id))
+    db.commit()
+    headers = auth_headers(db, admin)
+
+    initial_response = client.get(f"/api/admin/meetings/{meeting.id}/check-in-settings", headers=headers)
+    assert initial_response.status_code == 200
+    assert initial_response.json()["mode"] == "single"
+    assert initial_response.json()["effective_session_title"] == "默认签到"
+
+    default_session = get_default_check_in_session(db, meeting)
+    date_response = client.patch(
+        f"/api/admin/meetings/{meeting.id}/check-in-settings",
+        headers=headers,
+        json={"mode": "date", "manual_default_session_id": None},
+    )
+    assert date_response.status_code == 200
+    assert date_response.json()["mode"] == "date"
+    assert date_response.json()["manual_default_session_id"] is None
+
+    manual_response = client.patch(
+        f"/api/admin/meetings/{meeting.id}/check-in-settings",
+        headers=headers,
+        json={"mode": "date", "manual_default_session_id": default_session.id},
+    )
+    assert manual_response.status_code == 200
+    assert manual_response.json()["manual_default_session_id"] == default_session.id
 
 
 def test_public_application_can_be_reviewed_into_guest(
@@ -762,7 +932,16 @@ def test_guest_deactivation_identity_and_dynamic_values_are_consistent(
     assert duplicate_response.status_code == 422
     assert duplicate_response.json()["detail"] == "当前会议已存在姓名和手机号相同的启用嘉宾。"
 
-    db.add(CheckIn(meeting_id=meeting.id, guest_id=guest_id, staff_id=staff.id, method="manual"))
+    default_session = get_default_check_in_session(db, meeting)
+    db.add(
+        CheckIn(
+            meeting_id=meeting.id,
+            session_id=default_session.id,
+            guest_id=guest_id,
+            staff_id=staff.id,
+            method="manual",
+        )
+    )
     db.commit()
     assert client.delete(
         f"/api/admin/meetings/{meeting.id}/guests/{guest_id}", headers=admin_headers
@@ -773,12 +952,11 @@ def test_guest_deactivation_identity_and_dynamic_values_are_consistent(
         f"/api/admin/meetings/{meeting.id}/check-ins", headers=admin_headers
     )
     assert summary_response.status_code == 200
-    assert summary_response.json() == {
-        "total_guests": 0,
-        "checked_in_count": 0,
-        "unchecked_count": 0,
-        "records": [],
-    }
+    summary_payload = summary_response.json()
+    assert summary_payload["total_guests"] == 0
+    assert summary_payload["checked_in_count"] == 0
+    assert summary_payload["unchecked_count"] == 0
+    assert summary_payload["records"] == []
     staff_headers = auth_headers(db, staff)
     assert client.get(
         f"/api/staff/meetings/{meeting.id}/guests", headers=staff_headers

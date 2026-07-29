@@ -13,6 +13,7 @@ from app.api.routes import (
     guest_sessions,
     health,
     meeting_assistant,
+    meeting_materials,
     sessions,
     staff,
 )
@@ -26,11 +27,14 @@ api_router.include_router(admin_check_ins.router, tags=["admin-check-ins"])
 api_router.include_router(admin_excel.router, tags=["admin-excel"])
 api_router.include_router(admin_resources.router, tags=["admin-resources"])
 api_router.include_router(meeting_assistant.admin_router, tags=["admin-meeting-assistant"])
+api_router.include_router(meeting_materials.admin_router, tags=["admin-meeting-materials"])
 api_router.include_router(staff.admin_router, tags=["admin-staff"])
 api_router.include_router(staff.staff_router, tags=["staff-meetings"])
 api_router.include_router(check_ins.router, tags=["staff-check-ins"])
 api_router.include_router(guest_sessions.router, tags=["guest-sessions"])
 api_router.include_router(meeting_assistant.guest_router, tags=["guest-meeting-assistant"])
+api_router.include_router(meeting_materials.guest_router, tags=["guest-meeting-materials"])
 api_router.include_router(meeting_assistant.public_router, tags=["public-meeting-assistant"])
+api_router.include_router(meeting_materials.public_router, tags=["public-meeting-materials"])
 api_router.include_router(guest_applications.public_router, tags=["guest-applications"])
 api_router.include_router(guest_applications.admin_router, tags=["admin-guest-applications"])

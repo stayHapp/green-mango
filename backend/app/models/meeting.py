@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -61,11 +61,19 @@ class Meeting(Base):
     )
     guests: Mapped[list[Guest]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
     check_ins: Mapped[list[CheckIn]] = relationship(back_populates="meeting", cascade="all, delete-orphan")
+    check_in_sessions: Mapped[list[CheckInSession]] = relationship(
+        back_populates="meeting", cascade="all, delete-orphan", order_by="CheckInSession.sort_order"
+    )
     guest_applications: Mapped[list[GuestApplication]] = relationship(
         back_populates="meeting", cascade="all, delete-orphan"
     )
     assistant_features: Mapped[list[MeetingAssistantFeature]] = relationship(
         back_populates="meeting", cascade="all, delete-orphan"
+    )
+    materials: Mapped[list[MeetingMaterial]] = relationship(
+        back_populates="meeting",
+        cascade="all, delete-orphan",
+        order_by="MeetingMaterial.sort_order, MeetingMaterial.id",
     )
 
 
@@ -85,6 +93,29 @@ class MeetingSetting(Base):
     )
 
     meeting: Mapped[Meeting] = relationship(back_populates="setting")
+
+
+class CheckInSession(Base):
+    """会议中的一次签到场次。"""
+
+    __tablename__ = "check_in_sessions"
+    __table_args__ = (UniqueConstraint("meeting_id", "title", name="uq_check_in_sessions_meeting_id_title"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    meeting_id: Mapped[int] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    meeting: Mapped[Meeting] = relationship(back_populates="check_in_sessions")
+    check_ins: Mapped[list[CheckIn]] = relationship(back_populates="session", cascade="all, delete-orphan")
 
 
 class MeetingAssistantFeature(Base):
@@ -119,3 +150,35 @@ class MeetingAssistantFeature(Base):
     )
 
     meeting: Mapped[Meeting] = relationship(back_populates="assistant_features")
+
+
+class MeetingMaterial(Base):
+    """会议资料中的独立正文与可下载附件。"""
+
+    __tablename__ = "meeting_materials"
+    __table_args__ = (
+        CheckConstraint(
+            "length(trim(content)) > 0 OR storage_key IS NOT NULL",
+            name="ck_meeting_materials_content_or_attachment",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    meeting_id: Mapped[int] = mapped_column(
+        ForeignKey("meetings.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    storage_key: Mapped[str | None] = mapped_column(String(255))
+    content_type: Mapped[str | None] = mapped_column(String(150))
+    size_bytes: Mapped[int | None] = mapped_column(Integer)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    meeting: Mapped[Meeting] = relationship(back_populates="materials")

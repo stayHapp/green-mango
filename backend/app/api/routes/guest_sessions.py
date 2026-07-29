@@ -3,12 +3,15 @@
 from datetime import timezone
 
 from fastapi import APIRouter, HTTPException, status
+from sqlalchemy import select
 
 from app.api.dependencies import CurrentGuest, DatabaseSession
+from app.models.guest import CheckIn
 from app.schemas.guest import GuestProfileResponse
 from app.schemas.guest_session import GuestLoginRequest, GuestMeetingResponse, GuestQrResponse, GuestSessionResponse
 from app.services.admin_guests import get_guest_values
 from app.services.admin_resources import get_guest_display_fields
+from app.services.check_in_sessions import get_current_check_in_session
 from app.services.guest_sessions import get_guest_meeting, list_guest_meetings, login_guest
 from app.services.sessions import create_guest_session as issue_guest_session
 
@@ -72,7 +75,8 @@ def get_my_check_in_qr(meeting_id: int, db: DatabaseSession, guest: CurrentGuest
     meeting = get_guest_meeting(db, guest, meeting_id)
     if meeting is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会议不存在或无访问权限。")
-    check_in = guest.check_in
+    default_session = get_current_check_in_session(db, meeting)
+    check_in = db.scalar(select(CheckIn).where(CheckIn.session_id == default_session.id, CheckIn.guest_id == guest.id))
     checked_in_at = check_in.checked_in_at if check_in else None
     # SQLite 会丢失 DateTime 的时区信息；应用统一按 utc_now 写入，因此响应前按 UTC 恢复。
     if checked_in_at is not None and checked_in_at.tzinfo is None:

@@ -17,6 +17,7 @@ from app.models.user import User
 from app.schemas.admin_resources import GuestImportResponse, ImportRowError
 from app.schemas.guest import GuestCreate
 from app.services.admin_guests import create_guest
+from app.services.check_in_sessions import get_default_check_in_session
 
 FIXED_IMPORT_COLUMNS = {
     "姓名": "name",
@@ -194,9 +195,10 @@ def build_check_in_export(db: Session, meeting: Meeting) -> bytes:
     返回值：bytes：包含每位嘉宾签到状态、时间、方式和工作人员的 XLSX 内容。
     异常：数据库查询或工作簿序列化失败时向上抛出对应异常。
     """
+    default_session = get_default_check_in_session(db, meeting)
     statement = (
         select(Guest, CheckIn, User.display_name)
-        .outerjoin(CheckIn, CheckIn.guest_id == Guest.id)
+        .outerjoin(CheckIn, (CheckIn.session_id == default_session.id) & (CheckIn.guest_id == Guest.id))
         .outerjoin(User, User.id == CheckIn.staff_id)
         .where(Guest.meeting_id == meeting.id, Guest.is_active.is_(True))
         .order_by(Guest.created_at, Guest.id)
@@ -259,9 +261,10 @@ def build_guest_status_export(db: Session, meeting: Meeting) -> bytes:
             .where(Guest.meeting_id == meeting.id, Guest.is_active.is_(True))
         )
     }
+    default_session = get_default_check_in_session(db, meeting)
     guest_statement = (
         select(Guest, CheckIn)
-        .outerjoin(CheckIn, CheckIn.guest_id == Guest.id)
+        .outerjoin(CheckIn, (CheckIn.session_id == default_session.id) & (CheckIn.guest_id == Guest.id))
         .where(Guest.meeting_id == meeting.id, Guest.is_active.is_(True))
         .order_by(Guest.created_at, Guest.id)
     )

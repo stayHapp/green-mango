@@ -11,6 +11,7 @@ from app.schemas.check_in import (
     CheckInResponse,
     ManualCheckInRequest,
     ScanCheckInRequest,
+    StaffCheckInSessionResponse,
     StaffGuestResponse,
 )
 from app.services.admin_resources import get_guest_registration_settings
@@ -22,6 +23,7 @@ from app.services.check_ins import (
     list_check_ins,
     search_guests_with_check_in_status,
 )
+from app.services.check_in_sessions import get_current_check_in_session
 
 router = APIRouter(prefix="/staff/meetings")
 
@@ -46,6 +48,8 @@ def build_check_in_response(check_in) -> CheckInResponse:
     return CheckInResponse(
         id=check_in.id,
         meeting_id=check_in.meeting_id,
+        session_id=check_in.session_id,
+        session_title=check_in.session.title,
         guest_id=check_in.guest_id,
         staff_id=check_in.staff_id,
         method=check_in.method,
@@ -157,6 +161,29 @@ def get_check_ins(meeting_id: int, db: DatabaseSession, staff: CurrentStaff) -> 
         build_check_in_response(check_in)
         for check_in in list_check_ins(db, load_staff_meeting_or_404(db, staff, meeting_id))
     ]
+
+
+@router.get("/{meeting_id}/check-in-session", response_model=StaffCheckInSessionResponse)
+def get_current_staff_check_in_session(
+    meeting_id: int,
+    db: DatabaseSession,
+    staff: CurrentStaff,
+) -> StaffCheckInSessionResponse:
+    """获取工作人员端当前有效签到场次。
+
+    入参：meeting_id 为会议 ID；db 与 staff 由 FastAPI 注入。
+    返回值：StaffCheckInSessionResponse：当前扫码和手工签到实际写入的签到场次。
+    异常：无会议权限时返回 404；数据库读取失败时由 SQLAlchemy 抛出异常。
+    """
+    meeting = load_staff_meeting_or_404(db, staff, meeting_id)
+    session = get_current_check_in_session(db, meeting)
+    return StaffCheckInSessionResponse(
+        id=session.id,
+        title=session.title,
+        starts_at=session.starts_at,
+        ends_at=session.ends_at,
+        is_default=session.is_default,
+    )
 
 
 @router.get("/{meeting_id}/guests", response_model=list[StaffGuestResponse])

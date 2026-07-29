@@ -12,7 +12,7 @@ from app.db.base import Base
 from app.models.user import utc_now
 
 if TYPE_CHECKING:
-    from app.models.meeting import Meeting
+    from app.models.meeting import CheckInSession, Meeting
     from app.models.user import User
 
 
@@ -72,7 +72,7 @@ class Guest(Base):
 
     meeting: Mapped[Meeting] = relationship(back_populates="guests")
     values: Mapped[list[GuestValue]] = relationship(back_populates="guest", cascade="all, delete-orphan")
-    check_in: Mapped[CheckIn | None] = relationship(back_populates="guest", cascade="all, delete-orphan", uselist=False)
+    check_ins: Mapped[list[CheckIn]] = relationship(back_populates="guest", cascade="all, delete-orphan")
 
 
 class GuestValue(Base):
@@ -93,13 +93,14 @@ class GuestValue(Base):
 
 
 class CheckIn(Base):
-    """嘉宾在会议中的唯一签到记录。"""
+    """嘉宾在会议某个签到场次中的唯一签到记录。"""
 
     __tablename__ = "check_ins"
-    __table_args__ = (UniqueConstraint("meeting_id", "guest_id", name="uq_check_ins_meeting_id_guest_id"),)
+    __table_args__ = (UniqueConstraint("session_id", "guest_id", name="uq_check_ins_session_id_guest_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     meeting_id: Mapped[int] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), index=True, nullable=False)
+    session_id: Mapped[int] = mapped_column(ForeignKey("check_in_sessions.id", ondelete="CASCADE"), index=True, nullable=False)
     guest_id: Mapped[int] = mapped_column(ForeignKey("guests.id", ondelete="CASCADE"), nullable=False)
     staff_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     method: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -107,5 +108,6 @@ class CheckIn(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     meeting: Mapped[Meeting] = relationship(back_populates="check_ins")
-    guest: Mapped[Guest] = relationship(back_populates="check_in")
+    session: Mapped[CheckInSession] = relationship(back_populates="check_ins")
+    guest: Mapped[Guest] = relationship(back_populates="check_ins")
     staff: Mapped[User | None] = relationship()

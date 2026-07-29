@@ -14,6 +14,7 @@ from app.models.access import MeetingAdmin
 from app.models.guest import CheckIn, Guest, GuestField
 from app.models.meeting import Meeting
 from app.models.user import User
+from app.services.check_in_sessions import get_default_check_in_session
 
 
 def test_download_import_template_with_dynamic_fields(
@@ -149,7 +150,8 @@ def test_check_in_export_produces_valid_xlsx(
     guest = Guest(meeting_id=meeting.id, name="导出嘉宾", phone="13800000003", qr_token="export-token")
     db.add(guest)
     db.flush()
-    db.add(CheckIn(meeting_id=meeting.id, guest_id=guest.id, staff_id=staff.id, method="manual"))
+    default_session = get_default_check_in_session(db, meeting)
+    db.add(CheckIn(meeting_id=meeting.id, session_id=default_session.id, guest_id=guest.id, staff_id=staff.id, method="manual"))
     db.commit()
 
     response = client.get(

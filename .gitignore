@@ -35,3 +35,6 @@ frontend/src/**/*.js
 *.sqlite3
 build/
 *.egg-info/
+
+# 会议资料本地附件
+backend/data/

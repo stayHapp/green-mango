@@ -84,7 +84,7 @@ alembic current
 alembic upgrade head
 ```
 
-当前迁移头为 `20260721_0009`。
+当前迁移头为 `20260729_0012`。
 
 ## 外部服务配置
 
@@ -95,9 +95,12 @@ QWEATHER_API_HOST=和风天气专属Host
 QWEATHER_API_KEY=和风天气服务端Key
 WEATHER_CACHE_SECONDS=1800
 AMAP_WEB_SERVICE_KEY=高德Web服务API类型Key
+MATERIAL_STORAGE_DIR=./data/meeting-materials
+MATERIAL_MAX_FILE_BYTES=20971520
 ```
 
 未配置高德 Key 时，管理员仍可编辑会议与路线正文，但无法搜索并确认导航点位。
+会议资料附件默认存放于后端本地 `data/meeting-materials`，单个附件默认最大 20MB。
 
 ## 准备本地联调数据
 
