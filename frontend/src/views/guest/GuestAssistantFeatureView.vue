@@ -1,40 +1,146 @@
 <template>
   <section class="assistant-page">
-    <header class="assistant-page__header">
+    <header class="assistant-page__header is-service">
       <button type="button" class="assistant-page__back" aria-label="返回" @click="goBack">
         <el-icon><ArrowLeft /></el-icon>
         返回
       </button>
+      <h1 class="assistant-page__header-title">{{ feature?.title ?? '会议服务' }}</h1>
     </header>
 
-    <main class="assistant-page__body">
-      <h1 class="assistant-page__title">{{ feature?.title ?? '会议服务' }}</h1>
+    <main class="assistant-page__body" :class="{ 'is-agenda': isAgendaFeature }">
       <el-skeleton v-if="loading" :rows="6" animated />
       <el-alert v-else-if="errorMessage" type="error" :closable="false" :title="errorMessage" />
       <el-alert v-else-if="feature && !feature.isPublished" type="info" :closable="false" :title="feature.unpublishedMessage" />
 
       <template v-else-if="feature?.key === 'agenda'">
-        <div class="assistant-agenda-list">
-          <template v-for="item in agendaItems" :key="item.id">
-            <h2 v-if="item.kind === 'date'" class="assistant-agenda-date">{{ item.title }}</h2>
-            <article v-else class="assistant-agenda-card">
-              <div class="assistant-agenda-card__time">
-                <el-icon><Clock /></el-icon>
-                <strong>{{ item.time || '时间待定' }}</strong>
+        <section class="assistant-agenda">
+          <nav
+            v-if="agendaGroups.length > 1"
+            class="assistant-agenda-days"
+            role="tablist"
+            aria-label="选择会议日期"
+          >
+            <button
+              v-for="group in agendaGroups"
+              :id="`agenda-tab-${group.id}`"
+              :key="group.id"
+              type="button"
+              role="tab"
+              :aria-controls="`agenda-panel-${group.id}`"
+              :aria-selected="activeAgendaGroup?.id === group.id"
+              :class="{ 'is-active': activeAgendaGroup?.id === group.id }"
+              @click="activeAgendaDateId = group.id"
+            >
+              <strong>{{ group.day || group.title }}</strong>
+              <span v-if="group.day">{{ group.monthLabel }} {{ group.weekday }}</span>
+            </button>
+          </nav>
+
+          <p v-if="activeAgendaGroup" class="assistant-agenda-summary">
+            <el-icon><Calendar /></el-icon>
+            {{ agendaSummary }}
+          </p>
+
+          <div
+            v-if="activeAgendaGroup"
+            :id="`agenda-panel-${activeAgendaGroup.id}`"
+            class="assistant-agenda-timeline"
+            role="tabpanel"
+            :aria-labelledby="agendaGroups.length > 1 ? `agenda-tab-${activeAgendaGroup.id}` : undefined"
+          >
+            <template v-for="item in activeAgendaGroup.items" :key="item.id">
+              <header v-if="item.kind === 'section'" class="assistant-agenda-section">
+                <strong>{{ item.period }}</strong>
+                <span v-if="item.title">{{ item.title }}</span>
+              </header>
+
+              <article v-else class="assistant-agenda-entry">
+                <time class="assistant-agenda-entry__time">
+                  <strong>{{ item.startTime || '待定' }}</strong>
+                  <span v-if="item.endTime">{{ item.endTime }}</span>
+                </time>
+                <span class="assistant-agenda-entry__rail" aria-hidden="true"></span>
+                <div class="assistant-agenda-entry__content">
+                  <span class="assistant-agenda-entry__kind">{{ item.title }}</span>
+                  <!-- 内容在解析阶段经过标签白名单清洗，只允许加粗、换行、段落和缩进结构。 -->
+                  <div
+                    v-if="item.contentHtml"
+                    class="assistant-agenda-entry__rich-content"
+                    v-html="item.contentHtml"
+                  ></div>
+                  <p v-if="item.location" class="assistant-agenda-entry__location">
+                    <el-icon><LocationIcon /></el-icon>
+                    {{ item.location }}
+                  </p>
+                </div>
+              </article>
+            </template>
+          </div>
+        </section>
+      </template>
+
+      <template v-else-if="feature?.key === 'manual'">
+        <section v-if="materials.length" class="meeting-material-list" aria-label="会议资料列表">
+          <article
+            v-for="material in materials"
+            :key="material.id"
+            class="meeting-material-card"
+            :class="{ 'is-expanded': isMaterialExpanded(material.id) }"
+          >
+            <button
+              type="button"
+              class="meeting-material-card__heading"
+              :aria-expanded="isMaterialExpanded(material.id)"
+              :aria-controls="`material-content-${material.id}`"
+              @click="toggleMaterial(material.id)"
+            >
+              <span class="meeting-material-card__icon"><el-icon><Document /></el-icon></span>
+              <span class="meeting-material-card__title">
+                <strong>{{ material.title }}</strong>
+                <small v-if="material.originalFilename">含可下载附件</small>
+              </span>
+              <span class="meeting-material-card__toggle" aria-hidden="true">
+                <el-icon><ArrowUp v-if="isMaterialExpanded(material.id)" /><ArrowDown v-else /></el-icon>
+              </span>
+            </button>
+            <el-collapse-transition>
+              <div
+                v-show="isMaterialExpanded(material.id)"
+                :id="`material-content-${material.id}`"
+                class="meeting-material-card__details"
+              >
+                <!-- 资料正文已在解码阶段经过标签白名单清洗，只展示受限文档格式。 -->
+                <div
+                  v-if="material.content"
+                  class="meeting-material-card__content"
+                  v-html="materialContentHtml(material)"
+                ></div>
+                <button
+                  v-if="material.originalFilename"
+                  type="button"
+                  class="meeting-material-card__download"
+                  :disabled="downloadingMaterialId === material.id"
+                  @click="downloadMaterial(material)"
+                >
+                  <span class="meeting-material-card__file">
+                    <el-icon><Paperclip /></el-icon>
+                    <span>
+                      <strong>{{ material.originalFilename }}</strong>
+                      <small>{{ formatMaterialFileSize(material.sizeBytes) }}</small>
+                    </span>
+                  </span>
+                  <span class="meeting-material-card__download-action">
+                    <el-icon><Download /></el-icon>
+                    {{ downloadingMaterialId === material.id ? '下载中' : '下载' }}
+                  </span>
+                </button>
               </div>
-              <div class="assistant-agenda-card__content">
-                <h2>{{ item.title }}</h2>
-                <p v-if="item.speaker">
-                  <el-icon><User /></el-icon>
-                  {{ item.speaker }}
-                </p>
-                <p v-if="item.location">
-                  <el-icon><LocationIcon /></el-icon>
-                  {{ item.location }}
-                </p>
-              </div>
-            </article>
-          </template>
+            </el-collapse-transition>
+          </article>
+        </section>
+        <div v-else class="assistant-content-cards">
+          <article class="assistant-content-card">{{ feature.content || '会议资料待补充。' }}</article>
         </div>
       </template>
 
@@ -203,7 +309,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ArrowDown, ArrowLeft, ArrowUp, Clock, Location as LocationIcon, Phone, Sunny, Umbrella, User } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, ArrowUp, Calendar, Document, Download, Location as LocationIcon, Paperclip, Phone, Sunny, Umbrella } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
 import { getApiErrorMessage } from '../../api/client'
@@ -213,16 +320,57 @@ import {
   getPublicMeetingAssistantFeature,
   isMeetingAssistantFeatureKey,
 } from '../../api/meetingAssistant'
+import {
+  downloadMeetingMaterialAttachment,
+  listGuestMeetingMaterials,
+  listPublicMeetingMaterials,
+  saveMeetingMaterialBlob,
+} from '../../api/meetingMaterials'
 import { getGuestMeetingWeather, getPublicMeetingWeather, type MeetingWeather } from '../../api/meetingWeather'
-import type { Meeting, MeetingAssistantFeature } from '../../types'
+import type { Meeting, MeetingAssistantFeature, MeetingMaterial } from '../../types'
+import { decodeMaterialRichContent } from '../../utils/materialRichText'
+import {
+  agendaPlainTextToHtml,
+  decodeAgendaRichContent,
+  isEncodedAgendaRichContent,
+} from '../../utils/agendaRichText'
 
-interface AgendaDisplayItem {
+interface AgendaEntryItem {
   id: string
-  kind: 'date' | 'entry'
-  time: string
+  kind: 'entry'
+  startTime: string
+  endTime: string
   title: string
-  speaker: string
+  contentHtml: string
   location: string
+}
+
+interface AgendaSectionItem {
+  id: string
+  kind: 'section'
+  period: string
+  title: string
+}
+
+type AgendaGroupItem = AgendaEntryItem | AgendaSectionItem
+
+interface AgendaDateGroup {
+  id: string
+  title: string
+  day: string
+  monthLabel: string
+  weekday: string
+  dateKey: string
+  items: AgendaGroupItem[]
+}
+
+interface AgendaDateMeta {
+  title: string
+  day: string
+  monthLabel: string
+  weekday: string
+  dateKey: string
+  period: string
 }
 
 const route = useRoute()
@@ -230,15 +378,22 @@ const router = useRouter()
 const meeting = ref<Meeting>()
 const feature = ref<MeetingAssistantFeature>()
 const weather = ref<MeetingWeather>()
+const materials = ref<MeetingMaterial[]>([])
 const loading = ref(true)
+const downloadingMaterialId = ref('')
+const expandedMaterialIds = ref<string[]>([])
 const hourlyExpanded = ref(false)
+const activeAgendaDateId = ref('')
 const errorMessage = ref('')
-const agendaItems = computed(buildAgendaItems)
+const agendaGroups = computed(buildAgendaGroups)
+const activeAgendaGroup = computed(buildActiveAgendaGroup)
+const agendaSummary = computed(buildAgendaSummary)
 const contentBlocks = computed(buildContentBlocks)
 const navigationUrl = computed(buildNavigationUrl)
 const upcomingForecast = computed(buildUpcomingForecast)
 const contactPersons = computed(buildContactPersons)
 const isPublicAccess = computed(() => route.query.access === 'public')
+const isAgendaFeature = computed(() => String(route.params.featureKey) === 'agenda')
 
 /**
  * 返回 7 日预报中从明天开始的列表，跳过与实时卡片重复的"今天"项。
@@ -288,6 +443,16 @@ async function loadFeature(): Promise<void> {
     ])
     meeting.value = meetingData
     feature.value = featureData
+    if (featureKey === 'agenda' && featureData.isPublished) {
+      selectDefaultAgendaDate()
+    }
+    if (featureKey === 'manual' && featureData.isPublished) {
+      materials.value = isPublicAccess.value
+        ? await listPublicMeetingMaterials(meetingId)
+        : await listGuestMeetingMaterials(meetingId)
+      // 嘉宾首次进入只浏览标题，避免长资料占据整个首屏。
+      expandedMaterialIds.value = []
+    }
     if (featureKey === 'weather' && featureData.isPublished) {
       weather.value = isPublicAccess.value
         ? await getPublicMeetingWeather(meetingId)
@@ -298,6 +463,87 @@ async function loadFeature(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+/**
+ * 判断指定会议资料是否处于展开状态。
+ *
+ * 入参：materialId 为必填资料 ID。
+ * 返回值：boolean：当前资料已展开时返回 true，否则返回 false。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isMaterialExpanded(materialId: string): boolean {
+  return expandedMaterialIds.value.includes(materialId)
+}
+
+/**
+ * 独立切换指定资料的展开状态。
+ *
+ * 入参：materialId 为必填资料 ID。
+ * 返回值：void：已展开时收起，已收起时追加到展开列表；其他资料状态保持不变。
+ * 异常：当前函数不主动抛出异常。
+ */
+function toggleMaterial(materialId: string): void {
+  if (isMaterialExpanded(materialId)) {
+    expandedMaterialIds.value = expandedMaterialIds.value.filter((id) => id !== materialId)
+    return
+  }
+  expandedMaterialIds.value = [...expandedMaterialIds.value, materialId]
+}
+
+/**
+ * 将会议资料正文转换为嘉宾端可安全展示的文档 HTML。
+ *
+ * 入参：material 为必填会议资料，可以包含历史普通文本或新版编码内容。
+ * 返回值：string：经过白名单清洗的段落、加粗、列表和缩进结构。
+ * 异常：编码损坏时安全回退为普通文本，不向页面抛出异常。
+ */
+function materialContentHtml(material: MeetingMaterial): string {
+  return decodeMaterialRichContent(material.content)
+}
+
+/**
+ * 下载嘉宾当前选择的会议资料附件。
+ *
+ * 入参：material 为包含附件的会议资料，必填。
+ * 返回值：Promise<void>：下载成功后使用原始文件名触发浏览器保存。
+ * 异常：权限、附件或网络异常时转换为页面消息提示。
+ */
+async function downloadMaterial(material: MeetingMaterial): Promise<void> {
+  if (!material.originalFilename) {
+    return
+  }
+  downloadingMaterialId.value = material.id
+  try {
+    const access = isPublicAccess.value ? 'public' : 'guest'
+    const blob = await downloadMeetingMaterialAttachment(
+      String(route.params.id),
+      material.id,
+      access,
+    )
+    saveMeetingMaterialBlob(blob, material.originalFilename)
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '附件下载失败，请稍后重试。'))
+  } finally {
+    downloadingMaterialId.value = ''
+  }
+}
+
+/**
+ * 将附件字节数转换为嘉宾易读的文件大小。
+ *
+ * 入参：sizeBytes 为可空附件字节数。
+ * 返回值：string：无大小时返回“可下载附件”，否则返回 KB 或 MB 文本。
+ * 异常：当前函数不主动抛出异常。
+ */
+function formatMaterialFileSize(sizeBytes?: number): string {
+  if (!sizeBytes) {
+    return '可下载附件'
+  }
+  if (sizeBytes >= 1024 * 1024) {
+    return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
+  }
+  return `${Math.max(sizeBytes / 1024, 0.1).toFixed(1)} KB`
 }
 
 /**
@@ -319,36 +565,236 @@ async function goBack(): Promise<void> {
 }
 
 /**
- * 将管理员逐行编辑的日程正文转换为简洁日程卡片。
+ * 将管理员逐行编辑的日程正文转换为按日期组织的展示分组。
  *
- * 入参：无；函数读取当前已发布正文，支持日期行、时间段，以及用竖线分隔的标题、讲者和地点。
- * 返回值：AgendaDisplayItem[]：包含日期分组或时间、标题、可选讲者与地点的日程展示项。
- * 异常：正文为空时返回一条内容待补充提示。
- * 使用示例：`09:00-09:30 开幕致辞｜主办方代表｜峰会厅`。
+ * 入参：无；函数读取当前已发布日程正文，正文可以为空。
+ * 返回值：AgendaDateGroup[]：按出现顺序排列的日期分组，每组包含时段标题和日程条目。
+ * 异常：当前函数不主动抛出异常；正文为空或没有日期行时使用“全部日程”安全回退。
+ * 使用示例：日期行写作 `8月18日（周二）`，时段行写作 `上午｜主旨演讲`，
+ * 日程行写作 `09:00-09:30 开幕致辞｜主办方代表｜主会场`。
  */
-function buildAgendaItems(): AgendaDisplayItem[] {
+function buildAgendaGroups(): AgendaDateGroup[] {
   const lines = feature.value?.content.split('\n').map((line) => line.trim()).filter(Boolean) ?? []
   if (!lines.length) {
-    return [{ id: 'empty', kind: 'entry', time: '', title: '日程内容待补充', speaker: '', location: '' }]
+    return [{
+      id: 'agenda-all',
+      title: '全部日程',
+      day: '',
+      monthLabel: '',
+      weekday: '',
+      dateKey: '',
+      items: [parseAgendaEntryLine('日程内容待补充', 0)],
+    }]
   }
-  return lines.map((line, index) => {
-    const isDateLine = /^(?:\d{4}\s*[年./-]\s*)?\d{1,2}\s*[月./-]\s*\d{1,2}\s*日?$/.test(line)
-    if (isDateLine) {
-      return { id: `agenda-date-${index}`, kind: 'date', time: '', title: line, speaker: '', location: '' }
+
+  const groups: AgendaDateGroup[] = []
+  let currentGroup: AgendaDateGroup | undefined
+
+  lines.forEach((line, index) => {
+    const dateMeta = parseAgendaDateLine(line)
+    if (dateMeta) {
+      currentGroup = {
+        id: `agenda-date-${dateMeta.dateKey || index}-${index}`,
+        title: dateMeta.title,
+        day: dateMeta.day,
+        monthLabel: dateMeta.monthLabel,
+        weekday: dateMeta.weekday,
+        dateKey: dateMeta.dateKey,
+        items: [],
+      }
+      groups.push(currentGroup)
+      // 日期行末尾带有“上午”等时段时，立即建立对应分段，避免信息丢失。
+      if (dateMeta.period) {
+        currentGroup.items.push({
+          id: `agenda-section-${index}`,
+          kind: 'section',
+          period: dateMeta.period,
+          title: '',
+        })
+      }
+      return
     }
 
-    const match = line.match(/^(\d{1,2}:\d{2}(?:\s*[-–—]\s*\d{1,2}:\d{2})?)\s*(.*)$/)
-    // 竖线后的两段分别作为讲者和地点；缺失字段不在页面占位。
-    const contentParts = (match?.[2] || line).split(/\s*[|｜]\s*/).map((part) => part.trim()).filter(Boolean)
-    return {
-      id: `agenda-${index}`,
-      kind: 'entry',
-      time: match?.[1] ?? '',
-      title: contentParts[0] || line,
-      speaker: contentParts[1] || '',
-      location: contentParts[2] || '',
+    if (!currentGroup) {
+      currentGroup = {
+        id: 'agenda-all',
+        title: '全部日程',
+        day: '',
+        monthLabel: '',
+        weekday: '',
+        dateKey: '',
+        items: [],
+      }
+      groups.push(currentGroup)
     }
+
+    const section = parseAgendaSectionLine(line, index)
+    currentGroup.items.push(section ?? parseAgendaEntryLine(line, index))
   })
+
+  return groups
+}
+
+/**
+ * 解析单个日期标题，并提取日期切换器所需的年月日、星期与可选时段。
+ *
+ * 入参：
+ * - line：必填，非空日程正文行；支持中文日期和使用 `-`、`/`、`.` 分隔的数字日期。
+ * 返回值：AgendaDateMeta | null：识别成功返回规范化日期信息，否则返回 null。
+ * 异常：当前函数不主动抛出异常；不合法日期只会被视为普通日程正文。
+ * 使用示例：`8月18日（周二）上午` 返回 18 日、8 月、周二和上午。
+ */
+function parseAgendaDateLine(line: string): AgendaDateMeta | null {
+  const chineseMatch = line.match(
+    /^(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*日?\s*(?:[（(]?\s*(周[一二三四五六日天])\s*[）)]?)?\s*(上午|中午|下午|晚上|全天)?$/,
+  )
+  const numericMatch = line.match(
+    /^(?:(\d{4})\s*[-/.]\s*)?(\d{1,2})\s*[-/.]\s*(\d{1,2})\s*(?:[（(]?\s*(周[一二三四五六日天])\s*[）)]?)?\s*(上午|中午|下午|晚上|全天)?$/,
+  )
+  const match = chineseMatch ?? numericMatch
+  if (!match) {
+    return null
+  }
+
+  const [, year = '', month, day, weekday = '', period = ''] = match
+  const numericMonth = Number(month)
+  const numericDay = Number(day)
+  // 只接受真实月份和日的基础范围，防止普通编号被误判为日期。
+  if (numericMonth < 1 || numericMonth > 12 || numericDay < 1 || numericDay > 31) {
+    return null
+  }
+
+  const normalizedWeekday = weekday === '周天' ? '周日' : weekday
+  const paddedMonth = String(numericMonth).padStart(2, '0')
+  const paddedDay = String(numericDay).padStart(2, '0')
+  return {
+    title: `${numericMonth}月${numericDay}日${normalizedWeekday ? ` ${normalizedWeekday}` : ''}`,
+    day: String(numericDay),
+    monthLabel: `${numericMonth}月`,
+    weekday: normalizedWeekday,
+    dateKey: year ? `${year}-${paddedMonth}-${paddedDay}` : `${paddedMonth}-${paddedDay}`,
+    period,
+  }
+}
+
+/**
+ * 解析上午、下午等时段标题，形成时间轴中的视觉分段。
+ *
+ * 入参：
+ * - line：必填，待识别的非空正文行。
+ * - index：必填，大于等于 0 的正文行序号，用于生成稳定展示标识。
+ * 返回值：AgendaSectionItem | null：识别成功返回时段与可选主题，否则返回 null。
+ * 异常：当前函数不主动抛出异常。
+ * 使用示例：`下午｜评价技术创新与成果发布` 返回“下午”分段及对应主题。
+ */
+function parseAgendaSectionLine(line: string, index: number): AgendaSectionItem | null {
+  const match = line.match(/^(上午|中午|下午|晚上|全天)(?:\s*[|｜]\s*(.+))?$/)
+  if (!match) {
+    return null
+  }
+  return {
+    id: `agenda-section-${index}`,
+    kind: 'section',
+    period: match[1],
+    title: match[2]?.trim() ?? '',
+  }
+}
+
+/**
+ * 解析单个日程行，拆分起止时间、环节名称、受限富文本内容和地点。
+ *
+ * 入参：
+ * - line：必填，待解析的日程正文行；允许没有时间或没有竖线补充字段。
+ * - index：必填，大于等于 0 的正文行序号，用于生成稳定展示标识。
+ * 返回值：AgendaEntryItem：可直接用于时间轴渲染的日程条目。
+ * 异常：当前函数不主动抛出异常；无法识别的内容仍完整保留为环节名称。
+ * 使用示例：`09:00-09:30 开幕致辞｜rich:...｜主会场`。
+ */
+function parseAgendaEntryLine(line: string, index: number): AgendaEntryItem {
+  const timeMatch = line.match(
+    /^(\d{1,2}:\d{2})(?:\s*[-–—~至]\s*(\d{1,2}:\d{2}))?\s*(.*)$/,
+  )
+  const content = timeMatch?.[3]?.trim() || line
+  // 保留空分段的位置，避免内容为空时把地点错误移动到内容字段。
+  const contentParts = content.split(/\s*[|｜]\s*/).map((part) => part.trim())
+  const encodedContent = contentParts[1] ?? ''
+  if (isEncodedAgendaRichContent(encodedContent)) {
+    return {
+      id: `agenda-entry-${index}`,
+      kind: 'entry',
+      startTime: timeMatch?.[1] ?? '',
+      endTime: timeMatch?.[2] ?? '',
+      title: contentParts[0] || line,
+      contentHtml: decodeAgendaRichContent(encodedContent),
+      location: contentParts.slice(2).filter(Boolean).join('｜'),
+    }
+  }
+
+  // 历史四字段将“主题”和“嘉宾”合并为两行内容，避免升级编辑器时丢失信息。
+  const legacyContent = contentParts.length >= 4
+    ? [contentParts[1], contentParts[2]].filter(Boolean).join('\n')
+    : contentParts[1] ?? ''
+  return {
+    id: `agenda-entry-${index}`,
+    kind: 'entry',
+    startTime: timeMatch?.[1] ?? '',
+    endTime: timeMatch?.[2] ?? '',
+    title: contentParts[0] || line,
+    contentHtml: agendaPlainTextToHtml(legacyContent),
+    location: contentParts.length >= 4
+      ? contentParts.slice(3).filter(Boolean).join('｜')
+      : contentParts.slice(2).filter(Boolean).join('｜'),
+  }
+}
+
+/**
+ * 返回当前选中的日期分组，并在选择无效时回退到第一组。
+ *
+ * 入参：无；函数读取 activeAgendaDateId 和解析后的 agendaGroups。
+ * 返回值：AgendaDateGroup | undefined：存在日程时返回当前分组，否则返回 undefined。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildActiveAgendaGroup(): AgendaDateGroup | undefined {
+  return agendaGroups.value.find((group) => group.id === activeAgendaDateId.value) ?? agendaGroups.value[0]
+}
+
+/**
+ * 生成当前日期的时间范围摘要。
+ *
+ * 入参：无；函数读取当前激活日期分组。
+ * 返回值：string：形如“全天 09:00–17:00”的摘要；无时间时返回当日日程说明。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildAgendaSummary(): string {
+  const entries = activeAgendaGroup.value?.items.filter((item): item is AgendaEntryItem => item.kind === 'entry') ?? []
+  if (!entries.length) {
+    return '当日安排正在准备中'
+  }
+  const firstTime = entries.find((item) => item.startTime)?.startTime ?? ''
+  const lastTimedEntry = [...entries].reverse().find((item) => item.endTime || item.startTime)
+  const lastTime = lastTimedEntry?.endTime || lastTimedEntry?.startTime || ''
+  if (firstTime && firstTime === lastTime) {
+    return `${firstTime} 开始`
+  }
+  const timeRange = firstTime && lastTime ? `${firstTime}–${lastTime}` : firstTime || lastTime
+  return timeRange ? `全天 ${timeRange}` : '当日日程'
+}
+
+/**
+ * 在日程加载后选择最适合嘉宾查看的默认日期。
+ *
+ * 入参：无；函数读取浏览器当前日期与解析后的 agendaGroups。
+ * 返回值：void；函数更新 activeAgendaDateId，不返回业务数据。
+ * 异常：当前函数不主动抛出异常；没有当天分组时选择第一个日期。
+ */
+function selectDefaultAgendaDate(): void {
+  const now = new Date()
+  const monthDay = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const fullDate = `${now.getFullYear()}-${monthDay}`
+  const defaultGroup = agendaGroups.value.find(
+    (group) => group.dateKey === fullDate || group.dateKey === monthDay,
+  ) ?? agendaGroups.value[0]
+  activeAgendaDateId.value = defaultGroup?.id ?? ''
 }
 
 /**

@@ -144,7 +144,7 @@ function resolveMenuItems(): AdminMenuItem[] {
     { key: 'fields', label: '嘉宾字段', icon: Tickets },
     { key: 'assistant', label: '会议服务', icon: Document },
     { key: 'staff', label: '工作人员', icon: UserFilled },
-    { key: 'checkins', label: '签到记录', icon: Calendar },
+    { key: 'checkins', label: '签到管理', icon: Calendar },
   ]
 }
 

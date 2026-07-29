@@ -423,7 +423,12 @@
           <el-table-column prop="unpublishedMessage" label="未发布提醒" min-width="260" show-overflow-tooltip />
           <el-table-column label="操作" width="100"><template #default="{ row }"><el-button size="small" @click="openAssistantEditDialog(row)">编辑</el-button></template></el-table-column>
         </el-table>
-        <el-dialog v-model="assistantEditDialogVisible" :title="`编辑${selectedAssistantFeature?.title ?? '会议助手'}`" width="min(620px, calc(100% - 32px))">
+        <el-dialog
+          v-model="assistantEditDialogVisible"
+          :title="`编辑${selectedAssistantFeature?.title ?? '会议助手'}`"
+          :width="selectedAssistantFeature?.key === 'agenda' ? 'min(1180px, calc(100% - 32px))' : selectedAssistantFeature?.key === 'manual' ? 'min(780px, calc(100% - 32px))' : 'min(620px, calc(100% - 32px))'"
+          class="assistant-edit-dialog"
+        >
           <el-form label-position="top" @submit.prevent>
             <el-form-item label="发布状态"><el-switch v-model="assistantEditForm.isPublished" active-text="已发布" inactive-text="未发布" /></el-form-item>
             <el-form-item label="访问权限">
@@ -433,7 +438,17 @@
               </el-radio-group>
               <div class="el-form-item__help">公开可见只影响已发布内容，未发布草稿不会公开。</div>
             </el-form-item>
-            <template v-if="selectedAssistantFeature?.key === 'contact'">
+            <AdminAgendaEditor
+              v-if="selectedAssistantFeature?.key === 'agenda'"
+              v-model="assistantEditForm.content"
+              :meeting-start-time="meeting?.startTime"
+            />
+            <AdminMeetingMaterialsEditor
+              v-else-if="selectedAssistantFeature?.key === 'manual' && meeting"
+              :meeting-id="meeting.id"
+              @count-change="assistantMaterialCount = $event"
+            />
+            <template v-else-if="selectedAssistantFeature?.key === 'contact'">
               <div class="admin-contact-table-panel">
                 <div class="admin-contact-table-panel__heading">
                   <span>会务联系人</span>
@@ -496,15 +511,252 @@
           </el-form>
         </el-dialog>
       </el-tab-pane>
-      <el-tab-pane class="admin-tab-panel" label="签到记录" name="checkins">
+      <el-tab-pane class="admin-tab-panel" label="签到管理" name="checkins">
         <el-alert v-if="checkInError" type="error" :closable="false" :title="checkInError" />
-        <el-table v-loading="checkInLoading" class="top-gap" :data="checkIns" row-key="guestId">
-          <el-table-column prop="guestName" label="嘉宾" />
-          <el-table-column prop="phone" label="手机号" width="150" />
-          <el-table-column prop="staffName" label="工作人员" />
-          <el-table-column label="方式" width="100"><template #default="{ row }">{{ row.method === 'scan' ? '扫码' : '人工' }}</template></el-table-column>
-          <el-table-column label="签到时间"><template #default="{ row }">{{ formatDate(row.checkedInAt) }}</template></el-table-column>
-        </el-table>
+        <section class="checkin-management-page top-gap">
+          <section id="checkin-session-list" class="checkin-compact-grid">
+            <article class="admin-panel checkin-session-panel">
+              <div class="admin-panel__heading checkin-panel-heading">
+                <div>
+                  <h2>签到场次</h2>
+                  <p>{{ checkInModeMeta.label }}｜{{ checkInModeCountHint }}</p>
+                </div>
+                <div class="checkin-session-actions">
+                  <el-button
+                    plain
+                    type="primary"
+                    :icon="Refresh"
+                    :disabled="dateSessionGenerationSummary.disabled && checkInMode === 'date'"
+                    :loading="generatingDateSessions"
+                    @click="generateDateCheckInSessions"
+                  >
+                    按日期生成
+                  </el-button>
+                  <el-button
+                    v-if="checkInMode === 'date' && checkInManualDefaultSessionId"
+                    plain
+                    :icon="Refresh"
+                    @click="restoreDateAutoDefault"
+                  >
+                    恢复自动切换
+                  </el-button>
+                  <el-button plain type="primary" :icon="Plus" @click="prepareCustomCheckInSession">新增场次</el-button>
+                  <el-input
+                    v-model="checkInSessionKeyword"
+                    class="checkin-session-search"
+                    :prefix-icon="Search"
+                    placeholder="搜索场次名称"
+                    clearable
+                  />
+                </div>
+              </div>
+
+              <section v-loading="checkInSessionLoading" class="checkin-session-status-list">
+                <article
+                  v-for="sessionItem in filteredCheckInSessions"
+                  :key="sessionItem.id"
+                  class="checkin-session-status-item"
+                  :class="{ 'is-active': sessionItem.isDefault }"
+                >
+                  <div class="checkin-session-status-item__default">
+                    <button
+                      type="button"
+                      class="checkin-default-dot"
+                      :class="{ 'is-active': sessionItem.isDefault }"
+                      :aria-label="sessionItem.isDefault ? '当前默认场次' : '设为默认场次'"
+                      :disabled="sessionItem.isDefault"
+                      @click="setDefaultCheckInSession(sessionItem)"
+                    >
+                      <span />
+                    </button>
+                  </div>
+                  <div class="checkin-session-status-item__main">
+                    <div class="checkin-session-status-item__title">
+                      <strong>{{ sessionItem.title }}</strong>
+                      <el-tag type="info" size="small">{{ sessionTypeText(sessionItem) }}</el-tag>
+                    </div>
+                    <small>{{ sessionTimeText(sessionItem) }}</small>
+                  </div>
+                  <div class="checkin-session-progress">
+                    <el-progress :percentage="sessionProgressPercentage(sessionItem)" :show-text="false" :stroke-width="6" />
+                    <span>{{ sessionProgressText(sessionItem) }}</span>
+                  </div>
+                  <div class="checkin-session-status-item__counts">
+                    <span>已签 <strong>{{ sessionRecordCount(sessionItem) }}</strong></span>
+                    <span>待签 <strong>{{ sessionUncheckedCount(sessionItem) }}</strong></span>
+                  </div>
+                  <div class="checkin-session-status-item__actions">
+                    <el-button size="small" link @click="editCheckInSession(sessionItem)">编辑</el-button>
+                    <el-button
+                      size="small"
+                      link
+                      type="danger"
+                      :loading="deletingCheckInSessionId === sessionItem.id"
+                      @click="confirmDeleteCheckInSession(sessionItem)"
+                    >
+                      删除
+                    </el-button>
+                  </div>
+                </article>
+                <el-empty v-if="!filteredCheckInSessions.length" description="暂无签到场次" :image-size="72" />
+              </section>
+
+              <div class="checkin-session-note">列表以签到状态为主；编辑、删除和排序能力作为后续管理操作收敛展示。</div>
+            </article>
+
+            <aside class="checkin-side-stack">
+              <article class="admin-panel checkin-record-panel">
+                <div class="admin-panel__heading checkin-panel-heading">
+                  <div>
+                    <h2>签到统计</h2>
+                    <p>{{ selectedCheckInSession?.title || '未选择场次' }}｜签到人员列表</p>
+                  </div>
+                  <div class="checkin-record-heading-actions">
+                    <el-select v-model="selectedCheckInSessionId" class="admin-checkin-session-select" placeholder="选择签到场次" @change="handleCheckInSessionSelect">
+                      <el-option v-for="sessionItem in checkInSessions" :key="sessionItem.id" :label="sessionItem.title" :value="sessionItem.id" />
+                    </el-select>
+                    <el-button circle plain :icon="FullScreen" aria-label="放大查看签到明细" @click="openCheckInRecordDialog" />
+                  </div>
+                </div>
+                <section class="checkin-record-stats">
+                  <article>
+                    <span>已签到</span>
+                    <strong>{{ checkIns.length }}</strong>
+                    <small>当前选中场次</small>
+                  </article>
+                  <article>
+                    <span>待签到</span>
+                    <strong>{{ Math.max(totalGuestCount - checkIns.length, 0) }}</strong>
+                    <small>按当前场次计算</small>
+                  </article>
+                  <article>
+                    <span>签到率</span>
+                    <strong>{{ selectedSessionRate }}%</strong>
+                    <small>{{ selectedCheckInSession?.title || '未选择' }}</small>
+                  </article>
+                </section>
+                <section v-loading="checkInLoading" class="checkin-record-preview">
+                  <article v-for="record in checkIns" :key="record.guestId" class="checkin-record-preview-item">
+                    <div>
+                      <strong>{{ record.guestName }}</strong>
+                      <small>{{ record.phone }}</small>
+                    </div>
+                    <div>
+                      <span>{{ formatDate(record.checkedInAt) }}</span>
+                      <small>{{ record.method === 'scan' ? '扫码' : '人工' }}｜{{ record.staffName }}</small>
+                    </div>
+                  </article>
+                  <el-empty v-if="!checkIns.length && !checkInLoading" description="当前场次暂无签到人员" :image-size="54" />
+                </section>
+              </article>
+
+              <article class="admin-panel checkin-comparison-panel">
+                <div class="admin-panel__heading checkin-comparison-heading">
+                  <div>
+                    <h2>场次对比</h2>
+                    <p>
+                      {{
+                        checkInComparison
+                          ? `当前场次“${selectedCheckInSession?.title || '未选择'}”与“${checkInComparison.previousSessionTitle}”对比`
+                          : '首个场次暂无前序对比。'
+                      }}
+                    </p>
+                  </div>
+                </div>
+                <div v-if="checkInComparison" class="checkin-comparison-cards">
+                  <section class="checkin-comparison-card is-added">
+                    <span>新增：本场已签到、对比场次未签到</span>
+                    <strong>{{ checkInComparison.addedGuests.length }} 人</strong>
+                    <ul>
+                      <li v-for="guest in checkInComparison.addedGuests.slice(0, 3)" :key="guest.guestId">
+                        <span>{{ guest.guestName }}</span>
+                        <small>{{ guest.phone }}</small>
+                      </li>
+                    </ul>
+                    <small v-if="!checkInComparison.addedGuests.length">暂无新增人员</small>
+                  </section>
+                  <section class="checkin-comparison-card is-removed">
+                    <span>减少：对比场次已签到、本场未签到</span>
+                    <strong>{{ checkInComparison.removedGuests.length }} 人</strong>
+                    <ul>
+                      <li v-for="guest in checkInComparison.removedGuests.slice(0, 3)" :key="guest.guestId">
+                        <span>{{ guest.guestName }}</span>
+                        <small>{{ guest.phone }}</small>
+                      </li>
+                    </ul>
+                    <small v-if="!checkInComparison.removedGuests.length">暂无减少人员</small>
+                  </section>
+                </div>
+                <el-empty v-else description="暂无场次对比" :image-size="64" />
+              </article>
+            </aside>
+          </section>
+
+          <el-dialog
+            v-model="checkInSessionDialogVisible"
+            :title="checkInSessionForm.id ? '编辑签到场次' : '新增签到场次'"
+            width="min(760px, calc(100% - 32px))"
+            @closed="resetCheckInSessionForm"
+          >
+            <div class="checkin-edit-dialog__head">
+              <div>
+                <p>日期场次和自定义场次使用同一套字段，默认场次可在表格中随时调整。</p>
+              </div>
+            </div>
+            <el-form class="checkin-session-form" label-position="top" @submit.prevent>
+              <el-form-item label="场次名称">
+                <el-input v-model="checkInSessionForm.title" placeholder="例如：第二天签到" maxlength="100" />
+              </el-form-item>
+              <el-form-item label="开始时间">
+                <el-input v-model="checkInSessionForm.startsAt" type="datetime-local" />
+              </el-form-item>
+              <el-form-item label="结束时间">
+                <el-input v-model="checkInSessionForm.endsAt" type="datetime-local" />
+              </el-form-item>
+              <el-form-item label="场次说明">
+                <el-input v-model="checkInSessionForm.description" placeholder="可填写地点、对象或注意事项" maxlength="1000" />
+              </el-form-item>
+              <el-form-item label="默认场次">
+                <el-switch v-model="checkInSessionForm.isDefault" active-text="设为默认" inactive-text="普通场次" />
+              </el-form-item>
+              <div class="checkin-session-form__actions">
+                <el-button @click="closeCheckInSessionDialog">取消</el-button>
+                <el-button type="primary" :loading="savingCheckInSession" @click="saveCheckInSession">
+                  {{ checkInSessionForm.id ? '保存场次' : '新增场次' }}
+                </el-button>
+              </div>
+            </el-form>
+          </el-dialog>
+
+          <el-dialog
+            v-model="checkInRecordDialogVisible"
+            :title="`${selectedCheckInSession?.title || '当前场次'}签到明细`"
+            width="min(900px, calc(100% - 32px))"
+          >
+            <section class="checkin-record-dialog-summary">
+              <article>
+                <span>已签到</span>
+                <strong>{{ checkIns.length }}</strong>
+              </article>
+              <article>
+                <span>待签到</span>
+                <strong>{{ Math.max(totalGuestCount - checkIns.length, 0) }}</strong>
+              </article>
+              <article>
+                <span>签到率</span>
+                <strong>{{ selectedSessionRate }}%</strong>
+              </article>
+            </section>
+            <el-table v-loading="checkInLoading" class="admin-data-table top-gap" :data="checkIns" row-key="guestId" max-height="460">
+              <el-table-column label="签到时间" width="180"><template #default="{ row }">{{ formatDate(row.checkedInAt) }}</template></el-table-column>
+              <el-table-column prop="guestName" label="嘉宾" min-width="120" />
+              <el-table-column prop="phone" label="手机号" width="150" />
+              <el-table-column prop="staffName" label="工作人员" min-width="130" />
+              <el-table-column label="方式" width="100"><template #default="{ row }">{{ row.method === 'scan' ? '扫码' : '人工' }}</template></el-table-column>
+            </el-table>
+          </el-dialog>
+
+        </section>
       </el-tab-pane>
       </el-tabs>
     </section>
@@ -521,7 +773,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Download, Plus, Upload } from '@element-plus/icons-vue'
+import { Download, FullScreen, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import QRCode from 'qrcode'
 
@@ -531,7 +783,15 @@ import {
   downloadAdminGuestStatusExport,
   importAdminGuests,
 } from '../../api/adminExcel'
-import { getAdminCheckInSummary } from '../../api/adminCheckIns'
+import {
+  createAdminCheckInSession,
+  deleteAdminCheckInSession,
+  getAdminCheckInSettings,
+  getAdminCheckInSummary,
+  listAdminCheckInSessions,
+  updateAdminCheckInSettings,
+  updateAdminCheckInSession,
+} from '../../api/adminCheckIns'
 import {
   createAdminGuest,
   deleteAdminGuest,
@@ -561,9 +821,24 @@ import {
 import { listAdminMeetingAssistantFeatures, updateAdminMeetingAssistantFeature } from '../../api/meetingAssistant'
 import { createAdminStaff, listAdminStaff, removeAdminStaffAssignment, updateAdminStaff } from '../../api/adminStaff'
 import { getApiErrorMessage } from '../../api/client'
+import AdminAgendaEditor from '../../components/AdminAgendaEditor.vue'
+import AdminMeetingMaterialsEditor from '../../components/AdminMeetingMaterialsEditor.vue'
 import AdminWorkspaceLayout from '../../components/AdminWorkspaceLayout.vue'
 import { useSessionStore } from '../../stores/session'
-import type { AdminCheckInRecord, Guest, GuestField, GuestImportInput, Meeting, MeetingAssistantAccessLevel, MeetingAssistantFeature, MeetingStatus, StaffUser } from '../../types'
+import type {
+  AdminCheckInComparison,
+  AdminCheckInRecord,
+  CheckInMode,
+  CheckInSession,
+  Guest,
+  GuestField,
+  GuestImportInput,
+  Meeting,
+  MeetingAssistantAccessLevel,
+  MeetingAssistantFeature,
+  MeetingStatus,
+  StaffUser,
+} from '../../types'
 
 interface GuestManagementRow {
   id: string
@@ -581,6 +856,23 @@ interface GuestManagementRow {
 
 interface GuestFormState extends GuestImportInput {
   values: Record<string, string | null>
+}
+
+interface CheckInSessionFormState {
+  id: string
+  title: string
+  description: string
+  startsAt: string
+  endsAt: string
+  isDefault: boolean
+}
+
+interface DateSessionGenerationSummary {
+  total: number
+  existing: number
+  missing: number
+  label: string
+  disabled: boolean
 }
 
 const route = useRoute()
@@ -606,6 +898,19 @@ const savingGuestFields = ref(false)
 const guestFieldMessage = ref('')
 const guestFieldMessageType = ref<'success' | 'error' | 'info'>('success')
 const staff = ref<StaffUser[]>([])
+const checkInSessions = ref<CheckInSession[]>([])
+const selectedCheckInSessionId = ref('')
+const checkInMode = ref<CheckInMode>('single')
+const checkInManualDefaultSessionId = ref('')
+const checkInSessionKeyword = ref('')
+const generatingDateSessions = ref(false)
+const checkInSessionLoading = ref(false)
+const savingCheckInSession = ref(false)
+const deletingCheckInSessionId = ref('')
+const checkInSessionDialogVisible = ref(false)
+const checkInRecordDialogVisible = ref(false)
+const checkInSessionForm = ref<CheckInSessionFormState>(createEmptyCheckInSessionForm())
+const checkInComparison = ref<AdminCheckInComparison>()
 const checkIns = ref<AdminCheckInRecord[]>([])
 const checkInLoading = ref(false)
 const checkInError = ref('')
@@ -646,6 +951,7 @@ const staffEditDialogVisible = ref(false)
 const staffEditForm = ref({ isActive: true, newPassword: '' })
 const selectedAssistantFeature = ref<MeetingAssistantFeature>()
 const assistantEditDialogVisible = ref(false)
+const assistantMaterialCount = ref(0)
 const assistantEditForm = ref({
   content: '',
   unpublishedMessage: '',
@@ -767,6 +1073,12 @@ const guestRows = computed(() => guests.value.map((guest) => ({
   ...guest,
   checkedIn: checkIns.value.some((record) => record.guestId === guest.id),
 })))
+const selectedCheckInSession = computed(() => checkInSessions.value.find((item) => item.id === selectedCheckInSessionId.value))
+const checkInModeMeta = computed(resolveCheckInModeMeta)
+const checkInModeCountHint = computed(resolveCheckInModeCountHint)
+const filteredCheckInSessions = computed(filterCheckInSessions)
+const dateSessionGenerationSummary = computed(resolveDateSessionGenerationSummary)
+const selectedSessionRate = computed(resolveSelectedSessionRate)
 const pendingGuestApplications = computed(() => guestApplications.value.filter((application) => application.status === 'pending'))
 const guestManagementRows = computed(resolveGuestManagementRows)
 const filteredGuestManagementRows = computed(filterGuestManagementRows)
@@ -837,7 +1149,7 @@ function resolveActiveSectionTitle(): string {
     fields: '嘉宾字段',
     assistant: '会议服务',
     staff: '工作人员',
-    checkins: '签到记录',
+    checkins: '签到管理',
   }
   return titleMap[resolveActiveSection()] || '数据总览'
 }
@@ -854,6 +1166,189 @@ function resolveCheckInRate(): number {
     return 0
   }
   return Math.min(100, Math.round((checkedCount.value / totalGuestCount.value) * 100))
+}
+
+/**
+ * 根据现有签到场次推断默认展示的签到模式。
+ *
+ * 入参：sessions 为当前会议的签到场次列表，必填。
+ * 返回值：CheckInMode：存在日期场次时返回 date，多场非日期返回 custom，否则返回 single。
+ * 异常：当前函数不主动抛出异常。
+ */
+function inferCheckInMode(sessions: CheckInSession[]): CheckInMode {
+  if (sessions.some(isFullDayDateSession)) {
+    return 'date'
+  }
+  if (sessions.length > 1) {
+    return 'custom'
+  }
+  return 'single'
+}
+
+/**
+ * 读取当前签到规则的展示信息。
+ *
+ * 入参：无；函数读取当前签到规则和手动覆盖状态。
+ * 返回值：{ label: string; description: string }：用于规则栏展示的标题和说明。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resolveCheckInModeMeta(): { label: string; description: string } {
+  if (checkInMode.value === 'date') {
+    return {
+      label: checkInManualDefaultSessionId.value ? '日期场次 · 手动覆盖' : '日期场次 · 自动切换',
+      description: checkInManualDefaultSessionId.value
+        ? '当前由管理员手动指定默认场次，可恢复为按系统日期自动切换。'
+        : '系统按服务端当前日期自动选择当天签到场次。',
+    }
+  }
+  if (checkInMode.value === 'custom') {
+    return {
+      label: '自定义场次',
+      description: '管理员手动维护场次顺序和当前默认签到场次。',
+    }
+  }
+  return {
+    label: '单场签到',
+    description: '整场会议只使用一个默认签到场次。',
+  }
+}
+
+/**
+ * 读取当前签到模式与场次数量之间的业务提示。
+ *
+ * 入参：无；函数读取当前签到模式、会议日期和已加载场次。
+ * 返回值：string：用于签到场次卡片副标题的简短业务规则说明。
+ * 异常：当前函数不主动抛出异常；会议日期不完整时回退为通用提示。
+ */
+function resolveCheckInModeCountHint(): string {
+  if (checkInMode.value === 'single') {
+    return `单场签到建议保留 1 个有效场次，当前 ${checkInSessions.value.length} 个。`
+  }
+  if (checkInMode.value === 'date') {
+    const summary = dateSessionGenerationSummary.value
+    if (!summary.total) {
+      return '按日期签到需要会议开始和结束日期完整后生成日期场次。'
+    }
+    return `按日期签到建议与会议自然日一致：会议共 ${summary.total} 天，已生成 ${summary.existing}/${summary.total} 天。`
+  }
+  return `自定义场次允许 1 个或多个，当前 ${checkInSessions.value.length} 个，由管理员按流程维护。`
+}
+
+/**
+ * 按关键词过滤签到场次列表。
+ *
+ * 入参：无；函数读取场次列表和搜索关键词。
+ * 返回值：CheckInSession[]：匹配关键词的场次列表。
+ * 异常：当前函数不主动抛出异常。
+ */
+function filterCheckInSessions(): CheckInSession[] {
+  const keyword = checkInSessionKeyword.value.trim().toLowerCase()
+  if (!keyword) {
+    return checkInSessions.value
+  }
+  return checkInSessions.value.filter((sessionItem) => {
+    return [sessionItem.title, sessionItem.description, sessionTypeText(sessionItem)]
+      .join(' ')
+      .toLowerCase()
+      .includes(keyword)
+  })
+}
+
+/**
+ * 统计会议日期场次的生成状态。
+ *
+ * 入参：无；函数读取当前会议和已加载的签到场次列表。
+ * 返回值：DateSessionGenerationSummary：包含会议天数、已存在天数、缺失天数、按钮文案和是否禁用。
+ * 异常：当前函数不主动抛出异常；会议日期不可用时返回禁用状态。
+ */
+function resolveDateSessionGenerationSummary(): DateSessionGenerationSummary {
+  if (!meeting.value) {
+    return { total: 0, existing: 0, missing: 0, label: '生成日期场次', disabled: true }
+  }
+  const dateKeys = meetingDateKeys(meeting.value)
+  if (!dateKeys.length) {
+    return { total: 0, existing: 0, missing: 0, label: '会议日期不完整', disabled: true }
+  }
+  const existingTitles = new Set(checkInSessions.value.map((item) => item.title))
+  const existing = dateKeys.filter((item) => existingTitles.has(item.title)).length
+  const missing = Math.max(dateKeys.length - existing, 0)
+  if (!missing) {
+    return { total: dateKeys.length, existing, missing, label: `已生成 ${existing}/${dateKeys.length} 天`, disabled: true }
+  }
+  const label = existing ? `补齐缺失日期场次 ${existing}/${dateKeys.length}` : '生成日期场次'
+  return { total: dateKeys.length, existing, missing, label, disabled: false }
+}
+
+/**
+ * 计算当前选中签到场次的签到率。
+ *
+ * 入参：无；函数读取嘉宾总数和当前场次签到记录数。
+ * 返回值：number：范围为 0 到 100 的整数百分比。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resolveSelectedSessionRate(): number {
+  if (!totalGuestCount.value) {
+    return 0
+  }
+  return Math.min(100, Math.round((checkIns.value.length / totalGuestCount.value) * 100))
+}
+
+/**
+ * 判断签到场次是否为当前选中的统计场次。
+ *
+ * 入参：sessionItem 为签到场次，必填。
+ * 返回值：boolean：场次 ID 与当前统计场次一致时返回 true。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isSelectedCheckInSession(sessionItem: CheckInSession): boolean {
+  return sessionItem.id === selectedCheckInSessionId.value
+}
+
+/**
+ * 读取场次行的已签到人数。
+ *
+ * 入参：sessionItem 为签到场次，必填。
+ * 返回值：number | string：当前选中场次返回真实人数，其他场次返回横线。
+ * 异常：当前函数不主动抛出异常。
+ */
+function sessionRecordCount(sessionItem: CheckInSession): number | string {
+  return isSelectedCheckInSession(sessionItem) ? checkIns.value.length : '—'
+}
+
+/**
+ * 读取场次行的待签到人数。
+ *
+ * 入参：sessionItem 为签到场次，必填。
+ * 返回值：number | string：当前选中场次返回真实人数，其他场次返回横线。
+ * 异常：当前函数不主动抛出异常。
+ */
+function sessionUncheckedCount(sessionItem: CheckInSession): number | string {
+  return isSelectedCheckInSession(sessionItem) ? Math.max(totalGuestCount.value - checkIns.value.length, 0) : '—'
+}
+
+/**
+ * 计算场次状态列表中的签到进度。
+ *
+ * 入参：sessionItem 为签到场次，必填。
+ * 返回值：number：当前选中场次返回 0 到 100 的签到率，其他场次因未加载明细返回 0。
+ * 异常：当前函数不主动抛出异常。
+ */
+function sessionProgressPercentage(sessionItem: CheckInSession): number {
+  if (!isSelectedCheckInSession(sessionItem) || !totalGuestCount.value) {
+    return 0
+  }
+  return Math.min(100, Math.round((checkIns.value.length / totalGuestCount.value) * 100))
+}
+
+/**
+ * 读取场次状态列表中的进度文案。
+ *
+ * 入参：sessionItem 为签到场次，必填。
+ * 返回值：string：当前选中场次返回百分比，其他场次返回横线。
+ * 异常：当前函数不主动抛出异常。
+ */
+function sessionProgressText(sessionItem: CheckInSession): string {
+  return isSelectedCheckInSession(sessionItem) ? `${sessionProgressPercentage(sessionItem)}%` : '—'
 }
 
 /**
@@ -917,7 +1412,7 @@ async function loadDetail(): Promise<void> {
     detailLoading.value = false
   }
   if (meeting.value) {
-    await Promise.all([loadAssistantFeatures(meetingId), loadCheckInSummary(meetingId), loadGuestApplications(meetingId)])
+    await Promise.all([loadAssistantFeatures(meetingId), loadCheckInState(meetingId), loadGuestApplications(meetingId)])
   }
 }
 
@@ -942,25 +1437,500 @@ async function loadAssistantFeatures(meetingId: string): Promise<void> {
 }
 
 /**
- * 独立加载管理员签到统计和明细。
+ * 独立加载会议签到场次列表。
  *
  * 入参：meetingId 为会议 ID，必填。
+ * 返回值：Promise<void>：成功后更新场次列表和当前选中场次。
+ * 异常：接口异常在函数内转换为签到页签错误，不影响会议其他资料。
+ */
+async function loadCheckInSessions(meetingId: string): Promise<void> {
+  checkInSessionLoading.value = true
+  checkInError.value = ''
+  try {
+    const [settings, sessions] = await Promise.all([
+      getAdminCheckInSettings(meetingId),
+      listAdminCheckInSessions(meetingId),
+    ])
+    checkInSessions.value = sessions
+    checkInMode.value = settings.mode || inferCheckInMode(sessions)
+    checkInManualDefaultSessionId.value = settings.manualDefaultSessionId || ''
+    const effectiveSession = sessions.find((item) => item.id === settings.effectiveSessionId)
+    const defaultSession = sessions.find((item) => item.isDefault)
+    const existingSession = checkInSessions.value.find((item) => item.id === selectedCheckInSessionId.value)
+    selectedCheckInSessionId.value = existingSession?.id || effectiveSession?.id || defaultSession?.id || sessions[0]?.id || ''
+  } catch (error) {
+    checkInSessions.value = []
+    selectedCheckInSessionId.value = ''
+    checkInManualDefaultSessionId.value = ''
+    checkInError.value = getApiErrorMessage(error, '签到场次加载失败。')
+  } finally {
+    checkInSessionLoading.value = false
+  }
+}
+
+/**
+ * 加载会议签到场次及当前场次统计。
+ *
+ * 入参：meetingId 为会议 ID，必填。
+ * 返回值：Promise<void>：成功后更新场次、统计、记录和场次差异。
+ * 异常：场次或统计接口异常会转换为签到页签错误。
+ */
+async function loadCheckInState(meetingId: string): Promise<void> {
+  await loadCheckInSessions(meetingId)
+  if (selectedCheckInSessionId.value) {
+    await loadCheckInSummary(meetingId, selectedCheckInSessionId.value)
+  }
+}
+
+/**
+ * 独立加载管理员签到统计和明细。
+ *
+ * 入参：meetingId 为会议 ID；sessionId 为可选签到场次 ID。
  * 返回值：Promise<void>：成功后更新总数、签到记录和嘉宾签到状态。
  * 异常：接口异常在函数内转换为签到页签错误，不影响会议其他资料。
  */
-async function loadCheckInSummary(meetingId: string): Promise<void> {
+async function loadCheckInSummary(meetingId: string, sessionId?: string): Promise<void> {
   checkInLoading.value = true
   checkInError.value = ''
   try {
-    const summary = await getAdminCheckInSummary(meetingId)
+    const summary = await getAdminCheckInSummary(meetingId, sessionId)
+    selectedCheckInSessionId.value = summary.sessionId
     totalGuestCount.value = summary.totalGuests
     checkIns.value = summary.records
+    checkInComparison.value = summary.comparison
   } catch (error) {
     checkIns.value = []
+    checkInComparison.value = undefined
     checkInError.value = getApiErrorMessage(error, '签到统计加载失败。')
   } finally {
     checkInLoading.value = false
   }
+}
+
+/**
+ * 创建空白签到场次表单状态。
+ *
+ * 入参：无。
+ * 返回值：CheckInSessionFormState：可直接绑定到新增场次表单的空状态。
+ * 异常：当前函数不主动抛出异常。
+ */
+function createEmptyCheckInSessionForm(): CheckInSessionFormState {
+  return {
+    id: '',
+    title: '',
+    description: '',
+    startsAt: '',
+    endsAt: '',
+    isDefault: false,
+  }
+}
+
+/**
+ * 清空签到场次编辑表单。
+ *
+ * 入参：无。
+ * 返回值：void：恢复新增模式。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resetCheckInSessionForm(): void {
+  checkInSessionForm.value = createEmptyCheckInSessionForm()
+}
+
+/**
+ * 关闭签到场次编辑弹窗。
+ *
+ * 入参：无。
+ * 返回值：void：关闭弹窗，表单会在关闭动画结束后自动重置。
+ * 异常：当前函数不主动抛出异常。
+ */
+function closeCheckInSessionDialog(): void {
+  checkInSessionDialogVisible.value = false
+}
+
+/**
+ * 进入新增自定义场次模式。
+ *
+ * 入参：无。
+ * 返回值：void：切换为自定义模式，清空场次表单并打开编辑弹窗。
+ * 异常：当前函数不主动抛出异常。
+ */
+function prepareCustomCheckInSession(): void {
+  checkInMode.value = 'custom'
+  resetCheckInSessionForm()
+  checkInSessionDialogVisible.value = true
+}
+
+/**
+ * 将签到场次填充到编辑表单。
+ *
+ * 入参：sessionItem 为管理员选中的签到场次，必填。
+ * 返回值：void：打开编辑弹窗并保留当前签到记录选中场次。
+ * 异常：当前函数不主动抛出异常。
+ */
+function editCheckInSession(sessionItem: CheckInSession): void {
+  checkInSessionForm.value = {
+    id: sessionItem.id,
+    title: sessionItem.title,
+    description: sessionItem.description,
+    startsAt: sessionItem.startsAt ? toDateTimeLocalValue(sessionItem.startsAt) : '',
+    endsAt: sessionItem.endsAt ? toDateTimeLocalValue(sessionItem.endsAt) : '',
+    isDefault: sessionItem.isDefault,
+  }
+  checkInSessionDialogVisible.value = true
+}
+
+/**
+ * 保存新增或编辑的签到场次。
+ *
+ * 入参：无；函数读取当前会议和场次表单。
+ * 返回值：Promise<void>：保存成功后刷新场次列表与当前统计。
+ * 异常：名称为空、时间无效、权限或网络异常时展示错误提示。
+ */
+async function saveCheckInSession(): Promise<void> {
+  if (!meeting.value) {
+    return
+  }
+  if (!checkInSessionForm.value.title.trim()) {
+    ElMessage.warning('请填写签到场次名称。')
+    return
+  }
+  const payload = {
+    title: checkInSessionForm.value.title.trim(),
+    description: checkInSessionForm.value.description.trim(),
+    startsAt: toIsoWithChinaTimezone(checkInSessionForm.value.startsAt),
+    endsAt: toIsoWithChinaTimezone(checkInSessionForm.value.endsAt),
+    isDefault: checkInSessionForm.value.isDefault,
+  }
+  savingCheckInSession.value = true
+  try {
+    const savedSession = checkInSessionForm.value.id
+      ? await updateAdminCheckInSession(meeting.value.id, checkInSessionForm.value.id, payload)
+      : await createAdminCheckInSession(meeting.value.id, payload)
+    if (!checkInSessionForm.value.id) {
+      await updateAdminCheckInSettings(meeting.value.id, {
+        mode: 'custom',
+        manualDefaultSessionId: null,
+      })
+    }
+    selectedCheckInSessionId.value = savedSession.id
+    closeCheckInSessionDialog()
+    await loadCheckInState(meeting.value.id)
+    ElMessage.success('签到场次已保存。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '签到场次保存失败。'))
+  } finally {
+    savingCheckInSession.value = false
+  }
+}
+
+/**
+ * 将指定签到场次设置为默认场次。
+ *
+ * 入参：sessionItem 为要设置为默认的签到场次，必填。
+ * 返回值：Promise<void>：保存成功后刷新场次列表和当前统计。
+ * 异常：权限、网络或业务异常时展示错误提示。
+ */
+async function setDefaultCheckInSession(sessionItem: CheckInSession): Promise<void> {
+  if (!meeting.value || sessionItem.isDefault) {
+    return
+  }
+  savingCheckInSession.value = true
+  try {
+    const savedSession = await updateAdminCheckInSession(meeting.value.id, sessionItem.id, {
+      title: sessionItem.title,
+      description: sessionItem.description,
+      startsAt: sessionItem.startsAt,
+      endsAt: sessionItem.endsAt,
+      isDefault: true,
+    })
+    await updateAdminCheckInSettings(meeting.value.id, {
+      mode: checkInMode.value === 'date' ? 'date' : 'custom',
+      manualDefaultSessionId: checkInMode.value === 'date' ? savedSession.id : null,
+    })
+    selectedCheckInSessionId.value = savedSession.id
+    await loadCheckInState(meeting.value.id)
+    ElMessage.success('默认签到场次已切换。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '默认场次切换失败。'))
+  } finally {
+    savingCheckInSession.value = false
+  }
+}
+
+/**
+ * 二次确认并删除签到场次。
+ *
+ * 入参：sessionItem 为待删除签到场次，必填。
+ * 返回值：Promise<void>：确认删除后刷新场次列表和当前统计。
+ * 异常：用户取消时静默返回；权限、网络或业务异常时展示错误提示。
+ */
+async function confirmDeleteCheckInSession(sessionItem: CheckInSession): Promise<void> {
+  if (!meeting.value) {
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      sessionItem.isDefault
+        ? `确定删除“${sessionItem.title}”吗？该场次是当前默认场次，删除后系统会自动切换剩余场次为默认。`
+        : `确定删除“${sessionItem.title}”吗？该场次下已有签到记录也会一并删除。`,
+      '删除签到场次',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+  } catch {
+    return
+  }
+  deletingCheckInSessionId.value = sessionItem.id
+  try {
+    await deleteAdminCheckInSession(meeting.value.id, sessionItem.id)
+    if (selectedCheckInSessionId.value === sessionItem.id) {
+      selectedCheckInSessionId.value = ''
+    }
+    await loadCheckInState(meeting.value.id)
+    ElMessage.success('签到场次已删除。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '签到场次删除失败。'))
+  } finally {
+    deletingCheckInSessionId.value = ''
+  }
+}
+
+/**
+ * 根据会议日期生成每日签到场次。
+ *
+ * 入参：无；函数读取当前会议开始和结束日期。
+ * 返回值：Promise<void>：成功后创建缺失的日期场次并刷新场次列表。
+ * 异常：会议日期缺失、日期无效、权限或网络异常时展示错误提示。
+ */
+async function generateDateCheckInSessions(): Promise<void> {
+  if (!meeting.value) {
+    return
+  }
+  const dateKeys = meetingDateKeys(meeting.value)
+  if (!dateKeys.length) {
+    ElMessage.warning('会议开始和结束日期不完整，无法生成日期场次。')
+    return
+  }
+  const existingTitles = new Set(checkInSessions.value.map((item) => item.title))
+  const missingDates = dateKeys.filter((item) => !existingTitles.has(item.title))
+  if (!missingDates.length) {
+    try {
+      await updateAdminCheckInSettings(meeting.value.id, {
+        mode: 'date',
+        manualDefaultSessionId: null,
+      })
+      await loadCheckInState(meeting.value.id)
+      ElMessage.success('已恢复按日期自动切换。')
+    } catch (error) {
+      ElMessage.error(getApiErrorMessage(error, '日期场次规则保存失败。'))
+    }
+    return
+  }
+  generatingDateSessions.value = true
+  try {
+    for (const item of missingDates) {
+      await createAdminCheckInSession(meeting.value.id, {
+        title: item.title,
+        description: '系统按会议日期生成的签到场次。',
+        startsAt: `${item.dateKey}T00:00:00+08:00`,
+        endsAt: `${item.dateKey}T23:59:00+08:00`,
+        isDefault: item.dateKey === todayChinaDateKey(),
+      })
+    }
+    await updateAdminCheckInSettings(meeting.value.id, {
+      mode: 'date',
+      manualDefaultSessionId: null,
+    })
+    await loadCheckInState(meeting.value.id)
+    ElMessage.success(`已生成 ${missingDates.length} 个日期签到场次。`)
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '日期场次生成失败。'))
+  } finally {
+    generatingDateSessions.value = false
+  }
+}
+
+/**
+ * 恢复日期场次按系统日期自动选择默认场次。
+ *
+ * 入参：无；函数读取当前会议 ID。
+ * 返回值：Promise<void>：保存成功后刷新场次和统计。
+ * 异常：权限、网络或规则保存失败时展示错误提示。
+ */
+async function restoreDateAutoDefault(): Promise<void> {
+  if (!meeting.value) {
+    return
+  }
+  savingCheckInSession.value = true
+  try {
+    await updateAdminCheckInSettings(meeting.value.id, {
+      mode: 'date',
+      manualDefaultSessionId: null,
+    })
+    await loadCheckInState(meeting.value.id)
+    ElMessage.success('已恢复按日期自动切换。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '恢复自动切换失败。'))
+  } finally {
+    savingCheckInSession.value = false
+  }
+}
+
+/**
+ * 响应管理员切换签到场次并刷新统计。
+ *
+ * 入参：sessionId 为选中的签到场次 ID，必填。
+ * 返回值：void：存在会议时异步刷新当前场次记录。
+ * 异常：接口异常由 `loadCheckInSummary` 转换为页面错误提示。
+ */
+function handleCheckInSessionSelect(sessionId: string): void {
+  if (!meeting.value || !sessionId) {
+    return
+  }
+  void loadCheckInSummary(meeting.value.id, sessionId)
+}
+
+/**
+ * 打开签到明细弹窗。
+ *
+ * 入参：无；函数读取当前选中的签到场次和已加载签到记录。
+ * 返回值：void：显示签到明细弹窗。
+ * 异常：当前函数不主动抛出异常。
+ */
+function openCheckInRecordDialog(): void {
+  checkInRecordDialogVisible.value = true
+}
+
+/**
+ * 将签到场次时间范围转换为后台列表文案。
+ *
+ * 入参：sessionItem 为签到场次，必填。
+ * 返回值：string：完整时间范围、单侧时间或“未设置时间”。
+ * 异常：当前函数不主动抛出异常。
+ */
+function sessionTimeText(sessionItem: CheckInSession): string {
+  if (sessionItem.startsAt && sessionItem.endsAt) {
+    return `${formatDate(sessionItem.startsAt)} - ${formatDate(sessionItem.endsAt)}`
+  }
+  if (sessionItem.startsAt) {
+    return `${formatDate(sessionItem.startsAt)}开始`
+  }
+  if (sessionItem.endsAt) {
+    return `${formatDate(sessionItem.endsAt)}结束`
+  }
+  return '未设置时间'
+}
+
+/**
+ * 识别签到场次类型展示文案。
+ *
+ * 入参：sessionItem 为签到场次，必填。
+ * 返回值：string：单场、日期场次或自定义场次。
+ * 异常：当前函数不主动抛出异常。
+ */
+function sessionTypeText(sessionItem: CheckInSession): string {
+  if (checkInSessions.value.length === 1 && sessionItem.isDefault) {
+    return '单场'
+  }
+  if (isFullDayDateSession(sessionItem)) {
+    return '日期场次'
+  }
+  return '自定义'
+}
+
+/**
+ * 判断场次是否像系统生成的整日日期场次。
+ *
+ * 入参：sessionItem 为签到场次，必填。
+ * 返回值：boolean：开始和结束时间位于同一天且覆盖整日时返回 true。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isFullDayDateSession(sessionItem: CheckInSession): boolean {
+  if (!sessionItem.startsAt || !sessionItem.endsAt) {
+    return false
+  }
+  const startsAt = toDateTimeLocalValue(sessionItem.startsAt)
+  const endsAt = toDateTimeLocalValue(sessionItem.endsAt)
+  return startsAt.slice(0, 10) === endsAt.slice(0, 10)
+    && startsAt.endsWith('00:00')
+    && (endsAt.endsWith('23:59') || endsAt.endsWith('23:59:00'))
+}
+
+/**
+ * 生成会议覆盖的中国日期键列表。
+ *
+ * 入参：sourceMeeting 为当前会议，必填。
+ * 返回值：Array<{ dateKey: string; title: string }>：每日日期键和默认场次标题。
+ * 异常：当前函数不主动抛出异常；日期无效时返回空数组。
+ */
+function meetingDateKeys(sourceMeeting: Meeting): Array<{ dateKey: string; title: string }> {
+  const startDateKey = toChinaDateKey(sourceMeeting.startTime)
+  const endDateKey = toChinaDateKey(sourceMeeting.endTime)
+  if (!startDateKey || !endDateKey || startDateKey > endDateKey) {
+    return []
+  }
+  const result: Array<{ dateKey: string; title: string }> = []
+  const cursor = new Date(`${startDateKey}T00:00:00+08:00`)
+  const endDate = new Date(`${endDateKey}T00:00:00+08:00`)
+  while (cursor <= endDate) {
+    const dateKey = toChinaDateKey(cursor.toISOString())
+    if (!dateKey) {
+      break
+    }
+    result.push({ dateKey, title: `${dayIndexText(result.length + 1)}签到` })
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return result
+}
+
+/**
+ * 将日期时间转换为中国日期键。
+ *
+ * 入参：value 为 ISO 日期字符串，必填。
+ * 返回值：string：形如 yyyy-MM-dd 的日期键；无效日期返回空字符串。
+ * 异常：当前函数不主动抛出异常。
+ */
+function toChinaDateKey(value: string): string {
+  if (!value) {
+    return ''
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  return formatter.format(date)
+}
+
+/**
+ * 读取今天的中国日期键。
+ *
+ * 入参：无。
+ * 返回值：string：形如 yyyy-MM-dd 的当天日期。
+ * 异常：当前函数不主动抛出异常。
+ */
+function todayChinaDateKey(): string {
+  return toChinaDateKey(new Date().toISOString())
+}
+
+/**
+ * 将日期序号转换为中文场次标题前缀。
+ *
+ * 入参：index 为从 1 开始的日期序号，必填。
+ * 返回值：string：第一天、第二天等标题前缀。
+ * 异常：当前函数不主动抛出异常。
+ */
+function dayIndexText(index: number): string {
+  const textMap = ['第一天', '第二天', '第三天', '第四天', '第五天', '第六天', '第七天']
+  return textMap[index - 1] || `第${index}天`
 }
 
 /**
@@ -974,7 +1944,7 @@ async function loadCheckInSummary(meetingId: string): Promise<void> {
 async function refreshGuestAndCheckInState(meetingId: string): Promise<void> {
   const [guestData] = await Promise.all([
     listAdminGuests(meetingId),
-    loadCheckInSummary(meetingId),
+    loadCheckInSummary(meetingId, selectedCheckInSessionId.value || undefined),
   ])
   guests.value = guestData
 }
@@ -1360,6 +2330,7 @@ async function saveGuestFields(): Promise<void> {
  */
 function openAssistantEditDialog(feature: MeetingAssistantFeature): void {
   selectedAssistantFeature.value = feature
+  assistantMaterialCount.value = 0
   assistantEditForm.value = {
     content: feature.content,
     unpublishedMessage: feature.unpublishedMessage,
@@ -1427,6 +2398,11 @@ async function saveAssistantFeature(): Promise<void> {
       ElMessage.warning('发布前请至少添加一位联系人。')
       return
     }
+  } else if (selectedAssistantFeature.value.key === 'manual') {
+    if (assistantEditForm.value.isPublished && assistantMaterialCount.value === 0) {
+      ElMessage.warning('发布前请至少添加一份会议资料。')
+      return
+    }
   } else if (assistantEditForm.value.isPublished && !content) {
     ElMessage.warning('发布前请填写功能内容。')
     return
@@ -1438,7 +2414,11 @@ async function saveAssistantFeature(): Promise<void> {
       meeting.value.id,
       selectedAssistantFeature.value.key,
       {
-        content: selectedAssistantFeature.value.key === 'contact' ? '' : content,
+        content: selectedAssistantFeature.value.key === 'contact'
+          ? ''
+          : selectedAssistantFeature.value.key === 'manual'
+            ? selectedAssistantFeature.value.content
+            : content,
         unpublishedMessage,
         isPublished: assistantEditForm.value.isPublished,
         accessLevel: assistantEditForm.value.accessLevel,

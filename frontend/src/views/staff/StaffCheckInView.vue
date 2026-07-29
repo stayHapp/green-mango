@@ -31,10 +31,23 @@
         <section class="staff-current-meeting" aria-labelledby="staff-current-meeting-title">
           <span>当前会议</span>
           <h2 id="staff-current-meeting-title">{{ meeting.title }}</h2>
+          <div class="staff-current-session">
+            <span>当前签到场次</span>
+            <strong>{{ currentCheckInSessionTitle }}</strong>
+          </div>
         </section>
 
         <section v-if="activeMode === 'scan'" class="staff-scan-view">
-          <div class="staff-scan-stage" :class="{ 'is-scanning': cameraScanning }">
+          <div
+            class="staff-scan-stage"
+            :class="{ 'is-scanning': cameraScanning, 'is-starting': cameraStarting }"
+            role="button"
+            tabindex="0"
+            :aria-label="cameraScanning ? '摄像头已开启，正在连续扫码' : '点击开启摄像头扫码'"
+            @click="startCameraScan"
+            @keydown.enter.prevent="startCameraScan"
+            @keydown.space.prevent="startCameraScan"
+          >
             <video
               v-show="cameraScanning"
               id="staff-qr-reader"
@@ -45,35 +58,25 @@
             />
             <div v-if="!cameraScanning" class="staff-scan-placeholder">
               <el-icon><Camera /></el-icon>
-              <span>开启摄像头扫描嘉宾二维码</span>
+              <span>{{ cameraStarting ? '正在打开摄像头' : '点击扫码区域打开摄像头' }}</span>
             </div>
+            <button
+              v-if="cameraScanning"
+              type="button"
+              class="staff-scan-close"
+              aria-label="关闭摄像头"
+              @click.stop="stopCameraScan"
+            >
+              <el-icon><Close /></el-icon>
+            </button>
             <i class="staff-scan-corner is-top-left" />
             <i class="staff-scan-corner is-top-right" />
             <i class="staff-scan-corner is-bottom-left" />
             <i class="staff-scan-corner is-bottom-right" />
             <i v-if="cameraScanning" class="staff-scan-line" />
+            <span v-if="cameraScanning" class="staff-scan-live-dot">连续扫码中</span>
           </div>
 
-          <p class="staff-scan-guide">将嘉宾出示的二维码对准扫描框</p>
-          <el-button
-            v-if="!cameraScanning"
-            class="staff-camera-button"
-            type="primary"
-            :loading="cameraStarting"
-            :disabled="!isOnline"
-            @click="startCameraScan"
-          >
-            开启摄像头
-          </el-button>
-          <el-button
-            v-else
-            class="staff-camera-button"
-            plain
-            :disabled="cameraStarting"
-            @click="stopCameraScan"
-          >
-            关闭摄像头
-          </el-button>
           <button type="button" class="staff-manual-link" @click="switchWorkspaceMode('manual')">
             无法扫码？手动签到
           </button>
@@ -81,19 +84,17 @@
           <section v-if="scanResult" class="staff-scan-result" aria-live="polite">
             <el-alert :type="resultAlertType" :closable="false" :title="scanResult.message" />
             <dl v-if="scanResult.duplicate">
+              <div><dt>签到场次</dt><dd>{{ currentCheckInSessionTitle }}</dd></div>
               <div><dt>嘉宾</dt><dd>{{ scanResult.duplicate.guestName }}</dd></div>
               <div><dt>电话</dt><dd>{{ scanResult.duplicate.phone }}</dd></div>
               <div><dt>已签到时间</dt><dd>{{ formatDate(scanResult.duplicate.checkedInAt) }}</dd></div>
               <div><dt>签到方式</dt><dd>{{ methodText(scanResult.duplicate.method) }}</dd></div>
-              <div><dt>操作人员</dt><dd>{{ scanResult.duplicate.staffName }}</dd></div>
             </dl>
             <dl v-else-if="scanResult.guest">
+              <div><dt>签到场次</dt><dd>{{ scanResult.checkIn?.sessionTitle || currentCheckInSessionTitle }}</dd></div>
               <div><dt>嘉宾</dt><dd>{{ scanResult.guest.name }}</dd></div>
               <div><dt>电话</dt><dd>{{ scanResult.guest.phone }}</dd></div>
-              <div v-if="isStaffGuestFieldVisible(scanResult.guest, 'seat')">
-                <dt>座位</dt>
-                <dd>{{ scanResult.guest.seat || '待分配' }}</dd>
-              </div>
+              <div><dt>签到时间</dt><dd>{{ scanResult.checkIn ? formatDate(scanResult.checkIn.checkedInAt) : '-' }}</dd></div>
             </dl>
           </section>
         </section>
@@ -186,7 +187,7 @@
             <div>
               <strong>{{ row.guestName }}</strong>
               <p>{{ row.phone }}</p>
-              <small>{{ formatDate(row.checkedInAt) }}</small>
+              <small>{{ row.sessionTitle }}｜{{ formatDate(row.checkedInAt) }}</small>
             </div>
             <em>{{ methodText(row.method) }}</em>
           </article>
@@ -213,13 +214,14 @@
 import { computed, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Camera, InfoFilled, Postcard, Search, SwitchButton, Tickets } from '@element-plus/icons-vue'
+import { Camera, Close, InfoFilled, Postcard, Search, SwitchButton, Tickets } from '@element-plus/icons-vue'
 import jsQR from 'jsqr'
 
 import { getApiErrorMessage } from '../../api/client'
 import { logoutClientSession } from '../../api/sessions'
 import {
   getAlreadyCheckedInDetail,
+  getStaffCheckInSession,
   listStaffCheckIns,
   listStaffMeetings,
   manualStaffCheckIn,
@@ -228,7 +230,7 @@ import {
   type StaffGuest,
 } from '../../api/staffCheckIns'
 import { useSessionStore } from '../../stores/session'
-import type { CheckInRecord, Meeting, ScanResult } from '../../types'
+import type { CheckInRecord, Meeting, ScanResult, StaffCheckInSession } from '../../types'
 
 interface CheckInRow extends CheckInRecord {
   guestName: string
@@ -247,6 +249,7 @@ const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const meeting = ref<Meeting>()
+const currentCheckInSession = ref<StaffCheckInSession>()
 const guests = ref<StaffGuest[]>([])
 const displayedGuests = ref<StaffGuest[]>([])
 const checkIns = ref<CheckInRecord[]>([])
@@ -262,10 +265,13 @@ const pageError = ref('')
 const activeMode = ref<StaffWorkspaceMode>('scan')
 const selectedManualGuest = ref<StaffGuest>()
 let guestSearchTimer: number | undefined
-let qrScanner: undefined
 let cameraScanGeneration = 0
 let scanStream: MediaStream | null = null
 let scanAnimationId: number | null = null
+let lastCameraToken = ''
+let lastCameraTokenAt = 0
+const cameraScanCooldownMs = 900
+const sameCameraTokenCooldownMs = 6000
 const scanResult = ref<ScanResult>()
 const resultAlertType = computed(alertType)
 const activeModeTitle = computed(currentModeTitle)
@@ -273,6 +279,7 @@ const staffGuestSearchPlaceholder = computed(buildStaffGuestSearchPlaceholder)
 const checkedCount = computed(() => checkIns.value.length)
 const uncheckedCount = computed(() => Math.max(guests.value.length - checkedCount.value, 0))
 const filteredGuestRows = computed(() => displayedGuests.value)
+const currentCheckInSessionTitle = computed(resolveCurrentCheckInSessionTitle)
 const checkInRows = computed<CheckInRow[]>(() => checkIns.value.map((record) => {
   const guest = guests.value.find((item) => item.id === record.guestId)
   return {
@@ -286,6 +293,17 @@ const workspaceModes: StaffWorkspaceModeItem[] = [
   { key: 'manual', label: '手动签到', icon: Postcard },
   { key: 'records', label: '签到记录', icon: Tickets },
 ]
+
+/**
+ * 解析工作人员端当前签到场次标题。
+ *
+ * 入参：无；函数优先读取当前场次接口数据，接口异常时回退到最近签到记录中的场次名称。
+ * 返回值：string：当前有效签到场次名称，缺失时返回兜底提示。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resolveCurrentCheckInSessionTitle(): string {
+  return currentCheckInSession.value?.title || checkIns.value[0]?.sessionTitle || '当前场次'
+}
 
 /**
  * 判断工作人员端是否允许展示指定嘉宾字段。
@@ -520,6 +538,10 @@ async function startCameraScan(): Promise<void> {
   if (cameraScanning.value) {
     return
   }
+  if (!isOnline.value) {
+    scanResult.value = { status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' }
+    return
+  }
 
   const scanGeneration = ++cameraScanGeneration
   try {
@@ -566,14 +588,9 @@ async function startCameraScan(): Promise<void> {
       const code = jsQR(imageData.data, imageData.width, imageData.height, {
         inversionAttempts: 'dontInvert',
       })
-      if (code && code.data) {
-        if (scanGeneration === cameraScanGeneration) {
-          qrToken.value = code.data
-          void stopCameraScan().then(() => {
-            void handleScan()
-          })
-        }
-        return
+      if (code && code.data && shouldAcceptCameraToken(code.data)) {
+        qrToken.value = code.data
+        void handleScan()
       }
       scanAnimationId = requestAnimationFrame(scanLoop)
     }
@@ -587,30 +604,28 @@ async function startCameraScan(): Promise<void> {
 }
 
 /**
- * 处理摄像头成功识别出的嘉宾二维码。
+ * 判断摄像头识别到的二维码是否允许提交签到。
  *
- * 入参：decodedText 为二维码文本；scanGeneration 为启动本轮扫码时的代次编号，均必填。
- * 返回值：Promise<void>：当前扫码仍有效时关闭摄像头并提交签到。
- * 异常：签到业务异常由 handleScan 转换为页面结果；过期扫码回调会被忽略。
- */
-async function handleCameraDecoded(decodedText: string, scanGeneration: number): Promise<void> {
-  if (scanGeneration !== cameraScanGeneration) {
-    return
-  }
-  qrToken.value = decodedText
-  await stopCameraScan()
-  await handleScan()
-}
-
-/**
- * 忽略单帧未识别二维码的错误，让摄像头继续扫描后续画面。
- *
- * 入参：无；二维码库可能传入错误文本，但当前流程不需要使用。
- * 返回值：void：不修改页面状态。
+ * 入参：decodedText 为当前帧识别到的二维码文本，必填。
+ * 返回值：boolean：网络可用、当前未提交中，且未命中短时间重复 token 时返回 true。
  * 异常：当前函数不主动抛出异常。
  */
-function ignoreCameraDecodeError(): void {
-  // 单帧没有识别到二维码属于正常扫描过程，不向工作人员展示错误。
+function shouldAcceptCameraToken(decodedText: string): boolean {
+  const normalizedToken = decodedText.trim()
+  if (!normalizedToken || loading.value || !isOnline.value) {
+    return false
+  }
+  const now = Date.now()
+  if (now - lastCameraTokenAt < cameraScanCooldownMs) {
+    return false
+  }
+  if (normalizedToken === lastCameraToken && now - lastCameraTokenAt < sameCameraTokenCooldownMs) {
+    return false
+  }
+  // 记录最近识别 token，避免同一个二维码停留在画面中连续触发提交。
+  lastCameraToken = normalizedToken
+  lastCameraTokenAt = now
+  return true
 }
 
 /**
@@ -629,6 +644,8 @@ async function stopCameraScan(): Promise<void> {
     scanStream.getTracks().forEach((t) => t.stop())
     scanStream = null
   }
+  lastCameraToken = ''
+  lastCameraTokenAt = 0
   cameraStarting.value = false
   cameraScanning.value = false
 }
@@ -649,10 +666,11 @@ async function loadDetail(): Promise<void> {
   pageLoading.value = true
   pageError.value = ''
   try {
-    const [meetingData, guestData, checkInData] = await Promise.all([
+    const [meetingData, guestData, checkInData, checkInSessionData] = await Promise.all([
       listStaffMeetings(),
       searchStaffGuests(meetingId, ''),
       listStaffCheckIns(meetingId),
+      getStaffCheckInSession(meetingId),
     ])
     meeting.value = meetingData.find((item) => item.id === meetingId)
     if (!meeting.value) {
@@ -661,8 +679,10 @@ async function loadDetail(): Promise<void> {
     guests.value = guestData
     displayedGuests.value = guestData
     checkIns.value = checkInData
+    currentCheckInSession.value = checkInSessionData
   } catch (error) {
     meeting.value = undefined
+    currentCheckInSession.value = undefined
     pageError.value = getApiErrorMessage(error, '签到工作台加载失败。')
   } finally {
     pageLoading.value = false
@@ -698,14 +718,16 @@ async function loadGuests(query: string): Promise<void> {
  */
 async function refreshCheckIns(): Promise<void> {
   const meetingId = String(route.params.id)
-  const [guestData, displayedGuestData, checkInData] = await Promise.all([
+  const [guestData, displayedGuestData, checkInData, checkInSessionData] = await Promise.all([
     searchStaffGuests(meetingId, ''),
     searchStaffGuests(meetingId, guestQuery.value.trim()),
     listStaffCheckIns(meetingId),
+    getStaffCheckInSession(meetingId),
   ])
   guests.value = guestData
   displayedGuests.value = displayedGuestData
   checkIns.value = checkInData
+  currentCheckInSession.value = checkInSessionData
 }
 
 /**

@@ -130,6 +130,19 @@ export interface MeetingAssistantFeature {
   contacts: MeetingContactPerson[]
 }
 
+export interface MeetingMaterial {
+  id: string
+  meetingId: string
+  title: string
+  content: string
+  originalFilename: string
+  contentType: string
+  sizeBytes?: number
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
 export interface StaffUser {
   id: string
   name: string
@@ -153,6 +166,8 @@ export type IdentityLoginResult =
 export interface CheckInRecord {
   id: string
   meetingId: string
+  sessionId: string
+  sessionTitle: string
   guestId: string
   staffId: string
   checkedInAt: string
@@ -171,6 +186,8 @@ export interface AlreadyCheckedInInfo {
 }
 
 export interface AdminCheckInRecord {
+  sessionId: string
+  sessionTitle: string
   guestId: string
   guestName: string
   phone: string
@@ -179,11 +196,73 @@ export interface AdminCheckInRecord {
   staffName: string
 }
 
+export interface CheckInSession {
+  id: string
+  meetingId: string
+  title: string
+  description: string
+  startsAt: string
+  endsAt: string
+  isDefault: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface StaffCheckInSession {
+  id: string
+  title: string
+  startsAt: string
+  endsAt: string
+  isDefault: boolean
+}
+
+export interface CheckInSessionInput {
+  title: string
+  description?: string
+  startsAt?: string
+  endsAt?: string
+  isDefault?: boolean
+}
+
+export type CheckInMode = 'single' | 'date' | 'custom'
+
+export interface CheckInSettings {
+  mode: CheckInMode
+  manualDefaultSessionId?: string
+  effectiveSessionId?: string
+  effectiveSessionTitle?: string
+}
+
+export interface CheckInSettingsInput {
+  mode: CheckInMode
+  manualDefaultSessionId?: string | null
+}
+
+export interface AdminCheckInComparisonItem {
+  guestId: string
+  guestName: string
+  phone: string
+  checkedInAt: string
+  method: 'scan' | 'manual'
+  staffName: string
+}
+
+export interface AdminCheckInComparison {
+  previousSessionId: string
+  previousSessionTitle: string
+  addedGuests: AdminCheckInComparisonItem[]
+  removedGuests: AdminCheckInComparisonItem[]
+}
+
 export interface AdminCheckInSummary {
+  sessionId: string
+  sessionTitle: string
   totalGuests: number
   checkedInCount: number
   uncheckedCount: number
   records: AdminCheckInRecord[]
+  comparison?: AdminCheckInComparison
 }
 
 export type ScanStatus = 'success' | 'already_checked_in' | 'expired' | 'invalid' | 'wrong_meeting'

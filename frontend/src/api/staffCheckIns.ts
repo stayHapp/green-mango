@@ -2,7 +2,7 @@
 
 import axios from 'axios'
 
-import type { AlreadyCheckedInInfo, CheckInRecord, Meeting } from '../types'
+import type { AlreadyCheckedInInfo, CheckInRecord, Meeting, StaffCheckInSession } from '../types'
 import { apiClient, authorizationConfig } from './client'
 
 interface StaffMeetingApiResponse {
@@ -32,10 +32,20 @@ interface StaffGuestApiResponse {
 interface CheckInApiResponse {
   id: number
   meeting_id: number
+  session_id: number
+  session_title: string
   guest_id: number
   staff_id: number | null
   method: 'scan' | 'manual'
   checked_in_at: string
+}
+
+interface StaffCheckInSessionApiResponse {
+  id: number
+  title: string
+  starts_at: string | null
+  ends_at: string | null
+  is_default: boolean
 }
 
 interface AlreadyCheckedInApiDetail {
@@ -117,10 +127,29 @@ function mapCheckIn(record: CheckInApiResponse): CheckInRecord {
   return {
     id: String(record.id),
     meetingId: String(record.meeting_id),
+    sessionId: String(record.session_id),
+    sessionTitle: record.session_title,
     guestId: String(record.guest_id),
     staffId: record.staff_id ? String(record.staff_id) : '',
     checkedInAt: normalizeUtcDateTime(record.checked_in_at),
     method: record.method,
+  }
+}
+
+/**
+ * 将工作人员端当前签到场次响应转换为前端业务类型。
+ *
+ * 入参：session 为后端当前场次响应，必填。
+ * 返回值：StaffCheckInSession：数字 ID 和下划线字段已转换。
+ * 异常：当前函数不主动抛出异常。
+ */
+function mapStaffCheckInSession(session: StaffCheckInSessionApiResponse): StaffCheckInSession {
+  return {
+    id: String(session.id),
+    title: session.title,
+    startsAt: normalizeUtcDateTime(session.starts_at),
+    endsAt: normalizeUtcDateTime(session.ends_at),
+    isDefault: session.is_default,
   }
 }
 
@@ -211,6 +240,21 @@ export async function listStaffCheckIns(meetingId: string): Promise<CheckInRecor
     authorizationConfig('staff'),
   )
   return data.map(mapCheckIn)
+}
+
+/**
+ * 查询工作人员端当前有效签到场次。
+ *
+ * 入参：meetingId 为会议 ID，必填。
+ * 返回值：Promise<StaffCheckInSession>：当前扫码和手工签到实际写入的场次。
+ * 异常：会议未授权、登录过期或网络失败时抛出异常。
+ */
+export async function getStaffCheckInSession(meetingId: string): Promise<StaffCheckInSession> {
+  const { data } = await apiClient.get<StaffCheckInSessionApiResponse>(
+    `/staff/meetings/${encodeURIComponent(meetingId)}/check-in-session`,
+    authorizationConfig('staff'),
+  )
+  return mapStaffCheckInSession(data)
 }
 
 /**
