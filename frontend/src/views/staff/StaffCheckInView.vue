@@ -28,11 +28,9 @@
           title="网络连接已断开，暂时无法完成新的签到操作；请恢复网络后重试。"
         />
 
-        <section class="staff-current-meeting" aria-labelledby="staff-current-meeting-title">
-          <span>当前会议</span>
-          <h2 id="staff-current-meeting-title">{{ meeting.title }}</h2>
+        <section class="staff-current-meeting" :aria-label="`${meeting.title}，${currentCheckInSessionTitle}`">
+          <h2>{{ meeting.title }}</h2>
           <div class="staff-current-session">
-            <span>当前签到场次</span>
             <strong>{{ currentCheckInSessionTitle }}</strong>
           </div>
         </section>

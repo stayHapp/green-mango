@@ -2548,54 +2548,44 @@
 }
 
 .staff-current-meeting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   border: 1px solid var(--staff-border);
-  border-radius: 18px;
-  background: linear-gradient(135deg, #ffffff 0%, #f2fbf6 100%);
-  padding: 16px;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 10px 12px;
   margin-bottom: 12px;
 }
 
-.staff-current-meeting > span {
-  display: inline-block;
-  border-radius: 6px;
-  background: var(--staff-soft);
-  color: var(--staff-primary);
-  padding: 3px 7px;
-  font-size: 11px;
-  font-weight: 650;
-}
-
 .staff-current-meeting h2 {
-  margin: 6px 0 0;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
   color: var(--staff-ink);
-  font-size: 17px;
-  font-weight: 720;
-  line-height: 1.4;
+  font-size: 15px;
+  font-weight: 760;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .staff-current-session {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 12px;
-  border: 1px solid rgba(12, 116, 78, 0.28);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.76);
+  flex: 0 0 auto;
+  max-width: 42%;
+  border-radius: 999px;
+  background: #eef8f3;
   color: var(--staff-primary);
-  padding: 10px 12px;
-}
-
-.staff-current-session span {
-  color: var(--staff-primary);
-  font-size: 13px;
-  font-weight: 650;
+  padding: 7px 10px;
 }
 
 .staff-current-session strong {
   overflow: hidden;
   color: var(--staff-primary);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 760;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4010,19 +4000,6 @@ a {
   display: flex;
   justify-content: flex-end;
   margin-top: -10px;
-}
-
-.guest-demo-link.el-button {
-  height: auto;
-  color: #7c879b;
-  font-size: 13px;
-  padding: 4px 0;
-}
-
-.guest-demo-link.el-button:hover,
-.guest-demo-link.el-button:focus-visible {
-  background: transparent;
-  color: #3467e8;
 }
 
 .guest-login-primary-action {
@@ -5880,7 +5857,7 @@ h1 {
   max-width: 310px;
   margin: 0 auto 10px;
   color: var(--guest-ink);
-  font-family: STSong, SimSun, "Noto Serif SC", serif;
+  font-family: PingFang SC, SimSun, "Noto Serif SC", serif;
   font-size: clamp(17px, 4.8vw, 20px);
   font-weight: 700;
   line-height: 1.32;
