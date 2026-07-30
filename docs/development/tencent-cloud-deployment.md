@@ -25,7 +25,7 @@
 
 - 适用于**新部署**与**从 CentOS 7 旧机迁出**。
 - 旧机（CentOS 7 + glibc 2.17）无法直接运行 Node 20，故本方案把前端构建迁到 Docker 容器（`node:20-bookworm`）中，主机不再需要 Node。
-- 演示数据由 `app.scripts.seed_demo` 生成；**严禁录入真实嘉宾个人信息**。
+- 正式发布包不内置演示数据；迁移只维护表结构，不生成测试会议、测试账号或测试嘉宾。
 - 天气、POI 路线搜索需配置第三方凭据；未配置时使用现有中文降级提示。
 
 ---
@@ -67,7 +67,7 @@ git pull origin codexV2
 
 ```bash
 sudo tee /opt/zhihui-demo/shared/backend.env >/dev/null <<'EOF'
-DATABASE_URL=sqlite:////data/demo.db
+DATABASE_URL=sqlite:////data/zhihui.db
 SESSION_EXPIRE_HOURS=12
 CORS_ORIGINS=https://cssat.wenguang.top
 QWEATHER_API_HOST=<和风专属 Host>
@@ -89,7 +89,10 @@ FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+ARG PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 
 WORKDIR /app
 
@@ -97,16 +100,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libffi-dev \
  && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
-RUN pip install --upgrade pip && pip install .
+COPY pyproject.toml requirements.txt ./
+
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install -r requirements.txt
 
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
 
+RUN pip install --no-deps --no-build-isolation .
+
 EXPOSE 8010
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8010"]
 ```
+
+依赖安装层只受 `pyproject.toml` 和 `requirements.txt` 影响。日常只修改业务代码或迁移文件时，Docker 会复用已安装依赖，不需要重新下载 Python 包。
 
 ### 3.2 构建镜像
 
@@ -141,7 +150,7 @@ curl -sS http://127.0.0.1:8010/api/health
 ## 4. 前端构建（容器内 Node 20）
 
 ```bash
-cd /opt/zhihuang-demo/app/frontend
+cd /opt/zhihui-demo/app/frontend
 docker run --rm \
   -v "$PWD":/app -w /app node:20-bookworm \
   bash -c "npm ci && npm run build"
@@ -184,17 +193,9 @@ sudo systemctl reload nginx
 curl -sS https://cssat.wenguang.top/api/health
 ```
 
-## 6. 演示数据（可选）
+## 6. 正式数据
 
-```bash
-docker run --rm -it \
-  --env-file /opt/zhihui-demo/shared/backend.env \
-  -v /opt/zhihui-demo/shared/data:/data \
-  zhihui-backend:latest \
-  python -m app.scripts.seed_demo
-```
-
-> 严禁录入真实姓名 / 手机号 / 邮箱。
+部署流程不再提供演示数据初始化命令。管理员账号、会议、工作人员和嘉宾信息应在正式运维流程中创建，避免公开示例账号或测试手机号进入生产数据库。
 
 ## 7. 日常更新
 
@@ -267,7 +268,7 @@ docker compose up -d api
 
 - 不在仓库中保存服务器密码、SSH Key、数据库密钥或第三方服务凭据。
 - `backend.env` 权限 600，所有者为 root。
-- 演示数据库不要混用真实个人信息。
+- 正式数据库不要混用演示会议、测试账号或测试手机号。
 - 修改 Nginx 前先 `nginx -t` 校验；改后端前先构建镜像验证。
 - 域名白名单 `CORS_ORIGINS` 必须与实际访问域名一致。
 

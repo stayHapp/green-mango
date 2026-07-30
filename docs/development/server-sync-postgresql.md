@@ -225,7 +225,10 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+ARG PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 
 WORKDIR /app
 
@@ -233,18 +236,43 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libffi-dev \
  && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
+COPY pyproject.toml requirements.txt ./
+
+RUN pip install --upgrade pip setuptools wheel \
+ && pip install -r requirements.txt
+
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
 
-RUN pip install --upgrade pip && pip install .
+RUN pip install --no-deps --no-build-isolation .
 
 EXPOSE 8010
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8010"]
 ```
 
-### 3.2 构建新镜像
+依赖安装层只受 `pyproject.toml` 和 `requirements.txt` 影响。日常只修改业务代码或迁移文件时，Docker 会复用已安装依赖，不需要重新下载 Python 包。
+
+### 3.2 数据库连通性预检
+
+构建和迁移前先在服务器确认 PostgreSQL 正常监听，避免后端容器启动后才从日志看到 `Connection refused`。
+
+```bash
+systemctl list-units | grep postgres
+ss -lntp | grep 5432
+psql "postgresql://green_mango_user:替换为服务器数据库密码@127.0.0.1:5432/green_mango" -c "SELECT 1;"
+```
+
+如果 `ss` 没有看到 `5432`，说明 PostgreSQL 没有启动或没有监听 TCP 端口。先按实际服务名启动，例如：
+
+```bash
+sudo systemctl start postgresql
+# 或使用实际服务名，例如 sudo systemctl start postgresql-16
+```
+
+如果 `psql` 本机连接失败，先修复 PostgreSQL 服务、数据库用户、密码或 `pg_hba.conf`，不要继续重建后端容器。
+
+### 3.3 构建新镜像
 
 在服务器执行：
 
@@ -253,7 +281,7 @@ cd /opt/zhihui-demo/app/backend
 docker build -t zhihui-backend:latest .
 ```
 
-### 3.3 执行数据库迁移
+### 3.4 执行数据库迁移
 
 每次更新都执行迁移；没有新迁移时不会改变数据库。
 
@@ -265,7 +293,9 @@ docker run --rm \
   alembic upgrade head
 ```
 
-### 3.4 重建后端容器
+迁移必须带 `--network host`。如果漏掉该参数，容器内的 `127.0.0.1:5432` 会指向容器自身，通常会报 `Connection refused`。
+
+### 3.5 重建后端容器
 
 不要只执行：
 
@@ -284,6 +314,18 @@ docker run -d --name zhihui-api --restart unless-stopped \
   --env-file /opt/zhihui-demo/shared/backend.env \
   zhihui-backend:latest \
   uvicorn app.main:app --host 127.0.0.1 --port 8010
+```
+
+重建后确认容器网络模式为 `host`：
+
+```bash
+docker inspect zhihui-api --format '{{.HostConfig.NetworkMode}}'
+```
+
+输出应为：
+
+```text
+host
 ```
 
 ## 4. 前端更新
@@ -377,6 +419,7 @@ sudo cp -a /opt/zhihui-demo/app.backup.备份时间 /opt/zhihui-demo/app
 | --- | --- |
 | `open Dockerfile: no such file or directory` | `/opt/zhihui-demo/app/backend` 下缺少 Dockerfile，检查 rsync 是否同步了 `backend/Dockerfile` |
 | `Ident authentication failed` | 按本文 1.2 修改 `pg_hba.conf`，改为密码认证 |
+| PostgreSQL `Connection refused` | 先确认 `ss -lntp | grep 5432` 有监听，再确认迁移和后端容器都使用了 `--network host` |
 | 构建了新镜像但服务没更新 | 不要只 `docker restart`；需要 `docker rm -f zhihui-api` 后重新 `docker run` |
 | `/api/health` 不通 | 查看 `docker ps` 和 `docker logs zhihui-api --tail 100` |
 | 前端页面没更新 | 确认 `frontend/dist/index.html` 更新时间；必要时清浏览器缓存 |
