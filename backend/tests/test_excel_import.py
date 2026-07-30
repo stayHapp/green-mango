@@ -11,8 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.access import MeetingAdmin
-from app.models.guest import CheckIn, Guest, GuestField
-from app.models.meeting import Meeting
+from app.models.guest import CheckIn, Guest, GuestField, GuestValue
+from app.models.meeting import Meeting, MeetingSetting
 from app.models.user import User
 from app.services.check_in_sessions import get_default_check_in_session
 
@@ -206,3 +206,111 @@ def test_guest_status_export_produces_valid_xlsx(
     # 查找嘉宾所在行
     guest_rows = [r for r in rows[1:] if r[1] == "状态嘉宾"]
     assert len(guest_rows) == 1
+
+
+def test_exports_hide_disabled_guest_fields(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证导出文件按后台启用字段隐藏固定字段和动态字段。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示关闭座位号等字段后，签到明细和嘉宾状态表都不再导出对应列。
+    异常：当前函数不主动抛出业务异常；断言失败表示停用字段可能在导出文件中泄露。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-hidden-export")
+    staff = create_user(db, "staff-hidden-export", role="staff")
+    meeting = Meeting(title="隐藏字段导出会议", created_by_id=admin.id, status="published")
+    db.add(meeting)
+    db.flush()
+    db.add_all([
+        MeetingAdmin(meeting_id=meeting.id, user_id=admin.id),
+        MeetingSetting(
+            meeting_id=meeting.id,
+            settings_json={
+                "guest_enabled_fixed_fields": ["name", "phone", "organization"],
+                "guest_registration_fields": ["name", "phone", "organization"],
+                "guest_registration_required_fields": ["name", "phone"],
+            },
+        ),
+    ])
+    diet_field = GuestField(
+        meeting_id=meeting.id,
+        label="饮食偏好",
+        key="diet_preference",
+        field_type="text",
+        is_enabled=True,
+    )
+    legacy_field = GuestField(
+        meeting_id=meeting.id,
+        label="历史字段",
+        key="legacy_field",
+        field_type="text",
+        is_enabled=False,
+    )
+    db.add_all([diet_field, legacy_field])
+    db.flush()
+    guest = Guest(
+        meeting_id=meeting.id,
+        name="隐藏字段嘉宾",
+        phone="13800000066",
+        organization="测试单位",
+        title="不应导出职务",
+        tag="不应导出身份",
+        seat="不应导出座位",
+        qr_token="hidden-export-token",
+    )
+    db.add(guest)
+    db.flush()
+    default_session = get_default_check_in_session(db, meeting)
+    db.add_all([
+        GuestValue(
+            guest_id=guest.id,
+            field_id=diet_field.id,
+            field_key=diet_field.key,
+            value_text="清淡",
+        ),
+        GuestValue(
+            guest_id=guest.id,
+            field_id=legacy_field.id,
+            field_key=legacy_field.key,
+            value_text="历史值",
+        ),
+        CheckIn(
+            meeting_id=meeting.id,
+            session_id=default_session.id,
+            guest_id=guest.id,
+            staff_id=staff.id,
+            method="manual",
+        ),
+    ])
+    db.commit()
+
+    check_in_response = client.get(
+        f"/api/admin/meetings/{meeting.id}/check-ins/export",
+        headers=auth_headers(db, admin),
+    )
+    assert check_in_response.status_code == 200
+    check_in_workbook = load_workbook(BytesIO(check_in_response.content), data_only=True)
+    check_in_rows = list(check_in_workbook["签到明细"].iter_rows(values_only=True))
+    check_in_workbook.close()
+    assert check_in_rows[0] == ("嘉宾ID", "姓名", "手机号", "单位", "签到状态", "签到时间", "签到方式", "执行工作人员")
+    assert "不应导出座位" not in check_in_rows[1]
+    assert "不应导出职务" not in check_in_rows[1]
+    assert "不应导出身份" not in check_in_rows[1]
+
+    guest_response = client.get(
+        f"/api/admin/meetings/{meeting.id}/guests/export",
+        headers=auth_headers(db, admin),
+    )
+    assert guest_response.status_code == 200
+    guest_workbook = load_workbook(BytesIO(guest_response.content), data_only=True)
+    guest_rows = list(guest_workbook["嘉宾状态"].iter_rows(values_only=True))
+    guest_workbook.close()
+    assert guest_rows[0] == ("记录ID", "姓名", "手机号", "单位", "饮食偏好", "来源", "管理状态", "签到状态")
+    assert "清淡" in guest_rows[1]
+    assert "历史字段" not in guest_rows[0]
+    assert "历史值" not in guest_rows[1]
+    assert "不应导出座位" not in guest_rows[1]

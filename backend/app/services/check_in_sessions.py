@@ -300,7 +300,30 @@ def get_default_check_in_session(db: Session, meeting: Meeting) -> CheckInSessio
         sort_order=0,
     )
     db.add(default_session)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as error:
+        db.rollback()
+        fallback_session = db.scalar(
+            select(CheckInSession)
+            .where(CheckInSession.meeting_id == meeting.id, CheckInSession.is_default.is_(True))
+            .order_by(CheckInSession.sort_order, CheckInSession.id)
+        )
+        if fallback_session is not None:
+            return fallback_session
+        fallback_session = db.scalar(
+            select(CheckInSession).where(
+                CheckInSession.meeting_id == meeting.id,
+                CheckInSession.title == DEFAULT_CHECK_IN_SESSION_TITLE,
+            )
+        )
+        if fallback_session is None:
+            raise error
+        # 并发请求已创建同名默认场次时复用该记录，避免后台首次加载偶发 500。
+        fallback_session.is_default = True
+        db.commit()
+        db.refresh(fallback_session)
+        return fallback_session
     db.refresh(default_session)
     return default_session
 

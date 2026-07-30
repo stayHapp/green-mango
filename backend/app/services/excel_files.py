@@ -17,6 +17,7 @@ from app.models.user import User
 from app.schemas.admin_resources import GuestImportResponse, ImportRowError
 from app.schemas.guest import GuestCreate
 from app.services.admin_guests import create_guest
+from app.services.admin_resources import get_guest_registration_settings
 from app.services.check_in_sessions import get_default_check_in_session
 
 FIXED_IMPORT_COLUMNS = {
@@ -29,6 +30,14 @@ FIXED_IMPORT_COLUMNS = {
 }
 REQUIRED_IMPORT_COLUMNS = {"姓名", "手机号"}
 MAX_IMPORT_ROWS = 10_000
+FIXED_EXPORT_COLUMNS = [
+    ("name", "姓名", 18),
+    ("phone", "手机号", 20),
+    ("organization", "单位", 28),
+    ("title", "职务", 20),
+    ("tag", "身份", 16),
+    ("seat", "座位号", 16),
+]
 
 
 def style_worksheet(worksheet, column_widths: list[int]) -> None:
@@ -196,6 +205,8 @@ def build_check_in_export(db: Session, meeting: Meeting) -> bytes:
     异常：数据库查询或工作簿序列化失败时向上抛出对应异常。
     """
     default_session = get_default_check_in_session(db, meeting)
+    _, _, enabled_fixed_fields = get_guest_registration_settings(meeting)
+    fixed_columns = [column for column in FIXED_EXPORT_COLUMNS if column[0] in enabled_fixed_fields]
     statement = (
         select(Guest, CheckIn, User.display_name)
         .outerjoin(CheckIn, (CheckIn.session_id == default_session.id) & (CheckIn.guest_id == Guest.id))
@@ -208,12 +219,7 @@ def build_check_in_export(db: Session, meeting: Meeting) -> bytes:
     worksheet.title = "签到明细"
     worksheet.append([
         "嘉宾ID",
-        "姓名",
-        "手机号",
-        "单位",
-        "职务",
-        "身份",
-        "座位号",
+        *(label for _, label, _ in fixed_columns),
         "签到状态",
         "签到时间",
         "签到方式",
@@ -222,18 +228,13 @@ def build_check_in_export(db: Session, meeting: Meeting) -> bytes:
     for guest, check_in, staff_name in db.execute(statement).tuples():
         worksheet.append([
             guest.id,
-            guest.name,
-            guest.phone,
-            guest.organization,
-            guest.title,
-            guest.tag,
-            guest.seat,
+            *(getattr(guest, key) for key, _, _ in fixed_columns),
             "已签到" if check_in else "未签到",
             check_in.checked_in_at.isoformat() if check_in else None,
             check_in.method if check_in else None,
             staff_name,
         ])
-    style_worksheet(worksheet, [12, 18, 20, 28, 20, 16, 16, 14, 28, 16, 22])
+    style_worksheet(worksheet, [12, *(width for _, _, width in fixed_columns), 14, 28, 16, 22])
     return workbook_bytes(workbook)
 
 
@@ -253,6 +254,8 @@ def build_guest_status_export(db: Session, meeting: Meeting) -> bytes:
         )
     )
     extra_fields = [field for field in fields if field.label not in FIXED_IMPORT_COLUMNS]
+    _, _, enabled_fixed_fields = get_guest_registration_settings(meeting)
+    fixed_columns = [column for column in FIXED_EXPORT_COLUMNS if column[0] in enabled_fixed_fields]
     guest_values = {
         (value.guest_id, value.field_key): value.value_text
         for value in db.scalars(
@@ -282,12 +285,7 @@ def build_guest_status_export(db: Session, meeting: Meeting) -> bytes:
     worksheet.title = "嘉宾状态"
     worksheet.append([
         "记录ID",
-        "姓名",
-        "手机号",
-        "单位",
-        "职务",
-        "身份",
-        "座位号",
+        *(label for _, label, _ in fixed_columns),
         *(field.label for field in extra_fields),
         "来源",
         "管理状态",
@@ -303,12 +301,7 @@ def build_guest_status_export(db: Session, meeting: Meeting) -> bytes:
     for application in db.scalars(application_statement):
         worksheet.append([
             f"申请-{application.id}",
-            application.name,
-            application.phone,
-            application.organization,
-            application.title,
-            application.tag,
-            application.seat,
+            *(getattr(application, key) for key, _, _ in fixed_columns),
             *(application.values_json.get(field.key) for field in extra_fields),
             "自主报名",
             "待审核" if application.status == "pending" else "已拒绝",
@@ -318,18 +311,13 @@ def build_guest_status_export(db: Session, meeting: Meeting) -> bytes:
     for guest, check_in in db.execute(guest_statement).tuples():
         worksheet.append([
             f"嘉宾-{guest.id}",
-            guest.name,
-            guest.phone,
-            guest.organization,
-            guest.title,
-            guest.tag,
-            guest.seat,
+            *(getattr(guest, key) for key, _, _ in fixed_columns),
             *(guest_values.get((guest.id, field.key)) for field in extra_fields),
             source_labels.get(guest.source, "后台录入"),
             "已通过" if guest.source == "self_registration" else "已录入",
             "已签到" if check_in else "未签到",
         ])
 
-    column_widths = [16, 18, 20, 28, 20, 16, 16, *([20] * len(extra_fields)), 16, 14, 14]
+    column_widths = [16, *(width for _, _, width in fixed_columns), *([20] * len(extra_fields)), 16, 14, 14]
     style_worksheet(worksheet, column_widths)
     return workbook_bytes(workbook)

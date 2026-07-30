@@ -691,6 +691,59 @@ def test_admin_can_read_and_update_check_in_settings(
     assert manual_response.json()["manual_default_session_id"] == default_session.id
 
 
+def test_default_check_in_session_handles_concurrent_creation(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    monkeypatch,
+) -> None:
+    """验证默认签到场次并发补创建时会复用已创建记录。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；monkeypatch 用于模拟另一个请求抢先写入默认场次。
+    返回值：None：断言通过表示并发唯一约束冲突不会导致业务接口 500。
+    异常：当前函数不主动抛出业务异常；断言失败表示默认场次兜底逻辑存在并发风险。
+    """
+    _, db = client_and_session
+    admin = create_user(db, "admin-session-race")
+    meeting = Meeting(title="并发默认场次会议", created_by_id=admin.id, status="published")
+    db.add(meeting)
+    db.commit()
+    db.refresh(meeting)
+
+    original_commit = db.commit
+    commit_state = {"race_inserted": False}
+
+    def commit_with_race() -> None:
+        """模拟当前请求提交前，另一个请求已经创建默认签到场次。
+
+        入参：无，依赖外层测试数据库会话与会议对象。
+        返回值：None：完成一次模拟并发插入并继续执行原提交。
+        异常：原提交遇到唯一约束冲突时由 SQLAlchemy 抛出 IntegrityError。
+        """
+        if not commit_state["race_inserted"]:
+            commit_state["race_inserted"] = True
+            with db.get_bind().begin() as connection:
+                connection.execute(
+                    CheckInSession.__table__.insert().values(
+                        meeting_id=meeting.id,
+                        title="默认签到",
+                        description="系统默认签到场次。",
+                        is_default=True,
+                        sort_order=0,
+                    )
+                )
+        original_commit()
+
+    monkeypatch.setattr(db, "commit", commit_with_race)
+
+    default_session = get_default_check_in_session(db, meeting)
+    sessions = db.scalars(select(CheckInSession).where(CheckInSession.meeting_id == meeting.id)).all()
+
+    assert default_session.title == "默认签到"
+    assert default_session.is_default is True
+    assert len(sessions) == 1
+    assert sessions[0].id == default_session.id
+
+
 def test_public_application_can_be_reviewed_into_guest(
     client_and_session: tuple[TestClient, Session],
     create_user,
