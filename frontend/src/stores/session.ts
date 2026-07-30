@@ -12,7 +12,7 @@ import {
 import type { AdminUser, ClientRole, Guest, StaffUser } from '../types'
 
 /**
- * 创建 Pinia 初始会话状态，过滤已过期或旧版 Mock 存储。
+ * 创建 Pinia 初始会话状态，过滤已过期或旧版本地存储。
  *
  * 入参：无。
  * 返回值：包含三端用户和访问会话的状态对象。

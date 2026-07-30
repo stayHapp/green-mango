@@ -1,11 +1,10 @@
 /**
  * 前端路由配置。
  *
- * 当前原型按管理员端、嘉宾端、工作人员端组织页面，用于验证三端交互路径。
+ * 正式入口默认进入管理员登录页；嘉宾和工作人员仍通过会议专属链接进入。
  */
 import { createRouter, createWebHistory } from 'vue-router'
 
-import HomeView from '../views/HomeView.vue'
 import LoginView from '../views/LoginView.vue'
 import AdminMeetingsView from '../views/admin/AdminMeetingsView.vue'
 import AdminMeetingDetailView from '../views/admin/AdminMeetingDetailView.vue'
@@ -21,7 +20,7 @@ import GuestRegisterView from '../views/guest/GuestRegisterView.vue'
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', name: 'home', component: HomeView },
+    { path: '/', redirect: '/login' },
     { path: '/login', name: 'login', component: LoginView },
     { path: '/meetings/:id', name: 'meeting-entry', component: GuestEntryView },
     { path: '/meetings/:id/register', name: 'guest-register', component: GuestRegisterView },

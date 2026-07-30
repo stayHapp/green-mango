@@ -14,7 +14,7 @@
     >
       <router-link class="brand" to="/">
         <span class="brand-name">知会</span>
-        <span class="brand-subtitle">会议与签到原型</span>
+        <span class="brand-subtitle">会议管理平台</span>
       </router-link>
       <nav class="topnav">
         <template v-if="currentClient">

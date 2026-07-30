@@ -81,8 +81,6 @@
               <span v-if="loading" class="admin-login-spinner" aria-hidden="true" />
               <span>{{ loading ? '正在登录' : '登 录 管 理 后 台' }}</span>
             </button>
-
-            <button type="button" class="admin-login-fill" @click="fillDemo">填入示例账号（开发环境）</button>
           </form>
         </div>
       </main>
@@ -125,15 +123,6 @@ onMounted(() => {
     // 本地存储不可用时忽略，不影响登录。
   }
 })
-
-/**
- * 填入本地联调管理员账号示例。
- */
-function fillDemo(): void {
-  username.value = 'admin'
-  password.value = 'admin-pass-123'
-  errorMessage.value = ''
-}
 
 /**
  * 提示忘记密码时的处理方式。
@@ -523,25 +512,6 @@ async function handleLogin(): Promise<void> {
   to {
     transform: rotate(360deg);
   }
-}
-
-.admin-login-fill {
-  width: 100%;
-  margin-top: 12px;
-  height: 40px;
-  border: 1.5px dashed #c4d2cb;
-  border-radius: 12px;
-  background: transparent;
-  color: var(--text-sub);
-  font-size: 13px;
-  cursor: pointer;
-  transition: border-color 0.18s, color 0.18s, background 0.18s;
-}
-
-.admin-login-fill:hover {
-  border-color: var(--green-brand);
-  color: var(--green-brand);
-  background: rgba(61, 111, 92, 0.05);
 }
 
 @media (max-width: 768px) {
