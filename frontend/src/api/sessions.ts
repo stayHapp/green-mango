@@ -32,6 +32,7 @@ interface PublicMeetingApiResponse {
   navigation_latitude: number | null
   start_time: string | null
   end_time: string | null
+  time_display_mode: Meeting['timeDisplayMode']
   status: 'draft' | 'published' | 'ended'
   registration_enabled: boolean
   guest_login_fields: string[]
@@ -145,6 +146,7 @@ export async function getPublicMeeting(meetingId: string): Promise<Meeting> {
     navigationLatitude: data.navigation_latitude ?? undefined,
     startTime: data.start_time || '',
     endTime: data.end_time || '',
+    timeDisplayMode: data.time_display_mode || 'day_period',
     status: data.status,
     registrationEnabled: data.registration_enabled,
     registrationFields: data.registration_fields.map((field): GuestRegistrationField => ({

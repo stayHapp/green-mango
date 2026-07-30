@@ -2,6 +2,7 @@
 export type ClientRole = 'admin' | 'guest' | 'staff'
 
 export type MeetingStatus = 'draft' | 'published' | 'ended'
+export type MeetingTimeDisplayMode = 'day_period' | 'time'
 
 export interface Meeting {
   id: string
@@ -15,6 +16,7 @@ export interface Meeting {
   navigationLatitude?: number
   startTime: string
   endTime: string
+  timeDisplayMode: MeetingTimeDisplayMode
   status: MeetingStatus
   registrationEnabled?: boolean
   registrationFields?: GuestRegistrationField[]
@@ -24,7 +26,7 @@ export interface Meeting {
 
 export type MeetingUpdateInput = Pick<
   Meeting,
-  'title' | 'description' | 'location' | 'startTime' | 'endTime' | 'status' | 'publicUrl'
+  'title' | 'description' | 'location' | 'startTime' | 'endTime' | 'timeDisplayMode' | 'status' | 'publicUrl'
 >
 
 export type MeetingCreateInput = MeetingUpdateInput

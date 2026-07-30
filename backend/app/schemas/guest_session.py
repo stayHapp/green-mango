@@ -55,6 +55,7 @@ class GuestMeetingResponse(BaseModel):
     navigation_latitude: float | None
     start_time: datetime | None
     end_time: datetime | None
+    time_display_mode: str
     status: str
 
 

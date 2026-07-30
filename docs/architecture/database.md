@@ -10,13 +10,13 @@
 - 本地联调数据库：PostgreSQL，通过 `DATABASE_URL` 配置
 - 本地临时回退数据库：SQLite，`sqlite:///./dev.db`
 - 正式环境数据库：PostgreSQL，通过 `DATABASE_URL` 配置
-- 当前迁移头：`20260729_0012`
+- 当前迁移头：`20260730_0013`
 
 ## 表结构
 
 - `users`：管理员和工作人员账号、scrypt 密码哈希、角色、手机号和启用状态。
 - `auth_sessions`：三端统一服务端会话，保存 token 摘要、主体、过期和撤销时间。
-- `meetings`、`meeting_settings`：会议基础信息、导航名称与高德坐标、报名开关和会议级 JSON 配置。
+- `meetings`、`meeting_settings`：会议基础信息、导航名称与高德坐标、首页时间显示方式、报名开关和会议级 JSON 配置。
 - `meeting_admins`：会议与管理员的多对多授权。
 - `staff_meetings`：会议与工作人员的多对多授权。
 - `meeting_assistant_features`：会议服务五项固定功能的正文、联系人、未发布提醒、发布状态和访问级别。
@@ -81,6 +81,7 @@ meetings --< meeting_materials
 10. `20260728_0010`：会议服务增加公开或仅登录嘉宾可见的访问级别。
 11. `20260728_0011`：增加会议签到场次，历史签到记录回填到默认场次，签到唯一约束调整为场次级。
 12. `20260729_0012`：增加多条会议资料、附件元数据和会议外键索引，并将历史 `manual` 正文回填为首条资料。
+13. `20260730_0013`：会议增加首页时间显示方式 `time_display_mode`，支持按会议选择显示到上午/下午或具体时间。
 
 ## 会议助手结构
 
@@ -122,6 +123,8 @@ meetings --< meeting_materials
 检查约束保证正文和附件至少存在一项。资料文档不保存原始任意 HTML：前端先按标签白名单清洗，再使用 `material-rich:` 前缀和 URI 编码写入 `content`；首行缩进只保留固定 `material-first-line-indent` 类并在两端解释为 `2em`，其他属性和类名全部移除。历史普通文本在编辑与展示时安全转换为段落。附件文件使用随机存储键写入 `MATERIAL_STORAGE_DIR`，数据库只保存元数据；下载必须经过管理员会议授权、嘉宾会议归属或公开服务权限校验。单个附件默认上限 20MB，可通过 `MATERIAL_MAX_FILE_BYTES` 配置。当前文件系统存储适合单实例 MVP，多实例部署前应迁移到共享对象存储。
 
 会议表使用 `navigation_name`、`navigation_address`、`navigation_longitude` 和 `navigation_latitude` 保存管理员确认的高德地点。路线页使用坐标生成导航链接，天气服务使用同一坐标查询和风天气；历史会议字段为空时继续按 `location` 文字匹配。
+
+会议表使用 `time_display_mode` 控制嘉宾会议首页时间范围的展示精度。`day_period` 表示显示到上午/下午，`time` 表示显示到具体时分；历史会议和新建会议默认使用 `day_period`，管理员可在会议基础信息中切换。
 
 嘉宾端呈现字段保存在 `meeting_settings.settings_json.guest_visible_fields`，值为固定字段与当前会议动态字段 key 组成的有序数组。该配置复用既有 JSON 字段，不新增数据库迁移；历史会议缺少该键时，服务层默认呈现全部固定字段和原先标记为嘉宾可见的动态字段。
 

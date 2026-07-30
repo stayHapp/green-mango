@@ -40,7 +40,7 @@
 | POST | `/api/admin/meetings/{meeting_id}/admins` | 按账号添加已有管理员 |
 | DELETE | `/api/admin/meetings/{meeting_id}/admins/{user_id}` | 移除非创建人管理员授权 |
 
-会议结束时间必须晚于开始时间。创建人不能从自己的会议中移除。
+会议结束时间必须晚于开始时间。`time_display_mode` 控制嘉宾会议首页时间展示方式，取值为 `day_period`（显示到上午/下午）或 `time`（显示到具体时分），默认 `day_period`。创建人不能从自己的会议中移除。
 
 ## 管理员嘉宾接口
 

@@ -555,6 +555,9 @@ function handleVisibilityRefresh(): void {
   --amber-grad-start: #fbe8bd;
   --amber-grad-end: #f5d38a;
   --screen-bg: #f4f7f5;
+  --guest-page-horizontal-padding: 20px;
+  --guest-nav-button-width: 64px;
+  --guest-nav-top-padding: 18px;
 
   position: relative;
   min-height: 100vh;
@@ -592,6 +595,7 @@ function handleVisibilityRefresh(): void {
   flex: 1;
   display: flex;
   flex-direction: column;
+  padding: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -607,18 +611,18 @@ function handleVisibilityRefresh(): void {
   text-align: center;
 }
 
-/* 顶栏：汉堡按钮与退出按钮均为无边框轻量样式，触控目标 ≥ 44px */
+/* 顶栏：左侧导航入口使用统一盒子宽度，图标在盒子内居中。 */
 .guest-home-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 18px;
+  padding: var(--guest-nav-top-padding) var(--guest-page-horizontal-padding) 0;
   min-height: 54px;
   flex: none;
 }
 
 .guest-home-menu-button {
-  width: 44px;
+  width: var(--guest-nav-button-width);
   height: 44px;
   border: none;
   background: transparent;
@@ -626,6 +630,7 @@ function handleVisibilityRefresh(): void {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
   cursor: pointer;
   transition: background 0.18s;
 }
@@ -646,15 +651,18 @@ function handleVisibilityRefresh(): void {
 .guest-home-logout-button {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 5px;
+  height: 44px;
   font-size: 14px;
   color: var(--text-sub);
   border: none;
   background: transparent;
-  padding: 8px 6px;
+  padding: 0;
   cursor: pointer;
   font-family: inherit;
   transition: color 0.18s;
+  margin-right: 18pt;
 }
 
 .guest-home-logout-button:hover {
@@ -880,6 +888,12 @@ function handleVisibilityRefresh(): void {
 
 .qr-zone .tip b {
   color: var(--green-strong);
+}
+
+@media (max-width: 380px) {
+  .guest-home-page {
+    --guest-page-horizontal-padding: 16px;
+  }
 }
 
 /* 小屏：边缘缩小留白 */

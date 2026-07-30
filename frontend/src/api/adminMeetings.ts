@@ -14,6 +14,7 @@ interface MeetingApiResponse {
   navigation_latitude: number | null
   start_time: string | null
   end_time: string | null
+  time_display_mode: Meeting['timeDisplayMode']
   status: MeetingStatus
   created_by_id: number
   created_at: string
@@ -30,6 +31,7 @@ export interface MeetingWriteInput {
   navigationLatitude?: number
   startTime: string
   endTime: string
+  timeDisplayMode: Meeting['timeDisplayMode']
   status: MeetingStatus
   publicUrl?: string
 }
@@ -53,6 +55,7 @@ function mapMeeting(meeting: MeetingApiResponse): Meeting {
     navigationLatitude: meeting.navigation_latitude ?? undefined,
     startTime: meeting.start_time || '',
     endTime: meeting.end_time || '',
+    timeDisplayMode: meeting.time_display_mode || 'day_period',
     status: meeting.status,
     adminIds: [String(meeting.created_by_id)],
     staffIds: [],
@@ -77,6 +80,7 @@ function meetingPayload(input: MeetingWriteInput) {
     navigation_latitude: input.navigationLatitude ?? null,
     start_time: input.startTime || null,
     end_time: input.endTime || null,
+    time_display_mode: input.timeDisplayMode,
     status: input.status,
   }
 }

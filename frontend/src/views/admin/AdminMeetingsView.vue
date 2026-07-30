@@ -45,6 +45,12 @@
             <div class="form-grid"><el-form-item label="会议名称"><el-input v-model="createForm.title" /></el-form-item><el-form-item label="会议地点"><el-input v-model="createForm.location" /></el-form-item></div>
             <el-form-item label="会议说明"><el-input v-model="createForm.description" type="textarea" /></el-form-item>
             <div class="form-grid"><el-form-item label="开始时间"><el-input v-model="createForm.startTime" type="datetime-local" /></el-form-item><el-form-item label="结束时间"><el-input v-model="createForm.endTime" type="datetime-local" /></el-form-item></div>
+            <el-form-item label="首页时间显示方式">
+              <el-select v-model="createForm.timeDisplayMode">
+                <el-option label="显示到上午/下午" value="day_period" />
+                <el-option label="显示到具体时间" value="time" />
+              </el-select>
+            </el-form-item>
             <div class="action-row"><el-button type="primary" :loading="creating" @click="handleCreateMeeting">创建会议</el-button></div>
             <el-alert v-if="createMessage" class="top-gap" :type="createMessageType" :closable="false" :title="createMessage" />
           </el-form>
@@ -62,7 +68,7 @@ import { createAdminMeeting, listAdminMeetings } from '../../api/adminMeetings'
 import { getApiErrorMessage } from '../../api/client'
 import AdminWorkspaceLayout from '../../components/AdminWorkspaceLayout.vue'
 import { useSessionStore } from '../../stores/session'
-import type { Meeting, MeetingStatus } from '../../types'
+import type { Meeting, MeetingStatus, MeetingTimeDisplayMode } from '../../types'
 
 const router = useRouter()
 const session = useSessionStore()
@@ -73,7 +79,14 @@ const creating = ref(false)
 const createMessage = ref('')
 const createMessageType = ref<'success' | 'error'>('success')
 const createDialogVisible = ref(false)
-const createForm = ref({ title: '', location: '', description: '', startTime: '', endTime: '' })
+const createForm = ref({
+  title: '',
+  location: '',
+  description: '',
+  startTime: '',
+  endTime: '',
+  timeDisplayMode: 'day_period' as MeetingTimeDisplayMode,
+})
 
 /**
  * 加载管理员端会议列表。
@@ -131,9 +144,17 @@ async function handleCreateMeeting(): Promise<void> {
       navigationLatitude: undefined,
       startTime: toChinaIso(createForm.value.startTime),
       endTime: toChinaIso(createForm.value.endTime),
+      timeDisplayMode: createForm.value.timeDisplayMode,
       status: 'draft',
     })
-    createForm.value = { title: '', location: '', description: '', startTime: '', endTime: '' }
+    createForm.value = {
+      title: '',
+      location: '',
+      description: '',
+      startTime: '',
+      endTime: '',
+      timeDisplayMode: 'day_period',
+    }
     createMessageType.value = 'success'
     createMessage.value = '会议已创建。'
     await loadMeetings()

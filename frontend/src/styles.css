@@ -5828,41 +5828,53 @@ h1 {
 }
 
 .guest-home-summary__brand {
-  position: absolute;
-  top: -22px;
-  left: 0;
+  position: static;
   display: grid;
   justify-items: center;
+  width: max-content;
+  margin: 0 auto 16px;
   color: var(--guest-primary);
 }
 
 .guest-home-summary__brand > span {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #00513b 0%, #16885f 100%);
+  box-shadow: 0 12px 24px rgba(0, 81, 59, 0.18);
+  color: #ffffff;
   font-family: STSong, SimSun, serif;
-  font-size: 32px;
+  font-size: 29px;
   font-weight: 700;
   line-height: 1;
 }
 
 .guest-home-summary__brand > small {
-  margin-top: 2px;
-  font-family: STSong, SimSun, serif;
-  font-size: 9px;
-  letter-spacing: 0.38em;
-  transform: translateX(0.18em);
+  margin-top: 7px;
+  color: var(--guest-primary);
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  line-height: 1;
+  transform: translateX(0.14em);
 }
 
 .guest-home-summary h1 {
   display: block;
   overflow: visible;
-  max-width: 310px;
-  margin: 0 auto 10px;
+  width: 100%;
+  max-width: none;
+  margin: 0 0 8px;
   color: var(--guest-ink);
   font-family: PingFang SC, SimSun, "Noto Serif SC", serif;
   font-size: clamp(17px, 4.8vw, 20px);
   font-weight: 700;
   line-height: 1.32;
   text-align: center;
-  text-wrap: balance;
+  text-wrap: auto;
   -webkit-line-clamp: unset;
 }
 
@@ -5913,14 +5925,14 @@ h1 {
 .guest-home-summary__description {
   display: block;
   width: 100%;
-  margin: 4px 0 0;
-  padding: 4px 0 0;
-  border-top: 1px dashed rgba(0, 81, 59, 0.18);
+  margin: 0 0 16px;
+  padding: 0;
   color: #4f7a6b;
   font-size: 13px;
   font-weight: 420;
-  line-height: 1.7;
+  line-height: 1.65;
   letter-spacing: 0.01em;
+  text-align: center;
   white-space: pre-line;
   word-break: break-word;
 }
@@ -7175,6 +7187,9 @@ h1 {
 
 /* 会议服务统一主题：使用嘉宾端墨绿色、浅绿背景和纯白内容面板。 */
 .assistant-page {
+  --guest-page-horizontal-padding: 20px;
+  --guest-nav-button-width: 64px;
+  --guest-nav-top-padding: 18px;
   --assistant-primary: #00513b;
   --assistant-primary-hover: #003f2f;
   --assistant-ink: #10251e;
@@ -7192,7 +7207,7 @@ h1 {
 .assistant-page__header {
   display: block;
   min-height: 72px;
-  padding: 22px 20px 10px;
+  padding: 22px var(--guest-page-horizontal-padding) 10px;
   background: transparent;
   box-shadow: none;
 }
@@ -7203,7 +7218,7 @@ h1 {
   align-items: center;
   min-height: 76px;
   border-bottom: 1px solid #e3eae6;
-  padding: 18px 20px 12px;
+  padding: var(--guest-nav-top-padding) var(--guest-page-horizontal-padding) 12px;
   background: rgba(246, 248, 247, 0.96);
 }
 
@@ -7224,13 +7239,15 @@ h1 {
 .assistant-page__back {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
-  min-height: 40px;
+  width: var(--guest-nav-button-width);
+  min-height: 44px;
   border: 0;
   border-radius: 10px;
   background: transparent;
   color: #60746b;
-  padding: 0 6px 0 0;
+  padding: 0;
   font: inherit;
   font-size: 15px;
   font-weight: 520;
@@ -7252,7 +7269,7 @@ h1 {
 
 .assistant-page__body {
   width: 100%;
-  padding: 24px 20px 42px;
+  padding: 24px var(--guest-page-horizontal-padding) 42px;
 }
 
 .assistant-page__body.is-agenda {
@@ -7814,14 +7831,20 @@ h1 {
 }
 
 @media (max-width: 380px) {
+  .assistant-page {
+    --guest-page-horizontal-padding: 16px;
+  }
+
   .assistant-page__header {
     min-height: 66px;
-    padding: 18px 16px 8px;
+    padding-top: 18px;
+    padding-bottom: 8px;
   }
 
   .assistant-page__header.is-service {
     min-height: 70px;
-    padding: 15px 16px 10px;
+    padding-top: var(--guest-nav-top-padding);
+    padding-bottom: 10px;
   }
 
   .assistant-page__header-title {
@@ -7829,7 +7852,8 @@ h1 {
   }
 
   .assistant-page__body {
-    padding: 22px 16px 36px;
+    padding-top: 22px;
+    padding-bottom: 36px;
   }
 
   .assistant-page__body.is-agenda {

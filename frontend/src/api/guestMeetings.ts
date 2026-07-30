@@ -14,6 +14,7 @@ interface GuestMeetingApiResponse {
   navigation_latitude: number | null
   start_time: string | null
   end_time: string | null
+  time_display_mode: Meeting['timeDisplayMode']
   status: MeetingStatus
 }
 
@@ -36,6 +37,7 @@ function mapGuestMeeting(meeting: GuestMeetingApiResponse): Meeting {
     navigationLatitude: meeting.navigation_latitude ?? undefined,
     startTime: meeting.start_time || '',
     endTime: meeting.end_time || '',
+    timeDisplayMode: meeting.time_display_mode || 'day_period',
     status: meeting.status,
     adminIds: [],
     staffIds: [],

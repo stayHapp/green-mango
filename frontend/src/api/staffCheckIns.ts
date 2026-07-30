@@ -110,6 +110,7 @@ function mapMeeting(meeting: StaffMeetingApiResponse): Meeting {
     navigationLatitude: undefined,
     startTime: meeting.start_time || '',
     endTime: meeting.end_time || '',
+    timeDisplayMode: 'day_period',
     status: meeting.status,
     adminIds: [],
     staffIds: [],

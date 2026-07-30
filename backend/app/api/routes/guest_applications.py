@@ -60,6 +60,7 @@ def get_public_meeting(meeting_id: int, db: DatabaseSession) -> PublicMeetingRes
         navigation_latitude=meeting.navigation_latitude,
         start_time=meeting.start_time,
         end_time=meeting.end_time,
+        time_display_mode=meeting.time_display_mode,
         status=meeting.status,
         registration_enabled=bool(meeting.setting and meeting.setting.registration_enabled),
         guest_login_fields=get_login_fields(meeting),

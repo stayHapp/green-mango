@@ -167,6 +167,15 @@
                     <span class="meeting-edit-label-row">结束时间</span>
                     <el-input v-model="editForm.endTime" type="datetime-local" />
                   </label>
+                  <label class="meeting-edit-field meeting-edit-field--full">
+                    <span class="meeting-edit-label-row">
+                      首页时间显示方式 <span class="meeting-edit-hint">只影响嘉宾会议首页，不改变真实起止时间</span>
+                    </span>
+                    <el-select v-model="editForm.timeDisplayMode">
+                      <el-option label="显示到上午/下午" value="day_period" />
+                      <el-option label="显示到具体时间" value="time" />
+                    </el-select>
+                  </label>
                 </div>
               </div>
 
@@ -837,6 +846,7 @@ import type {
   MeetingAssistantAccessLevel,
   MeetingAssistantFeature,
   MeetingStatus,
+  MeetingTimeDisplayMode,
   StaffUser,
 } from '../../types'
 
@@ -1006,6 +1016,7 @@ const editForm = ref({
   navigationLatitude: undefined as number | undefined,
   startTime: '',
   endTime: '',
+  timeDisplayMode: 'day_period' as MeetingTimeDisplayMode,
   status: 'draft' as MeetingStatus,
   publicUrl: '',
 })
@@ -2498,6 +2509,7 @@ function resetEditForm(): void {
     navigationLatitude: meeting.value.navigationLatitude,
     startTime: toDateTimeLocalValue(meeting.value.startTime),
     endTime: toDateTimeLocalValue(meeting.value.endTime),
+    timeDisplayMode: meeting.value.timeDisplayMode,
     status: meeting.value.status,
     publicUrl: meeting.value.publicUrl || '',
   }
@@ -2538,6 +2550,7 @@ async function saveMeeting(options: { silent?: boolean } = {}): Promise<void> {
       navigationLatitude: editForm.value.navigationLatitude,
       startTime: toIsoWithChinaTimezone(editForm.value.startTime),
       endTime: toIsoWithChinaTimezone(editForm.value.endTime),
+      timeDisplayMode: editForm.value.timeDisplayMode,
       status: editForm.value.status,
       publicUrl: publicUrlEdit.value.trim() || undefined,
     })

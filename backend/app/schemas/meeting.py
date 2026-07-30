@@ -18,6 +18,7 @@ class MeetingCreate(BaseModel):
     navigation_latitude: float | None = Field(default=None, ge=-90, le=90)
     start_time: datetime | None = None
     end_time: datetime | None = None
+    time_display_mode: Literal["day_period", "time"] = "day_period"
     status: Literal["draft", "published", "ended"] = "draft"
 
     @model_validator(mode="after")
@@ -45,6 +46,7 @@ class MeetingUpdate(BaseModel):
     navigation_latitude: float | None = Field(default=None, ge=-90, le=90)
     start_time: datetime | None = None
     end_time: datetime | None = None
+    time_display_mode: Literal["day_period", "time"] | None = None
     status: Literal["draft", "published", "ended"] | None = None
 
 
@@ -63,6 +65,7 @@ class MeetingResponse(BaseModel):
     navigation_latitude: float | None
     start_time: datetime | None
     end_time: datetime | None
+    time_display_mode: str
     status: str
     created_by_id: int
     created_at: datetime

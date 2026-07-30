@@ -34,6 +34,7 @@ class Meeting(Base):
     navigation_latitude: Mapped[float | None] = mapped_column(Float)
     start_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    time_display_mode: Mapped[str] = mapped_column(String(32), default="day_period", nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="draft", nullable=False)
     # 数据库列名沿用文档中的 created_by，Python 属性名保留更明确的 created_by_id。
     created_by_id: Mapped[int] = mapped_column("created_by", ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
