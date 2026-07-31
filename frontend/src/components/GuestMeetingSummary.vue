@@ -95,7 +95,7 @@ function formatDate(value: string, includeYear: boolean, mode: MeetingTimeDispla
  * 根据小时判断会议日期所属的上下午时段。
  *
  * 入参：date 为有效 Date（日期）对象，必填。
- * 返回值：string：0 点到 11 点返回“上午”，12 点到 23 点返回“下午”。
+ * 返回值：string：0 点到 11 点返回“上午”，13 点到 23 点返回“下午”。
  * 异常：当前函数不主动抛出异常。
  */
 function formatDayPeriod(date: Date): string {

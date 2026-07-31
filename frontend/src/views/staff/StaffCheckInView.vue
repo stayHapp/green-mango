@@ -73,8 +73,8 @@
             <i class="staff-scan-corner is-bottom-right" />
             <i v-if="cameraScanning" class="staff-scan-line" />
             <span v-if="cameraScanning" class="staff-scan-live-dot">连续扫码中</span>
-            <div v-if="scanResult" class="staff-scan-result-overlay" aria-live="polite" @click.stop>
-              <el-alert :type="resultAlertType" :closable="false" :title="scanResult.message" />
+            <div v-if="scanFeedback" class="staff-scan-result-overlay" aria-live="polite" @click.stop>
+              <el-alert :type="resultAlertType" :closable="false" :title="scanFeedback.message" />
             </div>
           </div>
 
@@ -82,19 +82,19 @@
             无法扫码？手动签到
           </button>
 
-          <section v-if="scanResult?.duplicate || scanResult?.guest" class="staff-scan-result" aria-live="polite">
-            <dl v-if="scanResult.duplicate">
+          <section v-if="latestScannedGuestResult?.duplicate || latestScannedGuestResult?.guest" class="staff-scan-result" aria-live="polite">
+            <dl v-if="latestScannedGuestResult.duplicate">
               <div><dt>签到场次</dt><dd>{{ currentCheckInSessionTitle }}</dd></div>
-              <div><dt>嘉宾</dt><dd>{{ scanResult.duplicate.guestName }}</dd></div>
-              <div><dt>电话</dt><dd>{{ scanResult.duplicate.phone }}</dd></div>
-              <div><dt>已签到时间</dt><dd>{{ formatDate(scanResult.duplicate.checkedInAt) }}</dd></div>
-              <div><dt>签到方式</dt><dd>{{ methodText(scanResult.duplicate.method) }}</dd></div>
+              <div><dt>嘉宾</dt><dd>{{ latestScannedGuestResult.duplicate.guestName }}</dd></div>
+              <div><dt>电话</dt><dd>{{ latestScannedGuestResult.duplicate.phone }}</dd></div>
+              <div><dt>已签到时间</dt><dd>{{ formatDate(latestScannedGuestResult.duplicate.checkedInAt) }}</dd></div>
+              <div><dt>签到方式</dt><dd>{{ methodText(latestScannedGuestResult.duplicate.method) }}</dd></div>
             </dl>
-            <dl v-else-if="scanResult.guest">
-              <div><dt>签到场次</dt><dd>{{ scanResult.checkIn?.sessionTitle || currentCheckInSessionTitle }}</dd></div>
-              <div><dt>嘉宾</dt><dd>{{ scanResult.guest.name }}</dd></div>
-              <div><dt>电话</dt><dd>{{ scanResult.guest.phone }}</dd></div>
-              <div><dt>签到时间</dt><dd>{{ scanResult.checkIn ? formatDate(scanResult.checkIn.checkedInAt) : '-' }}</dd></div>
+            <dl v-else-if="latestScannedGuestResult.guest">
+              <div><dt>签到场次</dt><dd>{{ latestScannedGuestResult.checkIn?.sessionTitle || currentCheckInSessionTitle }}</dd></div>
+              <div><dt>嘉宾</dt><dd>{{ latestScannedGuestResult.guest.name }}</dd></div>
+              <div><dt>电话</dt><dd>{{ latestScannedGuestResult.guest.phone }}</dd></div>
+              <div><dt>签到时间</dt><dd>{{ latestScannedGuestResult.checkIn ? formatDate(latestScannedGuestResult.checkIn.checkedInAt) : '-' }}</dd></div>
             </dl>
           </section>
         </section>
@@ -270,10 +270,11 @@ let scanStream: MediaStream | null = null
 let scanAnimationId: number | null = null
 let lastCameraToken = ''
 let lastCameraTokenAt = 0
-let scanResultTimer: number | undefined
+let scanFeedbackTimer: number | undefined
 const cameraScanCooldownMs = 2000
 const sameCameraTokenCooldownMs = 6000
-const scanResult = ref<ScanResult>()
+const scanFeedback = ref<ScanResult>()
+const latestScannedGuestResult = ref<ScanResult>()
 const resultAlertType = computed(alertType)
 const activeModeTitle = computed(currentModeTitle)
 const staffGuestSearchPlaceholder = computed(buildStaffGuestSearchPlaceholder)
@@ -435,11 +436,11 @@ async function confirmManualCheckIn(): Promise<void> {
     return
   }
   await handleManualCheckIn(selectedManualGuest.value.id)
-  if (scanResult.value?.status === 'success') {
+  if (scanFeedback.value?.status === 'success') {
     ElMessage.success('人工签到成功。')
     selectedManualGuest.value = undefined
-  } else if (scanResult.value?.message) {
-    ElMessage.warning(scanResult.value.message)
+  } else if (scanFeedback.value?.message) {
+    ElMessage.warning(scanFeedback.value.message)
   }
 }
 
@@ -529,34 +530,40 @@ function stopNetworkMonitoring(): void {
 }
 
 /**
- * 设置工作人员端签到结果，并按扫码缓冲时间自动清空提示。
+ * 设置工作人员端签到反馈，并按扫码缓冲时间自动清空提示。
  *
  * 入参：result 为需要展示的签到结果，必填；包含状态、提示文案和可选嘉宾信息。
- * 返回值：void：立即更新页面提示，并重置自动关闭计时器。
+ * 返回值：void：立即更新页面提示；成功或重复签到时同步刷新扫描区下方保留的嘉宾信息。
  * 异常：当前函数不主动抛出异常。
  */
-function setScanResult(result: ScanResult): void {
-  if (scanResultTimer !== undefined) {
-    window.clearTimeout(scanResultTimer)
+function setScanFeedback(result: ScanResult): void {
+  if (scanFeedbackTimer !== undefined) {
+    window.clearTimeout(scanFeedbackTimer)
   }
-  scanResult.value = result
-  scanResultTimer = window.setTimeout(() => {
-    scanResult.value = undefined
-    scanResultTimer = undefined
+  scanFeedback.value = result
+  if (result.status === 'success' && result.guest) {
+    latestScannedGuestResult.value = result
+  }
+  if (result.status === 'already_checked_in' && result.duplicate) {
+    latestScannedGuestResult.value = result
+  }
+  scanFeedbackTimer = window.setTimeout(() => {
+    scanFeedback.value = undefined
+    scanFeedbackTimer = undefined
   }, cameraScanCooldownMs)
 }
 
 /**
- * 清理工作人员端签到结果自动关闭计时器。
+ * 清理工作人员端签到反馈自动关闭计时器。
  *
  * 入参：无。
  * 返回值：void：计时器存在时清除，避免离开页面后继续更新状态。
  * 异常：当前函数不主动抛出异常。
  */
-function clearScanResultTimer(): void {
-  if (scanResultTimer !== undefined) {
-    window.clearTimeout(scanResultTimer)
-    scanResultTimer = undefined
+function clearScanFeedbackTimer(): void {
+  if (scanFeedbackTimer !== undefined) {
+    window.clearTimeout(scanFeedbackTimer)
+    scanFeedbackTimer = undefined
   }
 }
 
@@ -572,7 +579,7 @@ async function startCameraScan(): Promise<void> {
     return
   }
   if (!isOnline.value) {
-    setScanResult({ status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' })
+    setScanFeedback({ status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' })
     return
   }
 
@@ -791,15 +798,15 @@ async function refreshAfterDuplicateCheckIn(): Promise<void> {
  *   当前函数不主动抛出异常。
  */
 function alertType(): 'success' | 'warning' | 'error' | 'info' {
-  if (!scanResult.value) {
+  if (!scanFeedback.value) {
     return 'info'
   }
 
-  if (scanResult.value.status === 'success') {
+  if (scanFeedback.value.status === 'success') {
     return 'success'
   }
 
-  if (scanResult.value.status === 'already_checked_in') {
+  if (scanFeedback.value.status === 'already_checked_in') {
     return 'warning'
   }
 
@@ -819,18 +826,18 @@ function alertType(): 'success' | 'warning' | 'error' | 'info' {
  */
 async function handleScan(): Promise<void> {
   if (!session.staff) {
-    setScanResult({ status: 'invalid', message: '请先完成工作人员登录。' })
+    setScanFeedback({ status: 'invalid', message: '请先完成工作人员登录。' })
     return
   }
 
   // 网络断开时不提交新的签到请求，避免工作人员误以为操作已成功。
   if (!isOnline.value) {
-    setScanResult({ status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' })
+    setScanFeedback({ status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' })
     return
   }
 
   if (!qrToken.value.trim()) {
-    setScanResult({ status: 'invalid', message: '请填写嘉宾二维码 token。' })
+    setScanFeedback({ status: 'invalid', message: '请填写嘉宾二维码 token。' })
     return
   }
 
@@ -839,7 +846,7 @@ async function handleScan(): Promise<void> {
     const record = await scanStaffCheckIn(String(route.params.id), qrToken.value.trim())
     await refreshCheckIns()
     const guest = guests.value.find((item) => item.id === record.guestId)
-    setScanResult({
+    setScanFeedback({
       status: 'success',
       message: '签到成功。',
       guest: guest ? { ...guest, meetingId: record.meetingId, qrToken: '' } : undefined,
@@ -849,11 +856,11 @@ async function handleScan(): Promise<void> {
     const duplicate = getAlreadyCheckedInDetail(error)
     if (duplicate) {
       await refreshAfterDuplicateCheckIn()
-      setScanResult({ status: 'already_checked_in', message: duplicate.message, duplicate })
+      setScanFeedback({ status: 'already_checked_in', message: duplicate.message, duplicate })
       return
     }
     const message = getApiErrorMessage(error, '扫码签到失败。')
-    setScanResult({ status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message })
+    setScanFeedback({ status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message })
   } finally {
     loading.value = false
   }
@@ -872,13 +879,13 @@ async function handleScan(): Promise<void> {
  */
 async function handleManualCheckIn(guestId: string): Promise<void> {
   if (!session.staff) {
-    setScanResult({ status: 'invalid', message: '请先完成工作人员登录。' })
+    setScanFeedback({ status: 'invalid', message: '请先完成工作人员登录。' })
     return
   }
 
   // 网络断开时不提交新的签到请求，避免产生无法确认的现场状态。
   if (!isOnline.value) {
-    setScanResult({ status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' })
+    setScanFeedback({ status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' })
     return
   }
 
@@ -887,7 +894,7 @@ async function handleManualCheckIn(guestId: string): Promise<void> {
     const record = await manualStaffCheckIn(String(route.params.id), guestId)
     await refreshCheckIns()
     const guest = guests.value.find((item) => item.id === record.guestId)
-    setScanResult({
+    setScanFeedback({
       status: 'success',
       message: '人工签到成功。',
       guest: guest ? { ...guest, meetingId: record.meetingId, qrToken: '' } : undefined,
@@ -897,11 +904,11 @@ async function handleManualCheckIn(guestId: string): Promise<void> {
     const duplicate = getAlreadyCheckedInDetail(error)
     if (duplicate) {
       await refreshAfterDuplicateCheckIn()
-      setScanResult({ status: 'already_checked_in', message: duplicate.message, duplicate })
+      setScanFeedback({ status: 'already_checked_in', message: duplicate.message, duplicate })
       return
     }
     const message = getApiErrorMessage(error, '人工签到失败。')
-    setScanResult({ status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message })
+    setScanFeedback({ status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message })
   } finally {
     manualLoadingId.value = ''
   }
@@ -964,7 +971,7 @@ watch(guestQuery, scheduleGuestSearch)
 onUnmounted(stopNetworkMonitoring)
 onUnmounted(() => {
   if (guestSearchTimer !== undefined) window.clearTimeout(guestSearchTimer)
-  clearScanResultTimer()
+  clearScanFeedbackTimer()
   void stopCameraScan()
 })
 </script>
