@@ -6580,6 +6580,8 @@ h1 {
 
   .guest-home-summary h1 {
     max-width: 276px;
+    margin-right: auto;
+    margin-left: auto;
     font-size: 17px;
   }
 

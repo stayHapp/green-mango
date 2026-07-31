@@ -270,7 +270,8 @@ let scanStream: MediaStream | null = null
 let scanAnimationId: number | null = null
 let lastCameraToken = ''
 let lastCameraTokenAt = 0
-const cameraScanCooldownMs = 900
+let scanResultTimer: number | undefined
+const cameraScanCooldownMs = 2000
 const sameCameraTokenCooldownMs = 6000
 const scanResult = ref<ScanResult>()
 const resultAlertType = computed(alertType)
@@ -528,6 +529,38 @@ function stopNetworkMonitoring(): void {
 }
 
 /**
+ * 设置工作人员端签到结果，并按扫码缓冲时间自动清空提示。
+ *
+ * 入参：result 为需要展示的签到结果，必填；包含状态、提示文案和可选嘉宾信息。
+ * 返回值：void：立即更新页面提示，并重置自动关闭计时器。
+ * 异常：当前函数不主动抛出异常。
+ */
+function setScanResult(result: ScanResult): void {
+  if (scanResultTimer !== undefined) {
+    window.clearTimeout(scanResultTimer)
+  }
+  scanResult.value = result
+  scanResultTimer = window.setTimeout(() => {
+    scanResult.value = undefined
+    scanResultTimer = undefined
+  }, cameraScanCooldownMs)
+}
+
+/**
+ * 清理工作人员端签到结果自动关闭计时器。
+ *
+ * 入参：无。
+ * 返回值：void：计时器存在时清除，避免离开页面后继续更新状态。
+ * 异常：当前函数不主动抛出异常。
+ */
+function clearScanResultTimer(): void {
+  if (scanResultTimer !== undefined) {
+    window.clearTimeout(scanResultTimer)
+    scanResultTimer = undefined
+  }
+}
+
+/**
  * 启动手机后置摄像头并识别嘉宾二维码。
  *
  * 入参：无。
@@ -539,7 +572,7 @@ async function startCameraScan(): Promise<void> {
     return
   }
   if (!isOnline.value) {
-    scanResult.value = { status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' }
+    setScanResult({ status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' })
     return
   }
 
@@ -786,18 +819,18 @@ function alertType(): 'success' | 'warning' | 'error' | 'info' {
  */
 async function handleScan(): Promise<void> {
   if (!session.staff) {
-    scanResult.value = { status: 'invalid', message: '请先完成工作人员登录。' }
+    setScanResult({ status: 'invalid', message: '请先完成工作人员登录。' })
     return
   }
 
   // 网络断开时不提交新的签到请求，避免工作人员误以为操作已成功。
   if (!isOnline.value) {
-    scanResult.value = { status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' }
+    setScanResult({ status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' })
     return
   }
 
   if (!qrToken.value.trim()) {
-    scanResult.value = { status: 'invalid', message: '请填写嘉宾二维码 token。' }
+    setScanResult({ status: 'invalid', message: '请填写嘉宾二维码 token。' })
     return
   }
 
@@ -806,21 +839,21 @@ async function handleScan(): Promise<void> {
     const record = await scanStaffCheckIn(String(route.params.id), qrToken.value.trim())
     await refreshCheckIns()
     const guest = guests.value.find((item) => item.id === record.guestId)
-    scanResult.value = {
+    setScanResult({
       status: 'success',
       message: '签到成功。',
       guest: guest ? { ...guest, meetingId: record.meetingId, qrToken: '' } : undefined,
       checkIn: record,
-    }
+    })
   } catch (error) {
     const duplicate = getAlreadyCheckedInDetail(error)
     if (duplicate) {
       await refreshAfterDuplicateCheckIn()
-      scanResult.value = { status: 'already_checked_in', message: duplicate.message, duplicate }
+      setScanResult({ status: 'already_checked_in', message: duplicate.message, duplicate })
       return
     }
     const message = getApiErrorMessage(error, '扫码签到失败。')
-    scanResult.value = { status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message }
+    setScanResult({ status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message })
   } finally {
     loading.value = false
   }
@@ -839,13 +872,13 @@ async function handleScan(): Promise<void> {
  */
 async function handleManualCheckIn(guestId: string): Promise<void> {
   if (!session.staff) {
-    scanResult.value = { status: 'invalid', message: '请先完成工作人员登录。' }
+    setScanResult({ status: 'invalid', message: '请先完成工作人员登录。' })
     return
   }
 
   // 网络断开时不提交新的签到请求，避免产生无法确认的现场状态。
   if (!isOnline.value) {
-    scanResult.value = { status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' }
+    setScanResult({ status: 'invalid', message: '网络连接已断开，请恢复网络后重新签到。' })
     return
   }
 
@@ -854,21 +887,21 @@ async function handleManualCheckIn(guestId: string): Promise<void> {
     const record = await manualStaffCheckIn(String(route.params.id), guestId)
     await refreshCheckIns()
     const guest = guests.value.find((item) => item.id === record.guestId)
-    scanResult.value = {
+    setScanResult({
       status: 'success',
       message: '人工签到成功。',
       guest: guest ? { ...guest, meetingId: record.meetingId, qrToken: '' } : undefined,
       checkIn: record,
-    }
+    })
   } catch (error) {
     const duplicate = getAlreadyCheckedInDetail(error)
     if (duplicate) {
       await refreshAfterDuplicateCheckIn()
-      scanResult.value = { status: 'already_checked_in', message: duplicate.message, duplicate }
+      setScanResult({ status: 'already_checked_in', message: duplicate.message, duplicate })
       return
     }
     const message = getApiErrorMessage(error, '人工签到失败。')
-    scanResult.value = { status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message }
+    setScanResult({ status: message.includes('已签到') ? 'already_checked_in' : 'invalid', message })
   } finally {
     manualLoadingId.value = ''
   }
@@ -931,6 +964,7 @@ watch(guestQuery, scheduleGuestSearch)
 onUnmounted(stopNetworkMonitoring)
 onUnmounted(() => {
   if (guestSearchTimer !== undefined) window.clearTimeout(guestSearchTimer)
+  clearScanResultTimer()
   void stopCameraScan()
 })
 </script>
