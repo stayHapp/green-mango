@@ -68,11 +68,13 @@ def create_meeting(db: Session, admin: User, payload: MeetingCreate) -> Meeting:
     异常：
         数据库写入或提交失败时由 SQLAlchemy 抛出异常。
     """
-    meeting = Meeting(created_by_id=admin.id, **payload.model_dump())
+    values = payload.model_dump()
+    registration_enabled = bool(values.pop("registration_enabled", False))
+    meeting = Meeting(created_by_id=admin.id, **values)
     db.add(meeting)
     db.flush()
-    # 新会议默认允许保留的嘉宾报名补充入口，具体开关由后续设置 API 管理。
-    db.add(MeetingSetting(meeting_id=meeting.id))
+    # 新会议默认关闭嘉宾自主报名，接口保留但需管理员显式开启。
+    db.add(MeetingSetting(meeting_id=meeting.id, registration_enabled=registration_enabled))
     db.add(MeetingAdmin(meeting_id=meeting.id, user_id=admin.id))
     ensure_meeting_assistant_features(db, meeting.id)
     db.commit()
@@ -95,6 +97,7 @@ def update_meeting(db: Session, meeting: Meeting, payload: MeetingUpdate) -> Mee
         修改后的结束时间早于或等于开始时间时抛出 ValueError；数据库提交失败时由 SQLAlchemy 抛出异常。
     """
     values = payload.model_dump(exclude_unset=True)
+    registration_enabled = values.pop("registration_enabled", None)
     start_time = values.get("start_time", meeting.start_time)
     end_time = values.get("end_time", meeting.end_time)
     if start_time and end_time and end_time <= start_time:
@@ -102,6 +105,10 @@ def update_meeting(db: Session, meeting: Meeting, payload: MeetingUpdate) -> Mee
 
     for field_name, value in values.items():
         setattr(meeting, field_name, value)
+    if registration_enabled is not None:
+        if meeting.setting is None:
+            meeting.setting = MeetingSetting(meeting_id=meeting.id)
+        meeting.setting.registration_enabled = registration_enabled
     db.commit()
     db.refresh(meeting)
     return meeting

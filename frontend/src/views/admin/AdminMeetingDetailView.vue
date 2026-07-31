@@ -113,14 +113,11 @@
                   <div class="meeting-edit-section-index">01</div>
                   <div>
                     <h2>基础信息</h2>
-                    <p>先确认会议名称与线下地点，保证嘉宾看到的信息一致。</p>
                   </div>
                 </div>
                 <div class="meeting-edit-grid">
                   <label class="meeting-edit-field meeting-edit-field--full">
-                    <span class="meeting-edit-label-row">
-                      会议名称 <span class="meeting-edit-hint">将展示在嘉宾首页与分享页</span>
-                    </span>
+                    <span class="meeting-edit-label-row">会议名称</span>
                     <el-input v-model="editForm.title" placeholder="请输入会议名称" maxlength="200" show-word-limit />
                   </label>
                   <label class="meeting-edit-field">
@@ -128,9 +125,7 @@
                     <el-input v-model="editForm.location" placeholder="请输入会议地点" />
                   </label>
                   <div class="meeting-edit-field">
-                    <span class="meeting-edit-label-row">
-                      导航位置 <span class="meeting-edit-hint">用于嘉宾出行导航</span>
-                    </span>
+                    <span class="meeting-edit-label-row">导航位置</span>
                     <div class="meeting-edit-nav-control">
                       <div class="meeting-edit-nav-name">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -155,7 +150,6 @@
                   <div class="meeting-edit-section-index">02</div>
                   <div>
                     <h2>时间安排</h2>
-                    <p>统一时间字段宽度，便于核对会期。</p>
                   </div>
                 </div>
                 <div class="meeting-edit-grid">
@@ -168,14 +162,22 @@
                     <el-input v-model="editForm.endTime" type="datetime-local" />
                   </label>
                   <label class="meeting-edit-field meeting-edit-field--full">
-                    <span class="meeting-edit-label-row">
-                      首页时间显示方式 <span class="meeting-edit-hint">只影响嘉宾会议首页，不改变真实起止时间</span>
-                    </span>
+                    <span class="meeting-edit-label-row">首页时间显示方式</span>
                     <el-select v-model="editForm.timeDisplayMode">
                       <el-option label="显示到上午/下午" value="day_period" />
                       <el-option label="显示到具体时间" value="time" />
                     </el-select>
                   </label>
+                  <div class="meeting-edit-field">
+                    <span class="meeting-edit-label-row">自主报名</span>
+                    <div class="meeting-edit-switch-row">
+                      <el-switch
+                        v-model="editForm.registrationEnabled"
+                        active-text="开放"
+                        inactive-text="关闭"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -184,25 +186,16 @@
                   <div class="meeting-edit-section-index">03</div>
                   <div>
                     <h2>会议说明</h2>
-                    <p>说明文字单独成组，避免与短字段混排造成视觉跳跃。</p>
                   </div>
                 </div>
                 <label class="meeting-edit-field meeting-edit-field--full">
-                  <span class="meeting-edit-label-row">
-                    说明内容 <span class="meeting-edit-hint">最多 200 字</span>
-                  </span>
-                  <el-input v-model="editForm.description" type="textarea" :rows="4" placeholder="请输入会议说明" maxlength="200" show-word-limit />
+                  <span class="meeting-edit-label-row">说明内容</span>
+                  <el-input v-model="editForm.description" type="textarea" :rows="3" placeholder="请输入会议说明" maxlength="200" show-word-limit />
                 </label>
               </div>
 
               <footer class="meeting-edit-form-footer">
                 <p v-if="saveMessage" class="meeting-save-message" :class="`is-${saveMessageType}`">{{ saveMessage }}</p>
-                <span v-else class="meeting-edit-form-note">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M20 7 9 18l-5-5" stroke="#17865f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                  信息完整，可保存发布
-                </span>
                 <div class="meeting-edit-form-actions">
                   <el-button @click="resetEditForm">重置</el-button>
                   <el-button type="primary" :loading="saving" @click="saveMeeting">保存会议信息</el-button>
@@ -216,7 +209,6 @@
                   <div>
                     <div class="meeting-edit-eyebrow">Access</div>
                     <h2>会议入口</h2>
-                    <p>已发布可分享时，向嘉宾复制链接或下载二维码。</p>
                   </div>
                   <span v-if="editForm.status === 'published'" class="meeting-edit-publish-badge">已发布</span>
                   <span v-else-if="editForm.status === 'ended'" class="meeting-edit-publish-badge is-ended">已结束</span>
@@ -249,7 +241,6 @@
                   </div>
                   <div class="meeting-edit-qr-copy">
                     <strong>嘉宾扫码进入</strong>
-                    <p>二维码可用于邀请函、现场大屏或签到台物料。</p>
                     <el-button
                       size="small"
                       type="primary"
@@ -457,7 +448,44 @@
               :meeting-id="meeting.id"
               @count-change="assistantMaterialCount = $event"
             />
+            <el-form-item v-else-if="selectedAssistantFeature?.key === 'route'" label="路线说明">
+              <MeetingMaterialRichTextEditor
+                v-model="assistantEditForm.content"
+                label="路线说明"
+                placeholder="请输入路线说明，可使用段落、加粗、列表和缩进"
+              />
+            </el-form-item>
             <template v-else-if="selectedAssistantFeature?.key === 'contact'">
+              <div class="admin-contact-qr-panel">
+                <div class="admin-contact-qr-panel__fields">
+                  <el-form-item label="二维码上方文字">
+                    <el-input v-model="assistantEditForm.contactQrTitle" maxlength="100" placeholder="会务二维码" />
+                  </el-form-item>
+                  <div class="admin-contact-qr-panel__actions">
+                    <input
+                      ref="contactQrInput"
+                      class="admin-contact-qr-panel__input"
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg"
+                      @change="handleContactQrFileChange"
+                    >
+                    <el-button type="primary" plain :loading="uploadingContactQr" @click="selectContactQrFile">上传二维码</el-button>
+                    <el-button
+                      v-if="selectedAssistantFeature.contactQrOriginalFilename"
+                      type="danger"
+                      plain
+                      :loading="deletingContactQr"
+                      @click="removeContactQrImage"
+                    >
+                      删除二维码
+                    </el-button>
+                  </div>
+                </div>
+                <div class="admin-contact-qr-panel__preview">
+                  <img v-if="contactQrPreviewUrl" :src="contactQrPreviewUrl" alt="会务二维码预览">
+                  <span v-else>未上传二维码</span>
+                </div>
+              </div>
               <div class="admin-contact-table-panel">
                 <div class="admin-contact-table-panel__heading">
                   <span>会务联系人</span>
@@ -780,7 +808,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Download, FullScreen, Plus, Refresh, Search, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -827,13 +855,21 @@ import {
   updateAdminMeeting,
   type MeetingLocationOption,
 } from '../../api/adminMeetings'
-import { listAdminMeetingAssistantFeatures, updateAdminMeetingAssistantFeature } from '../../api/meetingAssistant'
+import {
+  deleteAdminContactQr,
+  fetchContactQrObjectUrl,
+  listAdminMeetingAssistantFeatures,
+  updateAdminMeetingAssistantFeature,
+  uploadAdminContactQr,
+} from '../../api/meetingAssistant'
 import { createAdminStaff, listAdminStaff, removeAdminStaffAssignment, updateAdminStaff } from '../../api/adminStaff'
 import { getApiErrorMessage } from '../../api/client'
 import AdminAgendaEditor from '../../components/AdminAgendaEditor.vue'
 import AdminMeetingMaterialsEditor from '../../components/AdminMeetingMaterialsEditor.vue'
+import MeetingMaterialRichTextEditor from '../../components/MeetingMaterialRichTextEditor.vue'
 import AdminWorkspaceLayout from '../../components/AdminWorkspaceLayout.vue'
 import { useSessionStore } from '../../stores/session'
+import { decodeMaterialRichContent, encodeMaterialRichContent } from '../../utils/materialRichText'
 import type {
   AdminCheckInComparison,
   AdminCheckInRecord,
@@ -962,11 +998,16 @@ const staffEditForm = ref({ isActive: true, newPassword: '' })
 const selectedAssistantFeature = ref<MeetingAssistantFeature>()
 const assistantEditDialogVisible = ref(false)
 const assistantMaterialCount = ref(0)
+const contactQrInput = ref<HTMLInputElement>()
+const contactQrPreviewUrl = ref('')
+const uploadingContactQr = ref(false)
+const deletingContactQr = ref(false)
 const assistantEditForm = ref({
   content: '',
   unpublishedMessage: '',
   isPublished: false,
   accessLevel: 'guest' as MeetingAssistantAccessLevel,
+  contactQrTitle: '会务二维码',
   contacts: [] as Array<{ __rowKey: string; name: string; role: string; phone: string }>,
 })
 
@@ -1018,6 +1059,7 @@ const editForm = ref({
   endTime: '',
   timeDisplayMode: 'day_period' as MeetingTimeDisplayMode,
   status: 'draft' as MeetingStatus,
+  registrationEnabled: false,
   publicUrl: '',
 })
 const locationDialogVisible = ref(false)
@@ -2343,14 +2385,16 @@ function openAssistantEditDialog(feature: MeetingAssistantFeature): void {
   selectedAssistantFeature.value = feature
   assistantMaterialCount.value = 0
   assistantEditForm.value = {
-    content: feature.content,
+    content: feature.key === 'route' ? decodeMaterialRichContent(feature.content) : feature.content,
     unpublishedMessage: feature.unpublishedMessage,
     isPublished: feature.isPublished,
     accessLevel: feature.accessLevel,
+    contactQrTitle: feature.contactQrTitle || '会务二维码',
     contacts: feature.contacts.length
       ? feature.contacts.map((item) => createContactRow(item))
       : [createContactRow()],
   }
+  void refreshContactQrPreview(feature)
   assistantEditDialogVisible.value = true
 }
 
@@ -2381,6 +2425,113 @@ function removeContactPerson(index: number): void {
 }
 
 /**
+ * 释放联系会务二维码预览地址。
+ *
+ * 入参：无。
+ * 返回值：void：存在本地预览地址时释放并清空。
+ * 异常：当前函数不主动抛出异常。
+ */
+function revokeContactQrPreviewUrl(): void {
+  if (contactQrPreviewUrl.value) {
+    URL.revokeObjectURL(contactQrPreviewUrl.value)
+    contactQrPreviewUrl.value = ''
+  }
+}
+
+/**
+ * 刷新联系会务二维码预览图。
+ *
+ * 入参：feature 为联系会务功能配置，必填。
+ * 返回值：Promise<void>：有二维码时读取图片并生成本地预览地址，无二维码时清空预览。
+ * 异常：图片读取失败时静默清空预览，避免影响联系人编辑。
+ */
+async function refreshContactQrPreview(feature: MeetingAssistantFeature): Promise<void> {
+  revokeContactQrPreviewUrl()
+  if (feature.key !== 'contact' || !feature.contactQrOriginalFilename || !meeting.value) {
+    return
+  }
+  try {
+    contactQrPreviewUrl.value = await fetchContactQrObjectUrl(meeting.value.id, 'admin')
+  } catch {
+    contactQrPreviewUrl.value = ''
+  }
+}
+
+/**
+ * 将联系会务最新配置同步到当前弹窗和配置列表。
+ *
+ * 入参：feature 为后端返回的联系会务功能配置，必填。
+ * 返回值：void：更新当前选择和会议服务列表中的同项数据。
+ * 异常：当前函数不主动抛出异常。
+ */
+function syncSelectedAssistantFeature(feature: MeetingAssistantFeature): void {
+  selectedAssistantFeature.value = feature
+  assistantFeatures.value = assistantFeatures.value.map((item) => item.key === feature.key ? feature : item)
+}
+
+/**
+ * 打开联系会务二维码文件选择框。
+ *
+ * 入参：无。
+ * 返回值：void：触发隐藏文件输入控件。
+ * 异常：输入控件未挂载时不执行。
+ */
+function selectContactQrFile(): void {
+  contactQrInput.value?.click()
+}
+
+/**
+ * 响应管理员选择联系会务二维码图片。
+ *
+ * 入参：event 为文件输入变更事件，必填。
+ * 返回值：Promise<void>：上传成功后刷新配置和预览。
+ * 异常：会议未加载、格式不符或网络异常时展示错误提示。
+ */
+async function handleContactQrFileChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !meeting.value) {
+    return
+  }
+  uploadingContactQr.value = true
+  try {
+    const feature = await uploadAdminContactQr(meeting.value.id, file)
+    syncSelectedAssistantFeature(feature)
+    await refreshContactQrPreview(feature)
+    ElMessage.success('会务二维码已上传。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '会务二维码上传失败。'))
+  } finally {
+    uploadingContactQr.value = false
+  }
+}
+
+/**
+ * 删除当前联系会务二维码图片。
+ *
+ * 入参：无。
+ * 返回值：Promise<void>：删除成功后刷新配置并清空预览。
+ * 异常：会议未加载、权限或网络异常时展示错误提示。
+ */
+async function removeContactQrImage(): Promise<void> {
+  if (!meeting.value) {
+    return
+  }
+  deletingContactQr.value = true
+  try {
+    const feature = await deleteAdminContactQr(meeting.value.id)
+    syncSelectedAssistantFeature(feature)
+    revokeContactQrPreviewUrl()
+    ElMessage.success('会务二维码已删除。')
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '会务二维码删除失败。'))
+  } finally {
+    deletingContactQr.value = false
+  }
+}
+
+/**
  * 保存会议助手正文、未发布提醒和发布状态。
  *
  * 入参：无；函数读取当前会议、选中功能和编辑表单。
@@ -2391,7 +2542,9 @@ async function saveAssistantFeature(): Promise<void> {
   if (!meeting.value || !selectedAssistantFeature.value) {
     return
   }
-  const content = assistantEditForm.value.content.trim()
+  const content = selectedAssistantFeature.value.key === 'route'
+    ? encodeMaterialRichContent(assistantEditForm.value.content)
+    : assistantEditForm.value.content.trim()
   const unpublishedMessage = assistantEditForm.value.unpublishedMessage.trim()
   const contacts = assistantEditForm.value.contacts
     .map((item) => ({
@@ -2405,8 +2558,12 @@ async function saveAssistantFeature(): Promise<void> {
     return
   }
   if (selectedAssistantFeature.value.key === 'contact') {
-    if (assistantEditForm.value.isPublished && contacts.length === 0) {
-      ElMessage.warning('发布前请至少添加一位联系人。')
+    if (
+      assistantEditForm.value.isPublished
+      && contacts.length === 0
+      && !selectedAssistantFeature.value.contactQrOriginalFilename
+    ) {
+      ElMessage.warning('发布前请至少添加一位联系人或上传会务二维码。')
       return
     }
   } else if (selectedAssistantFeature.value.key === 'manual') {
@@ -2434,6 +2591,7 @@ async function saveAssistantFeature(): Promise<void> {
         isPublished: assistantEditForm.value.isPublished,
         accessLevel: assistantEditForm.value.accessLevel,
         contacts: selectedAssistantFeature.value.key === 'contact' ? contacts : [],
+        contactQrTitle: assistantEditForm.value.contactQrTitle.trim() || '会务二维码',
       },
     )
     assistantFeatures.value = await listAdminMeetingAssistantFeatures(meeting.value.id)
@@ -2511,6 +2669,7 @@ function resetEditForm(): void {
     endTime: toDateTimeLocalValue(meeting.value.endTime),
     timeDisplayMode: meeting.value.timeDisplayMode,
     status: meeting.value.status,
+    registrationEnabled: Boolean(meeting.value.registrationEnabled),
     publicUrl: meeting.value.publicUrl || '',
   }
   // 编辑框默认显示当前浏览器地址（部署到服务器后即为本机 IP）；已保存的自定义地址优先
@@ -2552,6 +2711,7 @@ async function saveMeeting(options: { silent?: boolean } = {}): Promise<void> {
       endTime: toIsoWithChinaTimezone(editForm.value.endTime),
       timeDisplayMode: editForm.value.timeDisplayMode,
       status: editForm.value.status,
+      registrationEnabled: editForm.value.registrationEnabled,
       publicUrl: publicUrlEdit.value.trim() || undefined,
     })
     meeting.value = savedMeeting
@@ -3332,6 +3492,7 @@ function toIsoWithChinaTimezone(value: string): string {
 }
 
 onMounted(loadDetail)
+onBeforeUnmount(revokeContactQrPreviewUrl)
 
 /**
  * 主动触发会议入口二维码生成，调用方为边栏"生成二维码"按钮。

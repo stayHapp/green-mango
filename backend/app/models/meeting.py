@@ -77,6 +77,16 @@ class Meeting(Base):
         order_by="MeetingMaterial.sort_order, MeetingMaterial.id",
     )
 
+    @property
+    def registration_enabled(self) -> bool:
+        """读取当前会议是否开放自主报名。
+
+        入参：无；函数读取当前会议关联的 MeetingSetting（会议设置）记录。
+        返回值：bool：设置记录存在且报名开关开启时返回 True，否则返回 False。
+        异常：当前属性不主动抛出异常；缺少设置记录时按关闭报名处理。
+        """
+        return bool(self.setting and self.setting.registration_enabled)
+
 
 class MeetingSetting(Base):
     """会议级配置，独立存放以便后续扩展页面配置和报名规则。"""
@@ -86,7 +96,7 @@ class MeetingSetting(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     # 每个会议只允许一条设置记录，保证会议规则读取路径确定。
     meeting_id: Mapped[int] = mapped_column(ForeignKey("meetings.id", ondelete="CASCADE"), unique=True, nullable=False)
-    registration_enabled: Mapped[bool] = mapped_column(default=True, nullable=False)
+    registration_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
     settings_json: Mapped[dict[str, object]] = mapped_column(JSON, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
@@ -145,6 +155,11 @@ class MeetingAssistantFeature(Base):
     is_published: Mapped[bool] = mapped_column(default=False, nullable=False)
     access_level: Mapped[str] = mapped_column(String(32), default="guest", nullable=False)
     contacts: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list, nullable=False)
+    contact_qr_title: Mapped[str] = mapped_column(String(100), default="会务二维码", nullable=False)
+    contact_qr_original_filename: Mapped[str | None] = mapped_column(String(255))
+    contact_qr_storage_key: Mapped[str | None] = mapped_column(String(255))
+    contact_qr_content_type: Mapped[str | None] = mapped_column(String(150))
+    contact_qr_size_bytes: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False

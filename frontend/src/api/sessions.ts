@@ -148,7 +148,7 @@ export async function getPublicMeeting(meetingId: string): Promise<Meeting> {
     endTime: data.end_time || '',
     timeDisplayMode: data.time_display_mode || 'day_period',
     status: data.status,
-    registrationEnabled: data.registration_enabled,
+    registrationEnabled: data.registration_enabled === true,
     registrationFields: data.registration_fields.map((field): GuestRegistrationField => ({
       key: field.key,
       label: field.label,

@@ -19,6 +19,7 @@
 | GET | `/api/health` | 公开 | 健康检查 |
 | GET | `/api/meetings/{meeting_id}` | 公开 | 嘉宾入口登录前读取已发布会议基础信息 |
 | GET | `/api/meetings/{meeting_id}/assistant-features/{feature_key}` | 公开 | 读取配置为公开可见的单项会议服务 |
+| GET | `/api/meetings/{meeting_id}/assistant-features/contact/qr` | 公开 | 读取公开且已发布的联系会务二维码图片 |
 | GET | `/api/meetings/{meeting_id}/weather` | 公开 | 读取公开且已发布天气服务的实时天气 |
 | POST | `/api/admin/sessions` | 公开 | 管理员账号密码登录 |
 | POST | `/api/staff/sessions` | 公开 | 工作人员账号密码登录 |
@@ -40,7 +41,7 @@
 | POST | `/api/admin/meetings/{meeting_id}/admins` | 按账号添加已有管理员 |
 | DELETE | `/api/admin/meetings/{meeting_id}/admins/{user_id}` | 移除非创建人管理员授权 |
 
-会议结束时间必须晚于开始时间。`time_display_mode` 控制嘉宾会议首页时间展示方式，取值为 `day_period`（显示到上午/下午）或 `time`（显示到具体时分），默认 `day_period`。创建人不能从自己的会议中移除。
+会议结束时间必须晚于开始时间。`time_display_mode` 控制嘉宾会议首页时间展示方式，取值为 `day_period`（显示到上午/下午）或 `time`（显示到具体时分），默认 `day_period`。`registration_enabled` 控制当前会议是否开放自主报名，默认关闭；关闭时公开入口不展示报名操作，报名提交接口保留但不创建申请。创建人不能从自己的会议中移除。
 
 ## 管理员嘉宾接口
 
@@ -97,13 +98,14 @@
 | --- | --- | --- |
 | GET | `/api/admin/meetings/{meeting_id}/assistant-features` | 获取会议固定五项会议助手配置 |
 | PATCH | `/api/admin/meetings/{meeting_id}/assistant-features/{feature_key}` | 修改单项正文、未发布提醒、发布状态和访问级别 |
+| GET / POST / DELETE | `/api/admin/meetings/{meeting_id}/assistant-features/contact/qr` | 预览、上传或删除联系会务二维码图片 |
 | GET | `/api/admin/meetings/{meeting_id}/materials` | 获取会议全部资料 |
 | POST | `/api/admin/meetings/{meeting_id}/materials` | 以多部分表单新增标题、正文和可选附件 |
 | PATCH | `/api/admin/meetings/{meeting_id}/materials/{material_id}` | 编辑资料并按需替换或移除附件 |
 | DELETE | `/api/admin/meetings/{meeting_id}/materials/{material_id}` | 删除资料及其附件 |
 | GET | `/api/admin/meetings/{meeting_id}/materials/{material_id}/download` | 下载资料附件 |
 
-`feature_key` 只接受 `agenda`、`manual`、`weather`、`route`、`contact`。`access_level` 只接受 `public` 或 `guest`，历史和新增配置默认使用 `guest`。正文为纯文本且最长 20,000 字符，未发布提醒为纯文本且最长 500 字符。管理员必须拥有当前会议授权；不受支持的功能标识或访问级别返回 422。
+`feature_key` 只接受 `agenda`、`manual`、`weather`、`route`、`contact`。`access_level` 只接受 `public` 或 `guest`，历史和新增配置默认使用 `guest`。正文为纯文本且最长 20,000 字符，未发布提醒为纯文本且最长 500 字符。联系会务额外支持 `contact_qr_title` 和二维码图片，图片通过独立多部分表单接口上传，支持 PNG/JPG/JPEG 等图片格式，存储键不进入响应。管理员必须拥有当前会议授权；不受支持的功能标识或访问级别返回 422。
 
 公开会议服务接口只允许读取状态为已发布或已结束会议中 `access_level=public` 的功能；仅登录嘉宾可见的服务返回 401。公开功能未发布时仍可返回 `unpublished_message`，但 `content` 和 `contacts` 必须为空。草稿会议统一返回 404，不泄露服务配置。
 
@@ -122,13 +124,14 @@
 | GET | `/api/guest/meetings/{meeting_id}/profile` | 查询固定资料、动态字段值、呈现字段 `visible_fields` 与动态标签 `field_labels` |
 | GET | `/api/guest/meetings/{meeting_id}/check-in-qr` | 获取个人签到二维码 token 与过期时间 |
 | GET | `/api/guest/meetings/{meeting_id}/assistant-features/{feature_key}` | 获取所属会议单项服务内容或未发布提醒，不受公开访问级别限制 |
+| GET | `/api/guest/meetings/{meeting_id}/assistant-features/contact/qr` | 获取所属会议已发布的联系会务二维码图片 |
 | GET | `/api/guest/meetings/{meeting_id}/materials` | 获取所属会议已发布的多条会议资料 |
 | GET | `/api/guest/meetings/{meeting_id}/materials/{material_id}/download` | 下载所属会议已发布的资料附件 |
 | GET | `/api/guest/meetings/{meeting_id}/weather` | 获取已发布天气功能的和风天气实况与七日预报；优先使用管理员确认的导航坐标 |
 
 二维码图像由前端把 `qr_token` 编码为二维码；工作人员扫码后只把 token 交给后端校验。二维码在会议结束后失效。
 
-会议服务功能已发布时返回 `content`；未发布时只返回 `unpublished_message`、发布状态和访问级别，响应中的 `content` 必须为 `null`、`contacts` 必须为空，避免正文和联系人草稿泄露。已登录嘉宾可以访问自己所属会议的全部会议服务，不受 `access_level` 的公开设置影响。
+会议服务功能已发布时返回 `content`；未发布时只返回 `unpublished_message`、发布状态和访问级别，响应中的 `content` 必须为 `null`、`contacts` 必须为空，避免正文和联系人草稿泄露。联系会务二维码图片同样要求功能已发布；公开读取还要求 `access_level=public`。已登录嘉宾可以访问自己所属会议的全部会议服务，不受 `access_level` 的公开设置影响。
 
 二维码响应包含 `is_checked_in` 和可空的 `checked_in_at`，两个字段从当前有效签到场次的 `check_ins` 读取，不改变二维码 token 与过期规则。SQLite 读取出的无时区签到时间在响应前按 UTC 恢复，前端按嘉宾本地时区展示。
 

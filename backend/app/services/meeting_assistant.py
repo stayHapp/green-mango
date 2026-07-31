@@ -77,6 +77,8 @@ def update_meeting_assistant_feature(
         feature.access_level = payload.access_level
     if payload.contacts is not None:
         feature.contacts = [contact.model_dump() for contact in payload.contacts]
+    if feature_key == "contact" and payload.contact_qr_title is not None:
+        feature.contact_qr_title = payload.contact_qr_title.strip() or "会务二维码"
     db.commit()
     db.refresh(feature)
     return feature

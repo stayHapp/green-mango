@@ -17,7 +17,7 @@
               {{ hasCurrentSession ? '我的入场码' : '参会登录' }}
             </el-button>
             <el-button
-              v-if="meeting.registrationEnabled"
+              v-if="meeting.registrationEnabled === true"
               class="guest-entry-secondary-button"
               size="large"
               @click="openRegistration"

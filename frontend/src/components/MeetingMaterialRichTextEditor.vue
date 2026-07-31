@@ -44,7 +44,7 @@
       role="textbox"
       aria-multiline="true"
       :aria-label="label"
-      data-placeholder="输入资料内容，可使用段落、加粗、列表和缩进"
+      :data-placeholder="placeholderText"
       @click="captureActiveParagraph"
       @keyup="captureActiveParagraph"
       @input="handleEditorInput"
@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import {
   MATERIAL_FIRST_LINE_INDENT_CLASS,
@@ -71,6 +71,7 @@ type MaterialFormatCommand =
 const props = defineProps<{
   modelValue: string
   label: string
+  placeholder?: string
 }>()
 
 const emit = defineEmits<{
@@ -79,6 +80,7 @@ const emit = defineEmits<{
 
 const editorElement = ref<HTMLElement>()
 const activeParagraph = ref<HTMLElement>()
+const placeholderText = computed(getPlaceholderText)
 
 watch(getModelValue, synchronizeEditorValue)
 onMounted(initializeEditorValue)
@@ -92,6 +94,17 @@ onMounted(initializeEditorValue)
  */
 function getModelValue(): string {
   return props.modelValue
+}
+
+/**
+ * 获取编辑器空态提示文案。
+ *
+ * 入参：无；函数读取可选 placeholder 属性。
+ * 返回值：string：父组件传入的占位提示，未传入时使用会议资料默认提示。
+ * 异常：当前函数不主动抛出异常。
+ */
+function getPlaceholderText(): string {
+  return props.placeholder ?? '输入资料内容，可使用段落、加粗、列表和缩进'
 }
 
 /**

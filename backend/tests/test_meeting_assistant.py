@@ -118,7 +118,59 @@ def test_admin_can_publish_feature_and_guest_cannot_read_unpublished_draft(
         "is_published": False,
         "access_level": "guest",
         "contacts": [],
+        "contact_qr_title": "会务二维码",
+        "contact_qr_original_filename": None,
     }
+
+
+def test_contact_feature_can_manage_qr_image(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证联系会务二维码可由后台上传、公开读取并删除。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示二维码图片和标题进入会议服务配置。
+    异常：断言失败表示二维码管理接口或公开读取规则异常。
+    """
+    client, db = client_and_session
+    meeting_id, admin_headers = create_meeting(client, db, create_user, auth_headers, "assistant-contact-qr")
+    image_bytes = b"\x89PNG\r\n\x1a\ncontact-qr"
+
+    upload_response = client.post(
+        f"/api/admin/meetings/{meeting_id}/assistant-features/contact/qr",
+        headers=admin_headers,
+        files={"image": ("qr.png", image_bytes, "image/png")},
+    )
+    assert upload_response.status_code == 200
+    assert upload_response.json()["contact_qr_original_filename"] == "qr.png"
+
+    save_response = client.patch(
+        f"/api/admin/meetings/{meeting_id}/assistant-features/contact",
+        headers=admin_headers,
+        json={
+            "content": "",
+            "unpublished_message": "联系会务尚未发布。",
+            "is_published": True,
+            "access_level": "public",
+            "contacts": [],
+            "contact_qr_title": "扫码联系会务",
+        },
+    )
+    assert save_response.status_code == 200
+    assert save_response.json()["contact_qr_title"] == "扫码联系会务"
+
+    public_image_response = client.get(f"/api/meetings/{meeting_id}/assistant-features/contact/qr")
+    assert public_image_response.status_code == 200
+    assert public_image_response.content == image_bytes
+
+    delete_response = client.delete(
+        f"/api/admin/meetings/{meeting_id}/assistant-features/contact/qr",
+        headers=admin_headers,
+    )
+    assert delete_response.status_code == 200
+    assert delete_response.json()["contact_qr_original_filename"] is None
 
 
 def test_public_access_level_controls_anonymous_content_and_draft_isolation(

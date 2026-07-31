@@ -49,20 +49,26 @@ def test_admin_can_create_list_get_and_update_meeting(
     )
     assert create_response.status_code == 201
     meeting_id = create_response.json()["id"]
+    assert create_response.json()["registration_enabled"] is False
 
     list_response = client.get("/api/admin/meetings", headers=headers)
     assert list_response.status_code == 200
     assert [item["id"] for item in list_response.json()] == [meeting_id]
+    assert list_response.json()[0]["registration_enabled"] is False
 
     detail_response = client.get(f"/api/admin/meetings/{meeting_id}", headers=headers)
     assert detail_response.status_code == 200
     assert detail_response.json()["title"] == "2026 教育创新论坛"
+    assert detail_response.json()["registration_enabled"] is False
 
     update_response = client.patch(
-        f"/api/admin/meetings/{meeting_id}", headers=headers, json={"status": "published"}
+        f"/api/admin/meetings/{meeting_id}",
+        headers=headers,
+        json={"status": "published", "registration_enabled": True},
     )
     assert update_response.status_code == 200
     assert update_response.json()["status"] == "published"
+    assert update_response.json()["registration_enabled"] is True
     assert db.query(MeetingAdmin).filter_by(meeting_id=meeting_id, user_id=admin.id).count() == 1
 
 
@@ -825,6 +831,55 @@ def test_public_application_can_be_reviewed_into_guest(
         headers=headers,
         json={"status": "rejected"},
     ).status_code == 422
+
+
+def test_closed_registration_hides_public_entry_and_rejects_application(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证管理员关闭自主报名后，公开入口同步返回关闭状态且报名提交被拒绝。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示会议级报名开关能控制公开入口和提交接口。
+    异常：当前函数不主动抛出业务异常；断言失败表示报名关闭链路存在缺口。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-close-application")
+    headers = auth_headers(db, admin)
+    create_response = client.post(
+        "/api/admin/meetings",
+        headers=headers,
+        json={
+            "title": "关闭报名会议",
+            "location": "杭州",
+            "status": "published",
+            "registration_enabled": True,
+        },
+    )
+    meeting_id = create_response.json()["id"]
+
+    opened_response = client.get(f"/api/meetings/{meeting_id}")
+    assert opened_response.status_code == 200
+    assert opened_response.json()["registration_enabled"] is True
+
+    close_response = client.patch(
+        f"/api/admin/meetings/{meeting_id}",
+        headers=headers,
+        json={"registration_enabled": False},
+    )
+    assert close_response.status_code == 200
+    assert close_response.json()["registration_enabled"] is False
+
+    closed_response = client.get(f"/api/meetings/{meeting_id}")
+    assert closed_response.status_code == 200
+    assert closed_response.json()["registration_enabled"] is False
+
+    submit_response = client.post(
+        f"/api/meetings/{meeting_id}/guest-applications",
+        json={"name": "报名嘉宾", "phone": "13800000003", "values": {}},
+    )
+    assert submit_response.status_code == 404
 
 
 def test_admin_resource_maintenance_and_cors_are_available(

@@ -29,6 +29,8 @@
 - `guest_applications`：公开报名申请、动态值快照、审核结果和转化后的嘉宾 ID。
 - `registration_fields`、`registrations`、`registration_values`：早期通用报名模型的历史基线，当前不作为三端主流程使用。
 
+`meeting_settings.registration_enabled` 是会议级自主报名开关，新会议默认关闭；关闭时保留公开报名接口和后台审核数据结构，但嘉宾端不展示报名入口，提交报名也不会创建申请。
+
 ## 三端 MVP 关系
 
 ```text
@@ -97,6 +99,11 @@ meetings --< meeting_materials
 | `unpublished_message` | varchar(500) | 未发布时向嘉宾展示的提醒 |
 | `is_published` | boolean | 当前功能是否向嘉宾发布，默认 `false` |
 | `access_level` | varchar(32) | `public` 表示公开可见，`guest` 表示仅登录嘉宾可见；默认 `guest` |
+| `contact_qr_title` | varchar(100) | 联系会务二维码上方文字，默认“会务二维码” |
+| `contact_qr_original_filename` | varchar(255) | 联系会务二维码原始文件名，仅 `contact` 功能使用 |
+| `contact_qr_storage_key` | varchar(255) | 联系会务二维码服务端存储键，不进入前端响应 |
+| `contact_qr_content_type` | varchar(150) | 联系会务二维码图片媒体类型 |
+| `contact_qr_size_bytes` | integer | 联系会务二维码图片大小 |
 | `created_at` | datetime with timezone | 创建时间 |
 | `updated_at` | datetime with timezone | 最后修改时间 |
 

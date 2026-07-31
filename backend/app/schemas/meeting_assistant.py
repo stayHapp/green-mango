@@ -36,6 +36,7 @@ class MeetingAssistantFeatureUpdate(BaseModel):
     is_published: bool
     access_level: MeetingAssistantAccessLevel | None = None
     contacts: list[ContactPerson] | None = None
+    contact_qr_title: str | None = Field(default=None, max_length=100)
 
 
 class MeetingAssistantFeatureResponse(BaseModel):
@@ -51,6 +52,10 @@ class MeetingAssistantFeatureResponse(BaseModel):
     access_level: MeetingAssistantAccessLevel
     updated_at: datetime
     contacts: list[ContactPerson] = Field(default_factory=list)
+    contact_qr_title: str = "会务二维码"
+    contact_qr_original_filename: str | None = None
+    contact_qr_content_type: str | None = None
+    contact_qr_size_bytes: int | None = None
 
 
 class GuestMeetingAssistantFeatureResponse(BaseModel):
@@ -63,6 +68,8 @@ class GuestMeetingAssistantFeatureResponse(BaseModel):
     is_published: bool
     access_level: MeetingAssistantAccessLevel
     contacts: list[ContactPerson] = Field(default_factory=list)
+    contact_qr_title: str = "会务二维码"
+    contact_qr_original_filename: str | None = None
 
 
 class MeetingMaterialResponse(BaseModel):

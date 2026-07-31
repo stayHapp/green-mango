@@ -16,6 +16,7 @@ interface MeetingApiResponse {
   end_time: string | null
   time_display_mode: Meeting['timeDisplayMode']
   status: MeetingStatus
+  registration_enabled: boolean
   created_by_id: number
   created_at: string
   updated_at: string
@@ -33,6 +34,7 @@ export interface MeetingWriteInput {
   endTime: string
   timeDisplayMode: Meeting['timeDisplayMode']
   status: MeetingStatus
+  registrationEnabled: boolean
   publicUrl?: string
 }
 
@@ -57,6 +59,7 @@ function mapMeeting(meeting: MeetingApiResponse): Meeting {
     endTime: meeting.end_time || '',
     timeDisplayMode: meeting.time_display_mode || 'day_period',
     status: meeting.status,
+    registrationEnabled: meeting.registration_enabled,
     adminIds: [String(meeting.created_by_id)],
     staffIds: [],
   }
@@ -82,6 +85,7 @@ function meetingPayload(input: MeetingWriteInput) {
     end_time: input.endTime || null,
     time_display_mode: input.timeDisplayMode,
     status: input.status,
+    registration_enabled: input.registrationEnabled,
   }
 }
 

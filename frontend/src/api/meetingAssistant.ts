@@ -5,7 +5,7 @@ import type {
   MeetingAssistantFeature,
   MeetingAssistantFeatureKey,
 } from '../types'
-import { apiClient, authorizationConfig } from './client'
+import { API_BASE_URL, apiClient, authorizationConfig } from './client'
 
 interface MeetingAssistantFeatureApiResponse {
   meeting_id: number
@@ -16,13 +16,17 @@ interface MeetingAssistantFeatureApiResponse {
   access_level: MeetingAssistantAccessLevel
   updated_at?: string
   contacts?: Array<{ name: string; role: string; phone: string }>
+  contact_qr_title?: string
+  contact_qr_original_filename?: string | null
+  contact_qr_content_type?: string | null
+  contact_qr_size_bytes?: number | null
 }
 
 export const meetingAssistantFeatureDefinitions: Array<Pick<MeetingAssistantFeature, 'key' | 'title' | 'description'>> = [
   { key: 'agenda', title: '会议日程', description: '查看会议流程和环节安排' },
   { key: 'manual', title: '会议资料', description: '查看参会须知和会务资料' },
   { key: 'weather', title: '天气提醒', description: '了解会场天气和出行提示' },
-  { key: 'route', title: '路线导航', description: '查看会场位置和到场说明' },
+  { key: 'route', title: '路线导航', description: '查看会场位置和路线说明' },
   { key: 'contact', title: '联系会务', description: '联系会务组和现场支持' },
 ]
 
@@ -76,6 +80,10 @@ function mapMeetingAssistantFeature(response: MeetingAssistantFeatureApiResponse
       role: item.role,
       phone: item.phone,
     })),
+    contactQrTitle: response.contact_qr_title || '会务二维码',
+    contactQrOriginalFilename: response.contact_qr_original_filename || '',
+    contactQrContentType: response.contact_qr_content_type || '',
+    contactQrSizeBytes: response.contact_qr_size_bytes ?? undefined,
   }
 }
 
@@ -106,7 +114,7 @@ export async function updateAdminMeetingAssistantFeature(
   key: MeetingAssistantFeatureKey,
   input: Pick<
     MeetingAssistantFeature,
-    'content' | 'unpublishedMessage' | 'isPublished' | 'accessLevel' | 'contacts'
+    'content' | 'unpublishedMessage' | 'isPublished' | 'accessLevel' | 'contacts' | 'contactQrTitle'
   >,
 ): Promise<MeetingAssistantFeature> {
   const { data } = await apiClient.patch<MeetingAssistantFeatureApiResponse>(
@@ -117,10 +125,76 @@ export async function updateAdminMeetingAssistantFeature(
       is_published: input.isPublished,
       access_level: input.accessLevel,
       contacts: input.contacts,
+      contact_qr_title: input.contactQrTitle,
     },
     authorizationConfig('admin'),
   )
   return mapMeetingAssistantFeature(data)
+}
+
+/**
+ * 上传或替换联系会务二维码图片。
+ *
+ * 入参：meetingId 为会议 ID；image 为管理员选择的图片文件，均必填。
+ * 返回值：Promise<MeetingAssistantFeature>：上传后最新的联系会务配置。
+ * 异常：登录过期、会议未授权、图片格式或网络异常时抛出异常。
+ */
+export async function uploadAdminContactQr(
+  meetingId: string,
+  image: File,
+): Promise<MeetingAssistantFeature> {
+  const formData = new FormData()
+  formData.append('image', image)
+  const { data } = await apiClient.post<MeetingAssistantFeatureApiResponse>(
+    `/admin/meetings/${encodeURIComponent(meetingId)}/assistant-features/contact/qr`,
+    formData,
+    authorizationConfig('admin', { headers: { 'Content-Type': 'multipart/form-data' } }),
+  )
+  return mapMeetingAssistantFeature(data)
+}
+
+/**
+ * 删除联系会务二维码图片。
+ *
+ * 入参：meetingId 为会议 ID，必填。
+ * 返回值：Promise<MeetingAssistantFeature>：删除后最新的联系会务配置。
+ * 异常：登录过期、会议未授权或网络异常时抛出异常。
+ */
+export async function deleteAdminContactQr(meetingId: string): Promise<MeetingAssistantFeature> {
+  const { data } = await apiClient.delete<MeetingAssistantFeatureApiResponse>(
+    `/admin/meetings/${encodeURIComponent(meetingId)}/assistant-features/contact/qr`,
+    authorizationConfig('admin'),
+  )
+  return mapMeetingAssistantFeature(data)
+}
+
+/**
+ * 生成公开联系会务二维码图片地址。
+ *
+ * 入参：meetingId 为会议 ID，必填。
+ * 返回值：string：可直接放入 img src 的公开图片地址。
+ * 异常：当前函数不主动抛出异常。
+ */
+export function publicContactQrUrl(meetingId: string): string {
+  return `${API_BASE_URL}/meetings/${encodeURIComponent(meetingId)}/assistant-features/contact/qr`
+}
+
+/**
+ * 读取需要登录权限的联系会务二维码图片并转换为本地预览地址。
+ *
+ * 入参：meetingId 为会议 ID；role 为 admin 或 guest，均必填。
+ * 返回值：Promise<string>：浏览器本地 object URL，调用方负责在不用时释放。
+ * 异常：登录过期、会议无权限、未上传图片或网络异常时抛出异常。
+ */
+export async function fetchContactQrObjectUrl(meetingId: string, role: 'admin' | 'guest'): Promise<string> {
+  const path = role === 'admin'
+    ? `/admin/meetings/${encodeURIComponent(meetingId)}/assistant-features/contact/qr`
+    : `/guest/meetings/${encodeURIComponent(meetingId)}/assistant-features/contact/qr`
+  const { data } = await apiClient.get<Blob>(
+    path,
+    authorizationConfig(role, { responseType: 'blob' }),
+  )
+  return URL.createObjectURL(data)
 }
 
 /**

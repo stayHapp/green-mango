@@ -130,6 +130,10 @@ export interface MeetingAssistantFeature {
   isPublished: boolean
   accessLevel: MeetingAssistantAccessLevel
   contacts: MeetingContactPerson[]
+  contactQrTitle: string
+  contactQrOriginalFilename: string
+  contactQrContentType: string
+  contactQrSizeBytes?: number
 }
 
 export interface MeetingMaterial {

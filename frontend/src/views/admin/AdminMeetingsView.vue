@@ -51,6 +51,9 @@
                 <el-option label="显示到具体时间" value="time" />
               </el-select>
             </el-form-item>
+            <el-form-item label="自主报名">
+              <el-switch v-model="createForm.registrationEnabled" active-text="开放" inactive-text="关闭" />
+            </el-form-item>
             <div class="action-row"><el-button type="primary" :loading="creating" @click="handleCreateMeeting">创建会议</el-button></div>
             <el-alert v-if="createMessage" class="top-gap" :type="createMessageType" :closable="false" :title="createMessage" />
           </el-form>
@@ -86,6 +89,7 @@ const createForm = ref({
   startTime: '',
   endTime: '',
   timeDisplayMode: 'day_period' as MeetingTimeDisplayMode,
+  registrationEnabled: false,
 })
 
 /**
@@ -146,6 +150,7 @@ async function handleCreateMeeting(): Promise<void> {
       endTime: toChinaIso(createForm.value.endTime),
       timeDisplayMode: createForm.value.timeDisplayMode,
       status: 'draft',
+      registrationEnabled: createForm.value.registrationEnabled,
     })
     createForm.value = {
       title: '',
@@ -154,6 +159,7 @@ async function handleCreateMeeting(): Promise<void> {
       startTime: '',
       endTime: '',
       timeDisplayMode: 'day_period',
+      registrationEnabled: false,
     }
     createMessageType.value = 'success'
     createMessage.value = '会议已创建。'

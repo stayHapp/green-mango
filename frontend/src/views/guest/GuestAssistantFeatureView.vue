@@ -256,26 +256,37 @@
             <h2>{{ meeting?.navigationName || meeting?.location || '会议地点' }}</h2>
             <p>{{ meeting?.navigationAddress || meeting?.location || '管理员尚未补充会议地址。' }}</p>
           </div>
-          <a
-            v-if="navigationUrl"
+          <button
+            v-if="navigationOptions.length"
+            type="button"
             class="route-navigation-button"
-            :href="navigationUrl"
-            target="_blank"
-            rel="noopener noreferrer"
+            @click="navigationDrawerVisible = true"
           >
-            打开地图导航
-          </a>
+            <el-icon class="route-navigation-button__icon"><Promotion /></el-icon>
+            <span>导航</span>
+          </button>
           <el-alert v-else type="warning" :closable="false" title="管理员尚未选择准确的导航位置。" />
         </section>
 
         <section class="route-arrival-guide">
-          <h2>到场说明</h2>
-          <article v-for="(block, index) in contentBlocks" :key="`route-${index}`" class="assistant-content-card">{{ block }}</article>
+          <!-- 路线说明复用会议资料富文本展示规则，避免后台编辑格式丢失。 -->
+          <div
+            v-if="feature.content"
+            class="meeting-material-card__content route-arrival-guide__content"
+            v-html="routeContentHtml()"
+          ></div>
+          <p v-else class="route-arrival-guide__placeholder">路线说明待补充。</p>
         </section>
       </template>
 
       <template v-else-if="feature?.key === 'contact'">
-        <div v-if="!contactPersons.length" class="assistant-content-cards">
+        <section v-if="contactQrImageUrl" class="contact-service-panel" aria-label="会务二维码">
+          <div class="contact-service-panel__copy">
+            <strong>{{ feature.contactQrTitle || '会务二维码' }}</strong>
+          </div>
+          <img class="contact-service-panel__qr" :src="contactQrImageUrl" alt="会务联系二维码">
+        </section>
+        <div v-if="!contactPersons.length && !contactQrImageUrl" class="assistant-content-cards">
           <article class="assistant-content-card">联系人信息待补充</article>
         </div>
         <ul v-else class="contact-person-list">
@@ -304,21 +315,55 @@
         <article v-for="(block, index) in contentBlocks" :key="`${feature.key}-${index}`" class="assistant-content-card">{{ block }}</article>
       </div>
     </main>
+
+    <el-drawer
+      v-model="navigationDrawerVisible"
+      class="navigation-app-drawer-shell"
+      direction="btt"
+      size="auto"
+      title="选择导航软件"
+      append-to-body
+    >
+      <nav class="navigation-app-list" aria-label="导航软件">
+        <button
+          v-for="option in navigationOptions"
+          :key="option.key"
+          type="button"
+          class="navigation-app-option"
+          @click="openNavigationOption(option)"
+        >
+          <img
+            class="navigation-app-option__icon navigation-app-option__icon--image"
+            :src="option.iconUrl"
+            :alt="`${option.label}图标`"
+          >
+          <span class="navigation-app-option__copy">
+            <strong>{{ option.label }}</strong>
+          </span>
+        </button>
+      </nav>
+    </el-drawer>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { ArrowDown, ArrowLeft, ArrowUp, Calendar, Document, Download, Location as LocationIcon, Paperclip, Phone, Sunny, Umbrella } from '@element-plus/icons-vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ArrowDown, ArrowLeft, ArrowUp, Calendar, Document, Download, Location as LocationIcon, Paperclip, Phone, Promotion, Sunny, Umbrella } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
+import amapIconUrl from '../../assets/navigation-icons/amap.jpg'
+import appleMapsIconUrl from '../../assets/navigation-icons/apple-maps.jpg'
+import baiduIconUrl from '../../assets/navigation-icons/baidu.jpg'
+import tencentIconUrl from '../../assets/navigation-icons/tencent.jpg'
 import { getApiErrorMessage } from '../../api/client'
 import { getPublicMeeting } from '../../api/sessions'
 import {
+  fetchContactQrObjectUrl,
   getGuestMeetingAssistantFeature,
   getPublicMeetingAssistantFeature,
   isMeetingAssistantFeatureKey,
+  publicContactQrUrl,
 } from '../../api/meetingAssistant'
 import {
   downloadMeetingMaterialAttachment,
@@ -373,6 +418,14 @@ interface AgendaDateMeta {
   period: string
 }
 
+interface NavigationAppOption {
+  key: string
+  label: string
+  iconUrl: string
+  url: string
+  warnWhenUnavailable: boolean
+}
+
 const route = useRoute()
 const router = useRouter()
 const meeting = ref<Meeting>()
@@ -383,13 +436,15 @@ const loading = ref(true)
 const downloadingMaterialId = ref('')
 const expandedMaterialIds = ref<string[]>([])
 const hourlyExpanded = ref(false)
+const navigationDrawerVisible = ref(false)
 const activeAgendaDateId = ref('')
+const contactQrImageUrl = ref('')
 const errorMessage = ref('')
 const agendaGroups = computed(buildAgendaGroups)
 const activeAgendaGroup = computed(buildActiveAgendaGroup)
 const agendaSummary = computed(buildAgendaSummary)
 const contentBlocks = computed(buildContentBlocks)
-const navigationUrl = computed(buildNavigationUrl)
+const navigationOptions = computed(buildNavigationOptions)
 const upcomingForecast = computed(buildUpcomingForecast)
 const contactPersons = computed(buildContactPersons)
 const isPublicAccess = computed(() => route.query.access === 'public')
@@ -418,6 +473,41 @@ function buildContactPersons(): Array<{ name: string; role: string; phone: strin
 }
 
 /**
+ * 释放联系会务二维码本地图片地址。
+ *
+ * 入参：无。
+ * 返回值：void：当前地址为本地 object URL 时释放并清空。
+ * 异常：当前函数不主动抛出异常。
+ */
+function revokeContactQrImageUrl(): void {
+  if (contactQrImageUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(contactQrImageUrl.value)
+  }
+  contactQrImageUrl.value = ''
+}
+
+/**
+ * 根据访问方式加载联系会务二维码图片。
+ *
+ * 入参：meetingId 为会议 ID；featureData 为当前会议服务配置，均必填。
+ * 返回值：Promise<void>：有二维码时设置图片地址，否则清空。
+ * 异常：图片读取失败时静默清空，不影响联系人信息展示。
+ */
+async function loadContactQrImage(meetingId: string, featureData: MeetingAssistantFeature): Promise<void> {
+  revokeContactQrImageUrl()
+  if (featureData.key !== 'contact' || !featureData.isPublished || !featureData.contactQrOriginalFilename) {
+    return
+  }
+  try {
+    contactQrImageUrl.value = isPublicAccess.value
+      ? publicContactQrUrl(meetingId)
+      : await fetchContactQrObjectUrl(meetingId, 'guest')
+  } catch {
+    contactQrImageUrl.value = ''
+  }
+}
+
+/**
  * 加载会议基础信息和当前会议助手功能配置。
  *
  * 入参：无；函数读取路由中的会议 ID 和功能标识。
@@ -443,6 +533,7 @@ async function loadFeature(): Promise<void> {
     ])
     meeting.value = meetingData
     feature.value = featureData
+    await loadContactQrImage(meetingId, featureData)
     if (featureKey === 'agenda' && featureData.isPublished) {
       selectDefaultAgendaDate()
     }
@@ -500,6 +591,17 @@ function toggleMaterial(materialId: string): void {
  */
 function materialContentHtml(material: MeetingMaterial): string {
   return decodeMaterialRichContent(material.content)
+}
+
+/**
+ * 将路线说明正文转换为嘉宾端可安全展示的文档 HTML。
+ *
+ * 入参：无；函数读取当前路线导航功能正文，可以是历史普通文本或新版资料富文本编码。
+ * 返回值：string：经过会议资料富文本规则清洗后的安全 HTML。
+ * 异常：当前函数不主动抛出异常，编码损坏时由解码函数降级为普通文本。
+ */
+function routeContentHtml(): string {
+  return decodeMaterialRichContent(feature.value?.content ?? '')
 }
 
 /**
@@ -810,27 +912,241 @@ function buildContentBlocks(): string[] {
 }
 
 /**
- * 根据管理员确认的高德坐标生成手机导航链接。
+ * 根据管理员确认的高德坐标生成可选导航软件列表。
  *
  * 入参：无；函数读取会议导航名称、经度和纬度。
- * 返回值：string：可调起高德地图或打开高德 H5 的 URI；坐标缺失时返回空字符串。
+ * 返回值：NavigationAppOption[]：包含高德、百度、腾讯和系统地图跳转链接；坐标缺失时返回空数组。
  * 异常：当前函数不主动抛出异常。
  */
-function buildNavigationUrl(): string {
+function buildNavigationOptions(): NavigationAppOption[] {
   const longitude = meeting.value?.navigationLongitude
   const latitude = meeting.value?.navigationLatitude
   if (longitude === undefined || latitude === undefined) {
-    return ''
+    return []
   }
+  const name = meeting.value?.navigationName || meeting.value?.location || '会议地点'
+  const baiduCoordinate = convertGcj02ToBd09(longitude, latitude)
+
+  return [
+    {
+      key: 'amap',
+      label: '高德地图',
+      iconUrl: amapIconUrl,
+      url: buildAmapNavigationUrl(longitude, latitude, name),
+      warnWhenUnavailable: false,
+    },
+    {
+      key: 'baidu',
+      label: '百度地图',
+      iconUrl: baiduIconUrl,
+      url: buildBaiduNavigationUrl(baiduCoordinate.longitude, baiduCoordinate.latitude, name),
+      warnWhenUnavailable: true,
+    },
+    {
+      key: 'tencent',
+      label: '腾讯地图',
+      iconUrl: tencentIconUrl,
+      url: buildTencentNavigationUrl(longitude, latitude, name),
+      warnWhenUnavailable: true,
+    },
+    buildSystemMapOption(longitude, latitude, name),
+  ]
+}
+
+/**
+ * 生成高德地图导航链接。
+ *
+ * 入参：longitude 为经度；latitude 为纬度；name 为地点名称，均必填。
+ * 返回值：string：高德 URI 链接。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildAmapNavigationUrl(longitude: number, latitude: number, name: string): string {
   const params = new URLSearchParams({
     from: '',
-    to: `${longitude},${latitude},${meeting.value?.navigationName || meeting.value?.location || '会议地点'}`,
+    to: `${longitude},${latitude},${name}`,
     mode: 'car',
     policy: '0',
     src: 'zhihui',
     callnative: '1',
   })
   return `https://uri.amap.com/navigation?${params.toString()}`
+}
+
+/**
+ * 生成百度地图导航链接。
+ *
+ * 入参：longitude 为百度 BD-09 经度；latitude 为百度 BD-09 纬度；name 为地点名称，均必填。
+ * 返回值：string：百度地图 URI 链接。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildBaiduNavigationUrl(longitude: number, latitude: number, name: string): string {
+  const params = new URLSearchParams({
+    destination: `latlng:${latitude},${longitude}|name:${name}`,
+    coord_type: 'bd09ll',
+    mode: 'driving',
+    src: 'zhihui',
+  })
+  return `baidumap://map/direction?${params.toString()}`
+}
+
+/**
+ * 生成腾讯地图导航链接。
+ *
+ * 入参：longitude 为经度；latitude 为纬度；name 为地点名称，均必填。
+ * 返回值：string：腾讯地图 URI 链接。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildTencentNavigationUrl(longitude: number, latitude: number, name: string): string {
+  const params = new URLSearchParams({
+    type: 'drive',
+    to: name,
+    tocoord: `${latitude},${longitude}`,
+    referer: 'zhihui',
+  })
+  return `qqmap://map/routeplan?${params.toString()}`
+}
+
+/**
+ * 根据手机系统生成“地图”选项。
+ *
+ * 入参：longitude 为经度；latitude 为纬度；name 为地点名称，均必填。
+ * 返回值：NavigationAppOption：iOS 使用苹果地图，Android 使用系统地图选择器，其他环境使用网页地图。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildSystemMapOption(longitude: number, latitude: number, name: string): NavigationAppOption {
+  const system = detectMobileSystem()
+  if (system === 'android') {
+    return {
+      key: 'system',
+      label: '地图',
+      iconUrl: appleMapsIconUrl,
+      url: buildSystemNavigationUrl(longitude, latitude, name),
+      warnWhenUnavailable: true,
+    }
+  }
+  return {
+    key: 'system',
+    label: '地图',
+    iconUrl: appleMapsIconUrl,
+    url: buildAppleNavigationUrl(longitude, latitude, name),
+    warnWhenUnavailable: false,
+  }
+}
+
+/**
+ * 打开用户选择的导航软件，并在未离开当前页面时提示可能未安装。
+ *
+ * 入参：option 为用户点击的导航软件配置，必须包含名称、跳转地址和提醒策略。
+ * 返回值：void：函数只触发页面跳转或提醒，不返回业务数据。
+ * 异常：当前函数捕获浏览器打开失败并转为页面提示。
+ */
+function openNavigationOption(option: NavigationAppOption): void {
+  navigationDrawerVisible.value = false
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (!option.warnWhenUnavailable) {
+    window.open(option.url, '_blank', 'noopener,noreferrer')
+    return
+  }
+
+  let hasLeftPage = false
+  const markPageLeft = () => {
+    hasLeftPage = true
+  }
+  const handleVisibilityChange = () => {
+    if (document.hidden) {
+      hasLeftPage = true
+    }
+  }
+  const cleanup = () => {
+    window.removeEventListener('pagehide', markPageLeft)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }
+
+  window.addEventListener('pagehide', markPageLeft, { once: true })
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+
+  try {
+    window.location.href = option.url
+  } catch {
+    cleanup()
+    ElMessage.warning(`未能打开${option.label}，请确认设备已安装对应导航软件。`)
+    return
+  }
+
+  window.setTimeout(() => {
+    cleanup()
+    if (!hasLeftPage && !document.hidden) {
+      ElMessage.warning(`如果没有跳转，请先安装${option.label}，或选择其他导航方式。`)
+    }
+  }, 1400)
+}
+
+/**
+ * 识别当前手机系统类型。
+ *
+ * 入参：无；函数读取浏览器 userAgent。
+ * 返回值："ios" | "android" | "other"：iPhone/iPad 返回 ios，Android 返回 android，其他返回 other。
+ * 异常：当前函数不主动抛出异常；服务端或无 navigator 环境返回 other。
+ */
+function detectMobileSystem(): 'ios' | 'android' | 'other' {
+  if (typeof navigator === 'undefined') {
+    return 'other'
+  }
+  const userAgent = navigator.userAgent
+  if (/iPhone|iPad|iPod/i.test(userAgent)) {
+    return 'ios'
+  }
+  if (/Android/i.test(userAgent)) {
+    return 'android'
+  }
+  return 'other'
+}
+
+/**
+ * 生成苹果地图或网页地图导航链接。
+ *
+ * 入参：longitude 为经度；latitude 为纬度；name 为地点名称，均必填。
+ * 返回值：string：Apple Maps 可识别的 HTTPS 链接。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildAppleNavigationUrl(longitude: number, latitude: number, name: string): string {
+  const params = new URLSearchParams({
+    daddr: `${latitude},${longitude}`,
+    q: name,
+    dirflg: 'd',
+  })
+  return `https://maps.apple.com/?${params.toString()}`
+}
+
+/**
+ * 生成系统地图导航链接。
+ *
+ * 入参：longitude 为经度；latitude 为纬度；name 为地点名称，均必填。
+ * 返回值：string：Android 常见系统地图选择器 URI。
+ * 异常：当前函数不主动抛出异常。
+ */
+function buildSystemNavigationUrl(longitude: number, latitude: number, name: string): string {
+  return `geo:${latitude},${longitude}?q=${latitude},${longitude}(${encodeURIComponent(name)})`
+}
+
+/**
+ * 将高德使用的 GCJ-02 坐标转换为百度 BD-09 坐标。
+ *
+ * 入参：longitude 为 GCJ-02 经度；latitude 为 GCJ-02 纬度，均必填。
+ * 返回值：{ longitude, latitude }：转换后的 BD-09 坐标。
+ * 异常：当前函数不主动抛出异常。
+ */
+function convertGcj02ToBd09(longitude: number, latitude: number): { longitude: number; latitude: number } {
+  const xPi = (Math.PI * 3000.0) / 180.0
+  const z = Math.sqrt(longitude * longitude + latitude * latitude) + 0.00002 * Math.sin(latitude * xPi)
+  const theta = Math.atan2(latitude, longitude) + 0.000003 * Math.cos(longitude * xPi)
+  return {
+    longitude: z * Math.cos(theta) + 0.0065,
+    latitude: z * Math.sin(theta) + 0.006,
+  }
 }
 
 /**
@@ -960,4 +1276,5 @@ function formatHourlyTime(value: string): string {
 }
 
 onMounted(loadFeature)
+onBeforeUnmount(revokeContactQrImageUrl)
 </script>

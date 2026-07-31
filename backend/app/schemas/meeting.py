@@ -20,6 +20,7 @@ class MeetingCreate(BaseModel):
     end_time: datetime | None = None
     time_display_mode: Literal["day_period", "time"] = "day_period"
     status: Literal["draft", "published", "ended"] = "draft"
+    registration_enabled: bool = False
 
     @model_validator(mode="after")
     def validate_time_range(self) -> "MeetingCreate":
@@ -48,6 +49,7 @@ class MeetingUpdate(BaseModel):
     end_time: datetime | None = None
     time_display_mode: Literal["day_period", "time"] | None = None
     status: Literal["draft", "published", "ended"] | None = None
+    registration_enabled: bool | None = None
 
 
 class MeetingResponse(BaseModel):
@@ -67,6 +69,7 @@ class MeetingResponse(BaseModel):
     end_time: datetime | None
     time_display_mode: str
     status: str
+    registration_enabled: bool
     created_by_id: int
     created_at: datetime
     updated_at: datetime
