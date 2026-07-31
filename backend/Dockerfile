@@ -9,9 +9,14 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libffi-dev \
- && rm -rf /var/lib/apt/lists/*
+# 适配Debian trixie 新sources格式，替换阿里云源
+RUN echo "Types: deb" > /etc/apt/sources.list.d/debian.sources \
+    && echo "URIs: https://mirrors.aliyun.com/debian" >> /etc/apt/sources.list.d/debian.sources \
+    && echo "Suites: trixie trixie-updates trixie-backports" >> /etc/apt/sources.list.d/debian.sources \
+    && echo "Components: main contrib non-free non-free-firmware" >> /etc/apt/sources.list.d/debian.sources \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml requirements.txt ./
 
