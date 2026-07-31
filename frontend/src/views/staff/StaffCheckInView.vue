@@ -73,14 +73,16 @@
             <i class="staff-scan-corner is-bottom-right" />
             <i v-if="cameraScanning" class="staff-scan-line" />
             <span v-if="cameraScanning" class="staff-scan-live-dot">连续扫码中</span>
+            <div v-if="scanResult" class="staff-scan-result-overlay" aria-live="polite" @click.stop>
+              <el-alert :type="resultAlertType" :closable="false" :title="scanResult.message" />
+            </div>
           </div>
 
           <button type="button" class="staff-manual-link" @click="switchWorkspaceMode('manual')">
             无法扫码？手动签到
           </button>
 
-          <section v-if="scanResult" class="staff-scan-result" aria-live="polite">
-            <el-alert :type="resultAlertType" :closable="false" :title="scanResult.message" />
+          <section v-if="scanResult?.duplicate || scanResult?.guest" class="staff-scan-result" aria-live="polite">
             <dl v-if="scanResult.duplicate">
               <div><dt>签到场次</dt><dd>{{ currentCheckInSessionTitle }}</dd></div>
               <div><dt>嘉宾</dt><dd>{{ scanResult.duplicate.guestName }}</dd></div>
