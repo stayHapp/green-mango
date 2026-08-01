@@ -118,10 +118,17 @@ def ensure_guest_identity_available(
         raise ValueError("当前会议已存在姓名和手机号相同的启用嘉宾。")
 
 
-def create_guest(db: Session, meeting: Meeting, payload: GuestCreate, source: str = "admin_entry") -> Guest:
-    """在指定会议录入嘉宾并生成随机二维码 token。
+def create_guest(
+    db: Session,
+    meeting: Meeting,
+    payload: GuestCreate,
+    source: str = "admin_entry",
+    companion_of_id: int | None = None,
+    companion_note: str | None = None,
+) -> Guest:
+    """在指定会议录入嘉宾并生成随机二维码 token，可选绑定同行主嘉宾。
 
-    入参：db 为数据库会话；meeting 为已授权会议；payload 为已校验嘉宾输入；source 为嘉宾来源，默认为管理员录入。
+    入参：db 为数据库会话；meeting 为已授权会议；payload 为已校验嘉宾输入；source 为嘉宾来源，默认为管理员录入；companion_of_id 为所陪同主嘉宾 ID，可为空；companion_note 为同行备注，可为空。
     返回值：Guest：已持久化且带唯一二维码 token 的嘉宾对象。
     异常：会议内存在相同启用身份时抛出 ValueError；连续生成的 token 均冲突时抛出 RuntimeError；其他数据库错误向上抛出。
     """
@@ -130,7 +137,14 @@ def create_guest(db: Session, meeting: Meeting, payload: GuestCreate, source: st
         token = secrets.token_urlsafe(32)
         if db.scalar(select(Guest.id).where(Guest.qr_token == token)) is None:
             fixed_values = payload.model_dump(exclude={"values"})
-            guest = Guest(meeting_id=meeting.id, qr_token=token, source=source, **fixed_values)
+            guest = Guest(
+                meeting_id=meeting.id,
+                qr_token=token,
+                source=source,
+                companion_of_id=companion_of_id,
+                companion_note=companion_note,
+                **fixed_values,
+            )
             db.add(guest)
             try:
                 db.flush()

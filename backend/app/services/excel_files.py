@@ -8,7 +8,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from pydantic import ValidationError
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.models.application import GuestApplication
 from app.models.guest import CheckIn, Guest, GuestField, GuestValue
@@ -201,12 +201,20 @@ def build_check_in_export(db: Session, meeting: Meeting) -> bytes:
     """导出会议完整嘉宾名单及签到结果。
 
     入参：db 为数据库会话；meeting 为已完成管理员授权校验的会议，均必填。
-    返回值：bytes：包含每位嘉宾签到状态、时间、方式和工作人员的 XLSX 内容。
+    返回值：bytes：包含每位嘉宾嘉宾类型、陪同嘉宾、签到状态、时间、方式和工作人员的 XLSX 内容。
     异常：数据库查询或工作簿序列化失败时向上抛出对应异常。
     """
     default_session = get_default_check_in_session(db, meeting)
     _, _, enabled_fixed_fields = get_guest_registration_settings(meeting)
     fixed_columns = [column for column in FIXED_EXPORT_COLUMNS if column[0] in enabled_fixed_fields]
+    primary_alias = aliased(Guest)
+    companion_primary_names = dict(
+        db.execute(
+            select(Guest.id, primary_alias.name)
+            .join(primary_alias, primary_alias.id == Guest.companion_of_id)
+            .where(Guest.meeting_id == meeting.id)
+        ).all()
+    )
     statement = (
         select(Guest, CheckIn, User.display_name)
         .outerjoin(CheckIn, (CheckIn.session_id == default_session.id) & (CheckIn.guest_id == Guest.id))
@@ -220,6 +228,8 @@ def build_check_in_export(db: Session, meeting: Meeting) -> bytes:
     worksheet.append([
         "嘉宾ID",
         *(label for _, label, _ in fixed_columns),
+        "嘉宾类型",
+        "陪同嘉宾",
         "签到状态",
         "签到时间",
         "签到方式",
@@ -229,12 +239,14 @@ def build_check_in_export(db: Session, meeting: Meeting) -> bytes:
         worksheet.append([
             guest.id,
             *(getattr(guest, key) for key, _, _ in fixed_columns),
+            "同行人员" if guest.companion_of_id is not None else "本人",
+            companion_primary_names.get(guest.id) or "",
             "已签到" if check_in else "未签到",
             check_in.checked_in_at.isoformat() if check_in else None,
             check_in.method if check_in else None,
             staff_name,
         ])
-    style_worksheet(worksheet, [12, *(width for _, _, width in fixed_columns), 14, 28, 16, 22])
+    style_worksheet(worksheet, [12, *(width for _, _, width in fixed_columns), 14, 18, 14, 28, 16, 22])
     return workbook_bytes(workbook)
 
 
@@ -264,6 +276,14 @@ def build_guest_status_export(db: Session, meeting: Meeting) -> bytes:
             .where(Guest.meeting_id == meeting.id, Guest.is_active.is_(True))
         )
     }
+    primary_alias = aliased(Guest)
+    companion_primary_names = dict(
+        db.execute(
+            select(Guest.id, primary_alias.name)
+            .join(primary_alias, primary_alias.id == Guest.companion_of_id)
+            .where(Guest.meeting_id == meeting.id)
+        ).all()
+    )
     default_session = get_default_check_in_session(db, meeting)
     guest_statement = (
         select(Guest, CheckIn)
@@ -287,6 +307,8 @@ def build_guest_status_export(db: Session, meeting: Meeting) -> bytes:
         "记录ID",
         *(label for _, label, _ in fixed_columns),
         *(field.label for field in extra_fields),
+        "嘉宾类型",
+        "陪同嘉宾",
         "来源",
         "管理状态",
         "签到状态",
@@ -296,6 +318,7 @@ def build_guest_status_export(db: Session, meeting: Meeting) -> bytes:
         "self_registration": "自主报名",
         "admin_import": "后台导入",
         "admin_entry": "后台录入",
+        "companion_registration": "同行登记",
     }
     # 未转化的报名申请先输出，与嘉宾管理列表的排列口径保持一致。
     for application in db.scalars(application_statement):
@@ -303,6 +326,8 @@ def build_guest_status_export(db: Session, meeting: Meeting) -> bytes:
             f"申请-{application.id}",
             *(getattr(application, key) for key, _, _ in fixed_columns),
             *(application.values_json.get(field.key) for field in extra_fields),
+            "—",
+            "—",
             "自主报名",
             "待审核" if application.status == "pending" else "已拒绝",
             "—",
@@ -313,11 +338,13 @@ def build_guest_status_export(db: Session, meeting: Meeting) -> bytes:
             f"嘉宾-{guest.id}",
             *(getattr(guest, key) for key, _, _ in fixed_columns),
             *(guest_values.get((guest.id, field.key)) for field in extra_fields),
+            "同行人员" if guest.companion_of_id is not None else "本人",
+            companion_primary_names.get(guest.id) or "",
             source_labels.get(guest.source, "后台录入"),
             "已通过" if guest.source == "self_registration" else "已录入",
             "已签到" if check_in else "未签到",
         ])
 
-    column_widths = [16, *(width for _, _, width in fixed_columns), *([20] * len(extra_fields)), 16, 14, 14]
+    column_widths = [16, *(width for _, _, width in fixed_columns), *([20] * len(extra_fields)), 14, 18, 16, 14, 14]
     style_worksheet(worksheet, column_widths)
     return workbook_bytes(workbook)

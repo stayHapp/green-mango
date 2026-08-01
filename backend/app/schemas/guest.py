@@ -88,6 +88,8 @@ class GuestResponse(BaseModel):
     tag: str | None
     seat: str | None
     source: str
+    companion_of_id: int | None
+    companion_note: str | None
     qr_token: str
     is_active: bool
     created_at: datetime

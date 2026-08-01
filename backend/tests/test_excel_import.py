@@ -164,7 +164,9 @@ def test_check_in_export_produces_valid_xlsx(
     workbook.close()
     assert len(rows) >= 2  # 至少表头 + 1 行数据
     assert rows[1][1] == "导出嘉宾"
-    assert rows[1][7] == "已签到"
+    assert rows[1][7] == "本人"
+    assert rows[1][8] in (None, "")
+    assert rows[1][9] == "已签到"
 
 
 def test_guest_status_export_produces_valid_xlsx(
@@ -296,7 +298,18 @@ def test_exports_hide_disabled_guest_fields(
     check_in_workbook = load_workbook(BytesIO(check_in_response.content), data_only=True)
     check_in_rows = list(check_in_workbook["签到明细"].iter_rows(values_only=True))
     check_in_workbook.close()
-    assert check_in_rows[0] == ("嘉宾ID", "姓名", "手机号", "单位", "签到状态", "签到时间", "签到方式", "执行工作人员")
+    assert check_in_rows[0] == (
+        "嘉宾ID",
+        "姓名",
+        "手机号",
+        "单位",
+        "嘉宾类型",
+        "陪同嘉宾",
+        "签到状态",
+        "签到时间",
+        "签到方式",
+        "执行工作人员",
+    )
     assert "不应导出座位" not in check_in_rows[1]
     assert "不应导出职务" not in check_in_rows[1]
     assert "不应导出身份" not in check_in_rows[1]
@@ -309,7 +322,18 @@ def test_exports_hide_disabled_guest_fields(
     guest_workbook = load_workbook(BytesIO(guest_response.content), data_only=True)
     guest_rows = list(guest_workbook["嘉宾状态"].iter_rows(values_only=True))
     guest_workbook.close()
-    assert guest_rows[0] == ("记录ID", "姓名", "手机号", "单位", "饮食偏好", "来源", "管理状态", "签到状态")
+    assert guest_rows[0] == (
+        "记录ID",
+        "姓名",
+        "手机号",
+        "单位",
+        "饮食偏好",
+        "嘉宾类型",
+        "陪同嘉宾",
+        "来源",
+        "管理状态",
+        "签到状态",
+    )
     assert "清淡" in guest_rows[1]
     assert "历史字段" not in guest_rows[0]
     assert "历史值" not in guest_rows[1]

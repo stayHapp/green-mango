@@ -26,7 +26,26 @@ interface StaffGuestApiResponse {
   is_active: boolean
   checked_in: boolean
   checked_in_at: string | null
+  companion_count: number
+  is_companion: boolean
+  companion_of_name: string | null
   visible_fields: string[]
+}
+
+interface CompanionApiResponse {
+  id: number
+  meeting_id: number
+  name: string
+  phone: string
+  organization: string | null
+  title: string | null
+  tag: string | null
+  seat: string | null
+  companion_note: string | null
+  companion_of_id: number
+  companion_of_name: string | null
+  is_active: boolean
+  created_at: string
 }
 
 interface CheckInApiResponse {
@@ -71,7 +90,37 @@ export interface StaffGuest {
   isActive: boolean
   checkedIn: boolean
   checkedInAt: string
+  companionCount: number
+  isCompanion: boolean
+  companionOfName: string
   visibleFields: string[]
+}
+
+export interface Companion {
+  id: string
+  meetingId: string
+  name: string
+  phone: string
+  organization: string
+  title: string
+  tag: string
+  seat: string
+  companionNote: string
+  companionOfId: string
+  companionOfName: string
+  isActive: boolean
+  createdAt: string
+}
+
+export interface CompanionCreatePayload {
+  companionOfId: string
+  name: string
+  phone: string
+  organization: string
+  title: string
+  tag: string
+  seat: string
+  companionNote: string
 }
 
 /**
@@ -224,8 +273,79 @@ export async function searchStaffGuests(meetingId: string, query: string): Promi
     isActive: guest.is_active,
     checkedIn: guest.checked_in,
     checkedInAt: normalizeUtcDateTime(guest.checked_in_at),
+    companionCount: guest.companion_count,
+    isCompanion: guest.is_companion,
+    companionOfName: guest.companion_of_name || '',
     visibleFields: guest.visible_fields,
   }))
+}
+
+/**
+ * 将同行嘉宾响应转换为前端业务类型。
+ *
+ * 入参：companion 为后端同行嘉宾响应，必填。
+ * 返回值：Companion：数字 ID 和下划线字段已转换。
+ * 异常：当前函数不主动抛出异常。
+ */
+function mapCompanion(companion: CompanionApiResponse): Companion {
+  return {
+    id: String(companion.id),
+    meetingId: String(companion.meeting_id),
+    name: companion.name,
+    phone: companion.phone,
+    organization: companion.organization || '',
+    title: companion.title || '',
+    tag: companion.tag || '',
+    seat: companion.seat || '',
+    companionNote: companion.companion_note || '',
+    companionOfId: String(companion.companion_of_id),
+    companionOfName: companion.companion_of_name || '',
+    isActive: companion.is_active,
+    createdAt: normalizeUtcDateTime(companion.created_at),
+  }
+}
+
+/**
+ * 查询会议内同行嘉宾列表，可按主嘉宾筛选。
+ *
+ * 入参：meetingId 为会议 ID，必填；guestId 为可选主嘉宾 ID。
+ * 返回值：Promise<Companion[]>：同行嘉宾及其主嘉宾姓名列表。
+ * 异常：会议未授权、登录过期或网络失败时抛出异常。
+ */
+export async function listStaffCompanions(meetingId: string, guestId?: string): Promise<Companion[]> {
+  const { data } = await apiClient.get<CompanionApiResponse[]>(
+    `/staff/meetings/${encodeURIComponent(meetingId)}/companions`,
+    authorizationConfig('staff', { params: guestId ? { guest_id: Number(guestId) } : {} }),
+  )
+  return data.map(mapCompanion)
+}
+
+/**
+ * 为主嘉宾登记一名同行人员。
+ *
+ * 入参：meetingId 为会议 ID；payload 包含主嘉宾 ID 与同行人员信息，均必填。
+ * 返回值：Promise<Companion>：新建同行嘉宾记录。
+ * 异常：主嘉宾无效、链式同行、身份重复、无权限或网络失败时抛出异常。
+ */
+export async function createStaffCompanion(
+  meetingId: string,
+  payload: CompanionCreatePayload,
+): Promise<Companion> {
+  const { data } = await apiClient.post<CompanionApiResponse>(
+    `/staff/meetings/${encodeURIComponent(meetingId)}/companions`,
+    {
+      companion_of_id: Number(payload.companionOfId),
+      name: payload.name,
+      phone: payload.phone,
+      organization: payload.organization || null,
+      title: payload.title || null,
+      tag: payload.tag || null,
+      seat: payload.seat || null,
+      companion_note: payload.companionNote || null,
+    },
+    authorizationConfig('staff'),
+  )
+  return mapCompanion(data)
 }
 
 /**

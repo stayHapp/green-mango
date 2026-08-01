@@ -175,6 +175,71 @@
           </template>
         </section>
 
+        <section v-else-if="activeMode === 'companions'" class="staff-companions-view">
+          <el-input
+            v-model="guestQuery"
+            clearable
+            class="staff-guest-search"
+            :placeholder="staffGuestSearchPlaceholder"
+            :prefix-icon="Search"
+          />
+          <el-empty v-if="!displayedGuests.length" description="未找到匹配嘉宾" :image-size="72" />
+
+          <template v-if="companionCheckedRows.length">
+            <div class="staff-companions-group">
+              <strong>已签到</strong>
+              <small>按签到时间倒序 · {{ companionCheckedRows.length }} 位</small>
+            </div>
+            <article
+              v-for="row in companionCheckedRows"
+              :key="row.id"
+              class="staff-companion-card"
+            >
+              <span class="staff-companion-card__avatar">{{ row.name.slice(0, 1) }}</span>
+              <div class="staff-companion-card__copy">
+                <div class="staff-companion-card__head">
+                  <strong>{{ row.name }}</strong>
+                  <span v-if="row.companionCount > 0" class="staff-companion-card__badge">
+                    已带 {{ row.companionCount }} 人
+                  </span>
+                </div>
+                <p>{{ row.phone }}</p>
+                <small>{{ buildStaffGuestSummary(row) }}</small>
+              </div>
+              <div class="staff-companion-card__right">
+                <span class="staff-companion-card__time">{{ formatCheckInTime(row.checkedInAt) }}</span>
+                <el-button type="primary" plain @click="openCompanionDialog(row)">添加同行</el-button>
+              </div>
+            </article>
+          </template>
+
+          <div class="staff-companions-group">
+            <strong>未签到</strong>
+            <small>{{ companionUncheckedRows.length }} 位</small>
+          </div>
+          <article
+            v-for="row in companionUncheckedRows"
+            :key="row.id"
+            class="staff-companion-card"
+          >
+            <span class="staff-companion-card__avatar is-pending">{{ row.name.slice(0, 1) }}</span>
+            <div class="staff-companion-card__copy">
+              <div class="staff-companion-card__head">
+                <strong>{{ row.name }}</strong>
+                <span v-if="row.companionCount > 0" class="staff-companion-card__badge">
+                  已带 {{ row.companionCount }} 人
+                </span>
+              </div>
+              <p>{{ row.phone }}</p>
+              <small>{{ buildStaffGuestSummary(row) }}</small>
+            </div>
+            <div class="staff-companion-card__right">
+              <span class="staff-companion-card__time is-pending">未签到</span>
+              <el-button type="primary" plain @click="openCompanionDialog(row)">添加同行</el-button>
+            </div>
+          </article>
+        </section>
+
         <section v-else class="staff-records-view">
           <div class="staff-workspace-stats" aria-label="签到统计">
             <div><strong>{{ guests.length }}</strong><span>参会人员</span></div>
@@ -195,6 +260,60 @@
       </template>
     </main>
 
+    <!-- 同行人员登记居中弹窗 -->
+    <el-dialog
+      v-model="companionDialogVisible"
+      align-center
+      width="88%"
+      class="staff-companion-dialog"
+      :close-on-click-modal="false"
+      @closed="resetCompanionForm"
+    >
+      <template #header>
+        <div class="staff-companion-dialog__header">
+          <el-icon><UserFilled /></el-icon>
+          <span>添加同行人员</span>
+        </div>
+      </template>
+      <div v-if="companionTarget" class="staff-companion-dialog__primary">
+        <span class="staff-companion-dialog__avatar">{{ companionTarget.name.slice(0, 1) }}</span>
+        <div class="staff-companion-dialog__identity">
+          <strong>{{ companionTarget.name }}</strong>
+          <span>{{ companionTarget.phone }}</span>
+        </div>
+        <span class="staff-companion-dialog__lock">主嘉宾 · 已锁定</span>
+      </div>
+      <el-form label-position="top" class="staff-companion-dialog__form">
+        <el-form-item label="姓名" required>
+          <el-input v-model="companionForm.name" placeholder="同行人员姓名" maxlength="100" />
+        </el-form-item>
+        <el-form-item label="手机号" required>
+          <el-input v-model="companionForm.phone" placeholder="同行人员手机号" maxlength="30" />
+        </el-form-item>
+        <el-form-item label="单位（选填）">
+          <el-input v-model="companionForm.organization" placeholder="单位名称" maxlength="255" />
+        </el-form-item>
+        <el-form-item label="备注（选填）">
+          <el-input
+            v-model="companionForm.companionNote"
+            placeholder="由工作人员自行填写，如：家属、司机"
+            maxlength="255"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="companionDialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="companionSubmitting"
+          :disabled="!isOnline"
+          @click="submitCompanion"
+        >
+          确认登记
+        </el-button>
+      </template>
+    </el-dialog>
+
     <nav v-if="session.staff && meeting" class="staff-workspace-nav" aria-label="签到工作台导航">
       <button
         v-for="item in workspaceModes"
@@ -214,12 +333,13 @@
 import { computed, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Camera, Close, InfoFilled, Postcard, Search, SwitchButton, Tickets } from '@element-plus/icons-vue'
+import { Camera, Close, InfoFilled, Postcard, Search, SwitchButton, Tickets, UserFilled } from '@element-plus/icons-vue'
 import jsQR from 'jsqr'
 
 import { getApiErrorMessage } from '../../api/client'
 import { logoutClientSession } from '../../api/sessions'
 import {
+  createStaffCompanion,
   getAlreadyCheckedInDetail,
   getStaffCheckInSession,
   listStaffCheckIns,
@@ -227,6 +347,7 @@ import {
   manualStaffCheckIn,
   scanStaffCheckIn,
   searchStaffGuests,
+  type CompanionCreatePayload,
   type StaffGuest,
 } from '../../api/staffCheckIns'
 import { useSessionStore } from '../../stores/session'
@@ -237,7 +358,7 @@ interface CheckInRow extends CheckInRecord {
   phone: string
 }
 
-type StaffWorkspaceMode = 'scan' | 'manual' | 'records'
+type StaffWorkspaceMode = 'scan' | 'manual' | 'companions' | 'records'
 
 interface StaffWorkspaceModeItem {
   key: StaffWorkspaceMode
@@ -264,6 +385,19 @@ const pageLoading = ref(false)
 const pageError = ref('')
 const activeMode = ref<StaffWorkspaceMode>('scan')
 const selectedManualGuest = ref<StaffGuest>()
+const companionDialogVisible = ref(false)
+const companionTarget = ref<StaffGuest>()
+const companionSubmitting = ref(false)
+const companionForm = ref<CompanionCreatePayload>({
+  companionOfId: '',
+  name: '',
+  phone: '',
+  organization: '',
+  title: '',
+  tag: '',
+  seat: '',
+  companionNote: '',
+})
 let guestSearchTimer: number | undefined
 let cameraScanGeneration = 0
 let scanStream: MediaStream | null = null
@@ -281,6 +415,12 @@ const staffGuestSearchPlaceholder = computed(buildStaffGuestSearchPlaceholder)
 const checkedCount = computed(() => checkIns.value.length)
 const uncheckedCount = computed(() => Math.max(guests.value.length - checkedCount.value, 0))
 const filteredGuestRows = computed(() => displayedGuests.value)
+const companionCheckedRows = computed(() =>
+  displayedGuests.value
+    .filter((item) => item.checkedIn)
+    .sort((a, b) => b.checkedInAt.localeCompare(a.checkedInAt)),
+)
+const companionUncheckedRows = computed(() => displayedGuests.value.filter((item) => !item.checkedIn))
 const currentCheckInSessionTitle = computed(resolveCurrentCheckInSessionTitle)
 const checkInRows = computed<CheckInRow[]>(() => checkIns.value.map((record) => {
   const guest = guests.value.find((item) => item.id === record.guestId)
@@ -293,6 +433,7 @@ const checkInRows = computed<CheckInRow[]>(() => checkIns.value.map((record) => 
 const workspaceModes: StaffWorkspaceModeItem[] = [
   { key: 'scan', label: '扫码签到', icon: Camera },
   { key: 'manual', label: '手动签到', icon: Postcard },
+  { key: 'companions', label: '同行登记', icon: UserFilled },
   { key: 'records', label: '签到记录', icon: Tickets },
 ]
 
@@ -380,6 +521,7 @@ function currentModeTitle(): string {
   const titleMap: Record<StaffWorkspaceMode, string> = {
     scan: '扫码签到',
     manual: selectedManualGuest.value ? '确认嘉宾' : '手动签到',
+    companions: '同行登记',
     records: '签到记录',
   }
   return titleMap[activeMode.value]
@@ -422,6 +564,106 @@ function selectManualGuest(guest: StaffGuest): void {
  */
 function clearManualSelection(): void {
   selectedManualGuest.value = undefined
+}
+
+/**
+ * 打开为指定嘉宾登记同行人员的居中弹窗。
+ *
+ * 入参：guest 为目标主嘉宾，必填；弹窗内主嘉宾信息由该对象带出并锁定。
+ * 返回值：void：初始化登记表单并显示弹窗。
+ * 异常：当前函数不主动抛出异常。
+ */
+function openCompanionDialog(guest: StaffGuest): void {
+  companionTarget.value = guest
+  companionForm.value = {
+    companionOfId: guest.id,
+    name: '',
+    phone: '',
+    organization: '',
+    title: '',
+    tag: '',
+    seat: '',
+    companionNote: '',
+  }
+  companionDialogVisible.value = true
+}
+
+/**
+ * 关闭同行登记弹窗后清空表单与目标嘉宾。
+ *
+ * 入参：无。
+ * 返回值：void：重置弹窗内部状态，避免下次打开残留旧数据。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resetCompanionForm(): void {
+  companionTarget.value = undefined
+  companionForm.value = {
+    companionOfId: '',
+    name: '',
+    phone: '',
+    organization: '',
+    title: '',
+    tag: '',
+    seat: '',
+    companionNote: '',
+  }
+}
+
+/**
+ * 提交同行人员登记并刷新工作台数据。
+ *
+ * 入参：无；函数读取弹窗目标嘉宾与表单值。
+ * 返回值：Promise<void>：登记成功后关闭弹窗并刷新列表。
+ * 异常：缺少必填项或后端业务失败时展示对应提示，不向外抛出。
+ */
+async function submitCompanion(): Promise<void> {
+  const target = companionTarget.value
+  if (!target) {
+    return
+  }
+  const submittedName = companionForm.value.name.trim()
+  const submittedPhone = companionForm.value.phone.trim()
+  if (!submittedName || !submittedPhone) {
+    ElMessage.warning('请填写同行人员姓名和手机号。')
+    return
+  }
+  if (!isOnline.value) {
+    ElMessage.warning('网络连接已断开，请恢复网络后重试。')
+    return
+  }
+
+  companionSubmitting.value = true
+  try {
+    await createStaffCompanion(String(route.params.id), {
+      ...companionForm.value,
+      name: submittedName,
+      phone: submittedPhone,
+    })
+    companionDialogVisible.value = false
+    ElMessage.success(`已登记 ${submittedName}，陪同 ${target.name}，并已标记签到。`)
+    await loadDetail()
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '同行登记失败。'))
+  } finally {
+    companionSubmitting.value = false
+  }
+}
+
+/**
+ * 将签到时间格式化为当天时分文本。
+ *
+ * 入参：value 为后端返回的 ISO 时间字符串，必填；空值返回空字符串。
+ * 返回值：string：形如 14:05 的时分文本。
+ * 异常：非法日期由浏览器按默认结果处理，当前函数不主动抛出异常。
+ */
+function formatCheckInTime(value: string): string {
+  if (!value) {
+    return ''
+  }
+  const date = new Date(value)
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
 }
 
 /**

@@ -60,7 +60,7 @@
 
 动态字段 PUT 接口接收完整目标集合，但会按稳定 `key` 增量对账：已有字段原位更新并保留 ID 与嘉宾值，新字段新增，无非空填写内容的字段可删除。已有非空嘉宾值的字段不能删除或修改字段类型；名称、排序、必填、报名展示、个人信息展示和启用状态可以安全修改。
 
-`GET /api/admin/meetings/{meeting_id}/guests` 的正式嘉宾响应新增 `source`：`admin_entry`（后台录入）、`admin_import`（后台导入）或 `self_registration`（自主报名审核通过）。
+`GET /api/admin/meetings/{meeting_id}/guests` 的正式嘉宾响应新增 `source`：`admin_entry`（后台录入）、`admin_import`（后台导入）、`self_registration`（自主报名审核通过）或 `companion_registration`（工作人员端同行登记）。同行嘉宾响应同时包含 `companion_of_id`（所陪同主嘉宾 ID）与 `companion_note`（同行备注），主嘉宾这两个字段均为空。
 
 嘉宾在后台新增、Excel 导入或自主报名审核通过时自动生成全局唯一的随机 `qr_token`，其中不包含个人信息。`qr_token` 是正式嘉宾的必填数据，不提供管理员手动或批量补生成入口。同一会议内姓名和手机号相同的启用嘉宾不能重复创建。删除操作为软停用并保留历史签到记录；停用嘉宾不再进入当前嘉宾列表、签到统计、工作人员搜索和当前名单导出，停用后允许重新录入相同身份。
 
@@ -90,7 +90,7 @@
 
 签到规则 `mode` 支持 `single`、`date`、`custom`。`date` 表示按会议日期生成的日期场次，未设置 `manual_default_session_id` 时由后端按服务端当前日期自动解析当前有效场次；存在 `manual_default_session_id` 时使用管理员手动覆盖。未传 `session_id` 时，管理员签到统计默认使用会议当前有效签到场次。统计响应包含 `session_id`、`session_title`、`records` 和可空 `comparison`；`comparison` 表示当前场次相对后台排序中前一场次的新增签到嘉宾和减少签到嘉宾。新增表示当前场次已签到但前一场次未签到，减少表示前一场次已签到但当前场次未签到。删除默认签到场次后，后端会将剩余第一条场次提升为默认场次；如果会议没有剩余场次，后续读取场次时会重新创建系统默认签到场次。
 
-签到导出文件同时包含当前启用的已签到和未签到嘉宾，以及签到时间、方式和执行工作人员。嘉宾状态表同时包含当前启用正式嘉宾、待审核和已拒绝报名申请；已通过报名以正式嘉宾记录呈现，避免重复。软停用嘉宾及其历史签到仍保留在数据库中，但不进入当前名单导出。
+签到导出文件同时包含当前启用的已签到和未签到嘉宾，以及签到时间、方式和执行工作人员；签到明细与嘉宾状态表均新增「嘉宾类型」（本人/同行人员）和「陪同嘉宾」（同行人员显示主嘉宾姓名）两列，嘉宾状态表的来源列对同行登记显示「同行登记」。嘉宾状态表同时包含当前启用正式嘉宾、待审核和已拒绝报名申请；已通过报名以正式嘉宾记录呈现，避免重复。软停用嘉宾及其历史签到仍保留在数据库中，但不进入当前名单导出。
 
 ## 管理员会议助手接口
 
@@ -147,8 +147,12 @@
 | POST | `/api/staff/meetings/{meeting_id}/check-ins/scan` | 提交 `qr_token` 扫码签到 |
 | POST | `/api/staff/meetings/{meeting_id}/check-ins/manual` | 提交 `guest_id` 人工签到 |
 | GET | `/api/staff/meetings/{meeting_id}/check-ins` | 查询会议当前有效场次签到记录 |
+| POST | `/api/staff/meetings/{meeting_id}/companions` | 为主嘉宾登记一名同行人员 |
+| GET | `/api/staff/meetings/{meeting_id}/companions?guest_id={id}` | 查询同行嘉宾列表，可按主嘉宾筛选 |
 
-工作人员嘉宾搜索响应包含 `visible_fields`，值来自会议的 `guest_enabled_fixed_fields`。姓名和手机号始终返回；单位、职务、身份、座位号仅在后台启用时返回实际值，否则返回 `null`，前端不得展示对应字段。搜索条件同样只覆盖姓名、手机号和当前启用的单位、座位等字段，避免关闭座位号后仍能按座位号检索。
+工作人员嘉宾搜索响应包含 `visible_fields`，值来自会议的 `guest_enabled_fixed_fields`。姓名和手机号始终返回；单位、职务、身份、座位号仅在后台启用时返回实际值，否则返回 `null`，前端不得展示对应字段。搜索条件同样只覆盖姓名、手机号和当前启用的单位、座位等字段，避免关闭座位号后仍能按座位号检索。响应同时包含 `companion_count`（该嘉宾已带同行人数）、`is_companion`（是否同行嘉宾）和 `companion_of_name`（同行嘉宾所陪同主嘉宾姓名），工作人员端据此展示「已带 X 人」徽标和同行标记。
+
+同行登记接口 `POST /api/staff/meetings/{meeting_id}/companions` 请求体为 `companion_of_id`（主嘉宾 ID）加姓名、手机号（必填）、单位、职务、身份、座位号、`companion_note`（自由文本备注，默认留空）与动态字段值。服务层校验主嘉宾存在、属于当前会议、处于启用状态且不是同行嘉宾，并复用「同会议姓名+手机号唯一」约束，避免重复登记。登记成功后生成正式嘉宾记录（`source=companion_registration`、自带 `qr_token`），并自动为同行嘉宾写入当前有效场次的手动签到（执行工作人员为登记人）；会议已结束时拒绝登记，避免产生无法签到的孤立记录。同行列表接口返回同行嘉宾信息与 `companion_of_name`，`guest_id` 参数可筛选某位主嘉宾的同行人员。
 
 签到由后端判断工作人员授权、嘉宾归属、嘉宾启用状态、会议结束时间和当前有效场次内重复签到。重复签到返回 409；无效、跨会议或过期二维码不会创建记录。同一嘉宾允许在不同签到场次分别签到。重复签到的 409 `detail` 在上下文完整时返回结构化对象：`code=already_checked_in`、`message`、`guest_id`、`guest_name`、`phone`、`checked_in_at`、`method`、`staff_id` 和 `staff_name`，工作人员端据此展示已有签到时间、签到方式和执行人员；缺少历史上下文时可回退为字符串提示。
 

@@ -64,6 +64,13 @@ class Guest(Base):
     tag: Mapped[str | None] = mapped_column(String(100))
     seat: Mapped[str | None] = mapped_column(String(100))
     source: Mapped[str] = mapped_column(String(32), default="admin_entry", nullable=False)
+    # 同行嘉宾指向所陪同的已报名主嘉宾；为空表示该嘉宾是主嘉宾本人。
+    companion_of_id: Mapped[int | None] = mapped_column(
+        ForeignKey("guests.id", ondelete="SET NULL"),
+        index=True,
+    )
+    # 工作人员登记同行人员时填写的自由文本备注，如“家属”“司机”。
+    companion_note: Mapped[str | None] = mapped_column(String(255))
     # 二维码只承载随机凭证；不得将姓名、手机号等敏感信息编码到该字段。
     qr_token: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -73,6 +80,14 @@ class Guest(Base):
     meeting: Mapped[Meeting] = relationship(back_populates="guests")
     values: Mapped[list[GuestValue]] = relationship(back_populates="guest", cascade="all, delete-orphan")
     check_ins: Mapped[list[CheckIn]] = relationship(back_populates="guest", cascade="all, delete-orphan")
+    # 自关联：companion_of 指向所陪同的主嘉宾，companions 为本人携带的同行嘉宾列表。
+    companion_of: Mapped["Guest | None"] = relationship(
+        remote_side="Guest.id",
+        back_populates="companions",
+    )
+    companions: Mapped[list["Guest"]] = relationship(
+        back_populates="companion_of",
+    )
 
 
 class GuestValue(Base):

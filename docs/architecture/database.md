@@ -10,7 +10,7 @@
 - 本地联调数据库：PostgreSQL，通过 `DATABASE_URL` 配置
 - 本地临时回退数据库：SQLite，`sqlite:///./dev.db`
 - 正式环境数据库：PostgreSQL，通过 `DATABASE_URL` 配置
-- 当前迁移头：`20260730_0013`
+- 当前迁移头：`20260731_0015`
 
 ## 表结构
 
@@ -22,7 +22,7 @@
 - `meeting_assistant_features`：会议服务五项固定功能的正文、联系人、未发布提醒、发布状态和访问级别。
 - `meeting_materials`：会议资料中的多条标题、正文、附件元数据与排序。
 - `guest_fields`：会议级动态嘉宾字段，包含报名页可见、必填和启用状态。
-- `guests`：正式嘉宾、固定资料、来源、启用状态和随机二维码凭证。
+- `guests`：正式嘉宾（含同行嘉宾）、固定资料、来源、同行主嘉宾绑定、备注、启用状态和随机二维码凭证。
 - `guest_values`：正式嘉宾的动态字段值。
 - `check_in_sessions`：会议级签到场次，包含默认场次、时间范围和排序。
 - `check_ins`：嘉宾在某个签到场次中的唯一签到记录及执行工作人员。
@@ -51,6 +51,8 @@ meetings --< meeting_materials
 
 嘉宾会话通过 `auth_sessions.guest_id` 关联 `guests`；管理员和工作人员会话通过 `user_id` 关联 `users`。约束保证一个会话只对应其中一种主体。
 
+`guests.companion_of_id` 是自引用外键：为空表示主嘉宾本人，非空表示该嘉宾是主嘉宾携带的同行人员。同行人员与普通嘉宾共用签到、二维码和动态字段能力，但来源固定为 `companion_registration`。服务层禁止同行嘉宾再作为主嘉宾登记其他人，保持一层同行关系。
+
 ## 核心约束
 
 - 同一会议的同一管理员授权唯一：`uq_meeting_admins_meeting_id_user_id`。
@@ -66,6 +68,7 @@ meetings --< meeting_materials
 - 同一嘉宾在同一签到场次只能签到一次：`uq_check_ins_session_id_guest_id`。
 - 会话 token 摘要全局唯一：`ix_auth_sessions_token_hash`。
 - `auth_sessions` 通过 `ck_auth_sessions_exactly_one_subject` 保证只设置 `user_id` 或 `guest_id` 之一。
+- 同行嘉宾 `companion_of_id` 自引用外键使用 `ON DELETE SET NULL`，主嘉宾记录硬删除时同行嘉宾保留但解除绑定；实际流程以软停用为主，不触发级联删除。
 
 公开报名的“同会议、同手机号只能有一条待审核申请”由服务层执行，因为已审核申请需要保留且允许之后重新提交。
 
@@ -84,6 +87,8 @@ meetings --< meeting_materials
 11. `20260728_0011`：增加会议签到场次，历史签到记录回填到默认场次，签到唯一约束调整为场次级。
 12. `20260729_0012`：增加多条会议资料、附件元数据和会议外键索引，并将历史 `manual` 正文回填为首条资料。
 13. `20260730_0013`：会议增加首页时间显示方式 `time_display_mode`，支持按会议选择显示到上午/下午或具体时间。
+14. `20260731_0014`：会议服务增加联系会务二维码标题和图片元数据。
+15. `20260731_0015`：嘉宾表增加同行人员自引用外键 `companion_of_id` 与备注 `companion_note`，支持工作人员端登记同行嘉宾。
 
 ## 会议助手结构
 

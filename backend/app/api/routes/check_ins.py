@@ -9,6 +9,8 @@ from app.models.guest import Guest
 from app.schemas.check_in import (
     AlreadyCheckedInDetail,
     CheckInResponse,
+    CompanionCreate,
+    CompanionResponse,
     ManualCheckInRequest,
     ScanCheckInRequest,
     StaffCheckInSessionResponse,
@@ -24,6 +26,7 @@ from app.services.check_ins import (
     search_guests_with_check_in_status,
 )
 from app.services.check_in_sessions import get_current_check_in_session
+from app.services.companions import create_companion, list_companion_counts, list_companions
 
 router = APIRouter(prefix="/staff/meetings")
 
@@ -95,6 +98,30 @@ def load_staff_meeting_or_404(db: DatabaseSession, staff: CurrentStaff, meeting_
     if meeting is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="会议不存在或无签到权限。")
     return meeting
+
+
+def build_companion_response(companion: Guest, primary_name: str | None) -> CompanionResponse:
+    """把同行嘉宾 ORM 对象转换为接口响应。
+
+    入参：companion 为已持久化同行嘉宾；primary_name 为所陪同主嘉宾姓名，均必填。
+    返回值：CompanionResponse：包含同行备注与主嘉宾姓名的响应。
+    异常：字段缺失时由属性访问抛出异常。
+    """
+    return CompanionResponse(
+        id=companion.id,
+        meeting_id=companion.meeting_id,
+        name=companion.name,
+        phone=companion.phone,
+        organization=companion.organization,
+        title=companion.title,
+        tag=companion.tag,
+        seat=companion.seat,
+        companion_note=companion.companion_note,
+        companion_of_id=companion.companion_of_id,
+        companion_of_name=primary_name,
+        is_active=companion.is_active,
+        created_at=companion.created_at,
+    )
 
 
 def execute_check_in(db: DatabaseSession, meeting, staff: CurrentStaff, guest: Guest, method: str) -> CheckInResponse:
@@ -199,6 +226,11 @@ def search_meeting_guests(
     meeting = load_staff_meeting_or_404(db, staff, meeting_id)
     _, _, enabled_fixed_fields = get_guest_registration_settings(meeting)
     enabled_field_set = set(enabled_fixed_fields)
+    companion_counts = list_companion_counts(db, meeting)
+    companion_primary_names = {
+        companion.id: primary_name
+        for companion, primary_name in list_companions(db, meeting)
+    }
     return [
         StaffGuestResponse(
             id=guest.id,
@@ -211,7 +243,56 @@ def search_meeting_guests(
             is_active=guest.is_active,
             checked_in=check_in is not None,
             checked_in_at=normalize_utc_datetime(check_in.checked_in_at) if check_in else None,
+            companion_count=companion_counts.get(guest.id, 0),
+            is_companion=guest.companion_of_id is not None,
+            companion_of_name=companion_primary_names.get(guest.id),
             visible_fields=enabled_fixed_fields,
         )
         for guest, check_in in search_guests_with_check_in_status(db, meeting, query, enabled_fixed_fields)
+    ]
+
+
+@router.post("/{meeting_id}/companions", response_model=CompanionResponse, status_code=status.HTTP_201_CREATED)
+def post_companion(
+    meeting_id: int,
+    payload: CompanionCreate,
+    db: DatabaseSession,
+    staff: CurrentStaff,
+) -> CompanionResponse:
+    """为会议内已报名嘉宾登记一名同行人员。
+
+    入参：meeting_id 为会议 ID；payload 包含主嘉宾 ID 与同行人员信息；db 与 staff 由 FastAPI 注入。
+    返回值：CompanionResponse：新建同行嘉宾及所陪同主嘉宾姓名。
+    异常：无会议权限返回 404；主嘉宾无效、链式同行或身份重复返回 422。
+    """
+    meeting = load_staff_meeting_or_404(db, staff, meeting_id)
+    try:
+        companion = create_companion(db, meeting, staff, payload)
+    except ValueError as error:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+    except CheckInBusinessError as error:
+        db.rollback()
+        raise HTTPException(status_code=error.status_code, detail=error.message) from error
+    primary_name = companion.companion_of.name if companion.companion_of is not None else None
+    return build_companion_response(companion, primary_name)
+
+
+@router.get("/{meeting_id}/companions", response_model=list[CompanionResponse])
+def get_companions(
+    meeting_id: int,
+    db: DatabaseSession,
+    staff: CurrentStaff,
+    guest_id: int | None = None,
+) -> list[CompanionResponse]:
+    """查询会议内同行嘉宾列表，可按主嘉宾筛选。
+
+    入参：meeting_id 为会议 ID；guest_id 为可选主嘉宾 ID；db 与 staff 由 FastAPI 注入。
+    返回值：list[CompanionResponse]：同行嘉宾及其主嘉宾姓名列表。
+    异常：无会议权限时返回 404。
+    """
+    meeting = load_staff_meeting_or_404(db, staff, meeting_id)
+    return [
+        build_companion_response(companion, primary_name)
+        for companion, primary_name in list_companions(db, meeting, guest_id)
     ]
