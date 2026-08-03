@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.access import StaffMeeting
@@ -533,6 +534,79 @@ def test_staff_can_list_check_in_records(
     assert len(response.json()) == 1
     assert response.json()[0]["guest_id"] == guest.id
     assert response.json()[0]["method"] == "scan"
+
+
+def test_check_in_list_hides_deactivated_guest_records(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证停用嘉宾的签到记录不进入工作人员端列表，但保留在数据库。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示列表口径为启用嘉宾，停用嘉宾历史数据不丢失。
+    异常：断言失败表示签到记录口径与数据保留规则异常。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-hidden-records")
+    staff = create_user(db, "staff-hidden-records", role="staff")
+    meeting = Meeting(
+        title="隐藏停用签到会议",
+        created_by_id=admin.id,
+        status="published",
+        end_time=datetime.now(timezone.utc) + timedelta(days=1),
+    )
+    db.add(meeting)
+    db.flush()
+    db.add(StaffMeeting(meeting_id=meeting.id, user_id=staff.id))
+    active_guest = Guest(
+        meeting_id=meeting.id,
+        name="启用嘉宾",
+        phone="13900000091",
+        qr_token="active-hidden-token",
+    )
+    inactive_guest = Guest(
+        meeting_id=meeting.id,
+        name="停用嘉宾",
+        phone="13900000092",
+        qr_token="inactive-hidden-token",
+        is_active=False,
+    )
+    db.add_all([active_guest, inactive_guest])
+    db.flush()
+    default_session = get_default_check_in_session(db, meeting)
+    db.add_all([
+        CheckIn(
+            meeting_id=meeting.id,
+            session_id=default_session.id,
+            guest_id=active_guest.id,
+            staff_id=staff.id,
+            method="manual",
+        ),
+        CheckIn(
+            meeting_id=meeting.id,
+            session_id=default_session.id,
+            guest_id=inactive_guest.id,
+            staff_id=staff.id,
+            method="manual",
+        ),
+    ])
+    db.commit()
+
+    response = client.get(
+        f"/api/staff/meetings/{meeting.id}/check-ins",
+        headers=auth_headers(db, staff),
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["guest_id"] == active_guest.id
+
+    # 数据库中的历史签到仍保留，停用嘉宾数据不因列表过滤而丢失。
+    remaining_records = db.scalars(
+        select(CheckIn).where(CheckIn.meeting_id == meeting.id)
+    ).all()
+    assert len(remaining_records) == 2
 
 
 def test_date_mode_resolves_current_session_by_injected_date(

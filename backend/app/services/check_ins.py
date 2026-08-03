@@ -105,16 +105,18 @@ def create_check_in(db: Session, meeting: Meeting, staff: User, guest: Guest, me
 
 
 def list_check_ins(db: Session, meeting: Meeting) -> list[CheckIn]:
-    """查询一个会议的签到记录。
+    """查询一个会议的签到记录，停用嘉宾的签到不返回但保留在数据库。
 
     入参：db 为数据库会话；meeting 为已授权会议，均必填。
-    返回值：list[CheckIn]：按签到时间倒序排列的签到记录。
+    返回值：list[CheckIn]：启用嘉宾按签到时间倒序排列的签到记录；软停用嘉宾的历史签到保留在数据库但不进入当前记录列表，避免工作人员端出现无法匹配姓名的“未知嘉宾”。
     异常：数据库查询失败时由 SQLAlchemy 抛出异常。
     """
     session = get_current_check_in_session(db, meeting)
     statement = (
         select(CheckIn)
+        .join(Guest, Guest.id == CheckIn.guest_id)
         .where(CheckIn.session_id == session.id)
+        .where(Guest.is_active.is_(True))
         .order_by(CheckIn.checked_in_at.desc(), CheckIn.id.desc())
     )
     return list(db.scalars(statement))
