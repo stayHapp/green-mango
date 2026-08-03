@@ -55,7 +55,8 @@
             </el-button>
           </div>
         </el-form>
-        <p class="guest-login-register-tip">
+        <!-- 会议关闭自主报名时不展示报名提示，避免引导嘉宾提交无效申请。 -->
+        <p v-if="meeting.registrationEnabled" class="guest-login-register-tip">
           <span>还没有报名？</span>
           <router-link :to="`/meetings/${meetingId}/register`">立即报名</router-link>
         </p>
