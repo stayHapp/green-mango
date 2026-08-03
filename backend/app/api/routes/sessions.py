@@ -25,6 +25,7 @@ def login_user_by_role(payload: UserLoginRequest, db: DatabaseSession, role: str
         expires_at=auth_session.expires_at,
         subject_id=user.id,
         subject_type=user.role,
+        display_name=user.display_name,
     )
 
 

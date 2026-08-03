@@ -3,7 +3,8 @@
     <header class="staff-workspace-header">
       <div>
         <h1>{{ activeModeTitle }}</h1>
-        <p>{{ session.staff?.name || '工作人员' }}</p>
+        <!-- 显示名优先，未设置时回退到登录账号。 -->
+        <p>{{ session.staff?.displayName || session.staff?.name || '工作人员' }}</p>
       </div>
       <button type="button" class="staff-workspace-logout" @click="handleLogout">
         <el-icon><SwitchButton /></el-icon>

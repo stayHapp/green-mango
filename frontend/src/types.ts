@@ -152,6 +152,7 @@ export interface MeetingMaterial {
 export interface StaffUser {
   id: string
   name: string
+  displayName: string
   phone: string
   account: string
   meetingIds: string[]

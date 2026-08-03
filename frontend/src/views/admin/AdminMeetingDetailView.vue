@@ -532,16 +532,19 @@
         <el-form class="edit-form" label-position="top" @submit.prevent>
           <el-form-item label="登录账号"><el-input v-model="staffForm.account" placeholder="请输入工作人员账号（字母开头，3-100 位）" /></el-form-item>
           <el-form-item label="初始密码"><el-input v-model="staffForm.initialPassword" type="password" show-password placeholder="至少 8 位" /></el-form-item>
+          <el-form-item label="显示名（选填）"><el-input v-model="staffForm.displayName" placeholder="如：会务组小张；留空则显示账号" maxlength="100" /></el-form-item>
           <div class="action-row"><el-button type="primary" :loading="creatingStaff" @click="handleCreateStaff">创建并授权当前会议</el-button></div>
           <el-alert v-if="staffMessage" class="top-gap" :type="staffMessageType" :closable="false" :title="staffMessage" />
         </el-form>
         <el-table :data="staff" row-key="id">
           <el-table-column prop="account" label="账号" />
+          <el-table-column label="显示名" min-width="130"><template #default="{ row }">{{ row.displayName || row.account }}</template></el-table-column>
           <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="row.isActive ? 'success' : 'info'">{{ row.isActive ? '启用' : '停用' }}</el-tag></template></el-table-column>
           <el-table-column label="操作" width="180"><template #default="{ row }"><el-button size="small" @click="openStaffEditDialog(row)">编辑</el-button><el-button size="small" type="danger" plain @click="handleRemoveStaff(row)">解除授权</el-button></template></el-table-column>
         </el-table>
         <el-dialog v-model="staffEditDialogVisible" title="编辑工作人员" width="min(520px, calc(100% - 32px))">
           <el-form label-position="top" @submit.prevent>
+            <el-form-item label="显示名"><el-input v-model="staffEditForm.displayName" placeholder="留空则显示账号" maxlength="100" /></el-form-item>
             <el-form-item label="账号状态"><el-switch v-model="staffEditForm.isActive" active-text="启用" inactive-text="停用" /></el-form-item>
             <el-form-item label="重置密码"><el-input v-model="staffEditForm.newPassword" type="password" show-password placeholder="不修改请留空；新密码至少 8 位" /></el-form-item>
             <div class="action-row"><el-button type="primary" :loading="savingStaff" @click="handleUpdateStaff">保存</el-button></div>
@@ -991,10 +994,10 @@ const guestEditForm = ref<GuestFormState>(createGuestFormState())
 const guestImportDialogVisible = ref(false)
 const staffMessage = ref('')
 const staffMessageType = ref<'success' | 'error'>('success')
-const staffForm = ref({ account: '', initialPassword: '' })
+const staffForm = ref({ account: '', initialPassword: '', displayName: '' })
 const selectedStaff = ref<StaffUser>()
 const staffEditDialogVisible = ref(false)
-const staffEditForm = ref({ isActive: true, newPassword: '' })
+const staffEditForm = ref({ isActive: true, newPassword: '', displayName: '' })
 const selectedAssistantFeature = ref<MeetingAssistantFeature>()
 const assistantEditDialogVisible = ref(false)
 const assistantMaterialCount = ref(0)
@@ -3031,9 +3034,10 @@ async function handleCreateStaff(): Promise<void> {
     await createAdminStaff(meeting.value.id, {
       username: staffForm.value.account.trim(),
       initialPassword: staffForm.value.initialPassword,
+      displayName: staffForm.value.displayName,
     })
     staff.value = await listAdminStaff(meeting.value.id)
-    staffForm.value = { account: '', initialPassword: '' }
+    staffForm.value = { account: '', initialPassword: '', displayName: '' }
     staffMessageType.value = 'success'
     staffMessage.value = '工作人员已创建或复用，并授权当前会议。'
   } catch (error) {
@@ -3056,6 +3060,7 @@ function openStaffEditDialog(currentStaff: StaffUser): void {
   staffEditForm.value = {
     isActive: currentStaff.isActive !== false,
     newPassword: '',
+    displayName: currentStaff.displayName,
   }
   staffEditDialogVisible.value = true
 }
@@ -3080,6 +3085,7 @@ async function handleUpdateStaff(): Promise<void> {
     await updateAdminStaff(meeting.value.id, selectedStaff.value.id, {
       isActive: staffEditForm.value.isActive,
       newPassword: staffEditForm.value.newPassword || undefined,
+      displayName: staffEditForm.value.displayName,
     })
     staff.value = await listAdminStaff(meeting.value.id)
     staffEditDialogVisible.value = false

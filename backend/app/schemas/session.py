@@ -20,6 +20,7 @@ class SessionResponse(BaseModel):
     expires_at: datetime
     subject_id: int
     subject_type: str
+    display_name: str | None = None
 
 
 class LogoutResponse(BaseModel):

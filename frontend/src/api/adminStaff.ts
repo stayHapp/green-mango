@@ -6,17 +6,20 @@ import { apiClient, authorizationConfig } from './client'
 interface StaffResponse {
   id: number
   username: string
+  display_name: string | null
   is_active: boolean
 }
 
 export interface AdminStaffCreateInput {
   username: string
   initialPassword: string
+  displayName?: string
 }
 
 export interface AdminStaffUpdateInput {
   isActive?: boolean
   newPassword?: string
+  displayName?: string
 }
 
 /**
@@ -30,6 +33,7 @@ function mapStaff(staff: StaffResponse, meetingId: string): StaffUser {
   return {
     id: String(staff.id),
     name: staff.username,
+    displayName: staff.display_name || '',
     phone: '',
     account: staff.username,
     meetingIds: [meetingId],
@@ -65,6 +69,7 @@ export async function createAdminStaff(meetingId: string, input: AdminStaffCreat
     {
       username: input.username,
       initial_password: input.initialPassword,
+      display_name: input.displayName?.trim() || null,
     },
     authorizationConfig('admin'),
   )
@@ -83,9 +88,10 @@ export async function updateAdminStaff(
   staffId: string,
   input: AdminStaffUpdateInput,
 ): Promise<StaffUser> {
-  const payload: Record<string, string | boolean> = {}
+  const payload: Record<string, string | boolean | null> = {}
   if (input.isActive !== undefined) payload.is_active = input.isActive
   if (input.newPassword) payload.new_password = input.newPassword
+  if (input.displayName !== undefined) payload.display_name = input.displayName.trim() || null
   const { data } = await apiClient.patch<StaffResponse>(
     `/admin/meetings/${meetingId}/staff/${staffId}`,
     payload,

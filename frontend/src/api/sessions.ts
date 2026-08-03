@@ -10,6 +10,7 @@ interface SessionApiResponse {
   expires_at: string
   subject_id: number
   subject_type: 'admin' | 'staff'
+  display_name: string | null
 }
 
 interface GuestSessionApiResponse {
@@ -97,7 +98,14 @@ function mapUserSession(
     return { user: { id: String(response.subject_id), name: username, phone: '' }, access }
   }
   return {
-    user: { id: String(response.subject_id), name: username, phone: '', account: username, meetingIds: [] },
+    user: {
+      id: String(response.subject_id),
+      name: username,
+      displayName: response.display_name || '',
+      phone: '',
+      account: username,
+      meetingIds: [],
+    },
     access,
   }
 }

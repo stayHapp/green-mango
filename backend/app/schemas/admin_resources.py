@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.staff import StaffUpdate  # noqa: F401  # 复用工作人员更新结构，避免两处定义分叉
+
 
 class AdminAssignmentRequest(BaseModel):
     """按账号添加会议管理员的请求。"""
@@ -21,13 +23,6 @@ class AdminResponse(BaseModel):
     display_name: str | None
     phone: str | None
     is_active: bool
-
-
-class StaffUpdate(BaseModel):
-    """管理员修改工作人员启用状态和密码的请求。"""
-
-    is_active: bool | None = None
-    new_password: str | None = Field(default=None, min_length=8, max_length=128)
 
 
 class OperationResponse(BaseModel):

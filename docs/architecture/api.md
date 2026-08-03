@@ -6,7 +6,7 @@
 
 - 管理员、工作人员使用账号和密码分别调用登录接口。
 - 嘉宾使用会议 ID、姓名和手机号登录。
-- 登录成功返回 `access_token`、`token_type= bearer`、主体信息和过期时间。
+- 登录成功返回 `access_token`、`token_type= bearer`、主体信息、过期时间和 `display_name`（显示名，可为空；管理员与工作人员登录时由账号资料提供，前端用于展示）。
 - 受保护接口统一携带 `Authorization: Bearer <access_token>`。
 - token 只在签发响应中返回；数据库仅保存 SHA-256 摘要，支持过期和主动撤销。
 - 三端共用 `POST /api/sessions/logout` 退出当前会话。
@@ -154,7 +154,7 @@
 
 同行登记接口 `POST /api/staff/meetings/{meeting_id}/companions` 请求体为 `companion_of_id`（主嘉宾 ID）加姓名、手机号（必填）、单位、职务、身份、座位号、`companion_note`（自由文本备注，默认留空）与动态字段值。服务层校验主嘉宾存在、属于当前会议、处于启用状态且不是同行嘉宾，并复用「同会议姓名+手机号唯一」约束，避免重复登记。登记成功后生成正式嘉宾记录（`source=companion_registration`、自带 `qr_token`），并自动为同行嘉宾写入当前有效场次的手动签到（执行工作人员为登记人）；会议已结束时拒绝登记，避免产生无法签到的孤立记录。同行列表接口返回同行嘉宾信息与 `companion_of_name`，`guest_id` 参数可筛选某位主嘉宾的同行人员。
 
-签到由后端判断工作人员授权、嘉宾归属、嘉宾启用状态、会议结束时间和当前有效场次内重复签到。重复签到返回 409；无效、跨会议或过期二维码不会创建记录。同一嘉宾允许在不同签到场次分别签到。重复签到的 409 `detail` 在上下文完整时返回结构化对象：`code=already_checked_in`、`message`、`guest_id`、`guest_name`、`phone`、`checked_in_at`、`method`、`staff_id` 和 `staff_name`，工作人员端据此展示已有签到时间、签到方式和执行人员；缺少历史上下文时可回退为字符串提示。
+签到由后端判断工作人员授权、嘉宾归属、嘉宾启用状态、会议结束时间和当前有效场次内重复签到。重复签到返回 409；无效、跨会议或过期二维码不会创建记录。同一嘉宾允许在不同签到场次分别签到。重复签到的 409 `detail` 在上下文完整时返回结构化对象：`code=already_checked_in`、`message`、`guest_id`、`guest_name`、`phone`、`checked_in_at`、`method`、`staff_id` 和 `staff_name`，工作人员端据此展示已有签到时间、签到方式和执行人员；缺少历史上下文时可回退为字符串提示。工作人员端签到记录列表只返回启用嘉宾的签到，软停用嘉宾的历史签到保留在数据库但不进入列表，避免出现无法匹配姓名的「未知嘉宾」记录。
 
 ## 嘉宾补充报名接口
 

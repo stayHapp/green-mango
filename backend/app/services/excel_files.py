@@ -7,7 +7,7 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.application import GuestApplication
@@ -216,7 +216,7 @@ def build_check_in_export(db: Session, meeting: Meeting) -> bytes:
         ).all()
     )
     statement = (
-        select(Guest, CheckIn, User.display_name)
+        select(Guest, CheckIn, func.coalesce(User.display_name, User.username))
         .outerjoin(CheckIn, (CheckIn.session_id == default_session.id) & (CheckIn.guest_id == Guest.id))
         .outerjoin(User, User.id == CheckIn.staff_id)
         .where(Guest.meeting_id == meeting.id, Guest.is_active.is_(True))

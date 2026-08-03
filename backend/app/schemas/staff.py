@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class StaffCreate(BaseModel):
@@ -10,6 +10,21 @@ class StaffCreate(BaseModel):
 
     username: str = Field(pattern=r"^[a-zA-Z][a-zA-Z0-9_-]*$", min_length=3, max_length=100)
     initial_password: str = Field(min_length=8, max_length=128)
+    display_name: str | None = Field(default=None, max_length=100)
+
+    @field_validator("display_name")
+    @classmethod
+    def normalize_display_name(cls, value: str | None) -> str | None:
+        """将显示名首尾空白去除，空白文本规范化为 None。
+
+        入参：value 为待校验的显示名，可为空。
+        返回值：str | None：去除首尾空白后的显示名；空白文本返回 None。
+        异常：当前校验器不主动抛出业务异常。
+        """
+        if value is None:
+            return None
+        normalized_value = value.strip()
+        return normalized_value or None
 
 
 class StaffUpdate(BaseModel):
@@ -17,6 +32,21 @@ class StaffUpdate(BaseModel):
 
     is_active: bool | None = None
     new_password: str | None = Field(default=None, min_length=8, max_length=128)
+    display_name: str | None = Field(default=None, max_length=100)
+
+    @field_validator("display_name")
+    @classmethod
+    def normalize_display_name(cls, value: str | None) -> str | None:
+        """将显示名首尾空白去除，空白文本规范化为 None。
+
+        入参：value 为待校验的显示名，可为空。
+        返回值：str | None：去除首尾空白后的显示名；空白文本返回 None。
+        异常：当前校验器不主动抛出业务异常。
+        """
+        if value is None:
+            return None
+        normalized_value = value.strip()
+        return normalized_value or None
 
 
 class StaffResponse(BaseModel):
@@ -26,6 +56,7 @@ class StaffResponse(BaseModel):
 
     id: int
     username: str
+    display_name: str | None
     is_active: bool
     created_at: datetime
 

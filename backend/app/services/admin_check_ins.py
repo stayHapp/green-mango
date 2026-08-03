@@ -68,7 +68,7 @@ def load_session_check_in_map(db: Session, session: CheckInSession) -> dict[int,
     异常：数据库查询失败时由 SQLAlchemy 抛出异常。
     """
     statement = (
-        select(CheckIn, Guest, User.display_name)
+        select(CheckIn, Guest, func.coalesce(User.display_name, User.username))
         .join(Guest, Guest.id == CheckIn.guest_id)
         .outerjoin(User, User.id == CheckIn.staff_id)
         .where(CheckIn.session_id == session.id, Guest.is_active.is_(True))

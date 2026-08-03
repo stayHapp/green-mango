@@ -447,9 +447,14 @@ def test_admin_can_create_staff_and_staff_can_list_assigned_meetings(
     create_response = client.post(
         f"/api/admin/meetings/{meeting.id}/staff",
         headers=admin_headers,
-        json={"username": "staff01", "initial_password": "staff-pass-123"},
+        json={
+            "username": "staff01",
+            "initial_password": "staff-pass-123",
+            "display_name": "现场一组",
+        },
     )
     assert create_response.status_code == 201
+    assert create_response.json()["display_name"] == "现场一组"
     staff_id = create_response.json()["id"]
 
     repeated_response = client.post(
@@ -464,6 +469,7 @@ def test_admin_can_create_staff_and_staff_can_list_assigned_meetings(
         "/api/staff/sessions", json={"username": "staff01", "password": "staff-pass-123"}
     )
     assert login_response.status_code == 200
+    assert login_response.json()["display_name"] == "现场一组"
 
     list_response = client.get(f"/api/admin/meetings/{meeting.id}/staff", headers=admin_headers)
     assert list_response.status_code == 200
@@ -951,10 +957,11 @@ def test_admin_resource_maintenance_and_cors_are_available(
     patch_staff_response = client.patch(
         f"/api/admin/meetings/{meeting.id}/staff/{staff_id}",
         headers=headers,
-        json={"is_active": False},
+        json={"is_active": False, "display_name": "会务-张"},
     )
     assert patch_staff_response.status_code == 200
     assert patch_staff_response.json()["is_active"] is False
+    assert patch_staff_response.json()["display_name"] == "会务-张"
     assert client.delete(
         f"/api/admin/meetings/{meeting.id}/staff/{staff_id}", headers=headers
     ).status_code == 200

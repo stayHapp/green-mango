@@ -25,6 +25,7 @@ def create_or_authorize_staff(db: Session, meeting: Meeting, payload: StaffCreat
         staff = User(
             username=payload.username,
             password_hash=hash_password(payload.initial_password),
+            display_name=payload.display_name,
             role="staff",
             is_active=True,
         )
