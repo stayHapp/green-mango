@@ -35,7 +35,10 @@
             :clearable="false"
           />
         </label>
-        <el-button plain type="danger" :icon="Delete" @click="removeSelectedDay">删除日期</el-button>
+        <div class="agenda-editor__day-toolbar-actions">
+          <el-button plain type="primary" :icon="DocumentAdd" @click="openBulkImportDialog">粘贴整段日程</el-button>
+          <el-button plain type="danger" :icon="Delete" @click="removeSelectedDay">删除日期</el-button>
+        </div>
       </header>
 
       <div class="agenda-editor__periods">
@@ -67,43 +70,55 @@
           <div class="agenda-period__entry-head" aria-hidden="true">
             <span>时间段</span>
             <span>环节</span>
-            <span>内容</span>
             <span>地点</span>
-            <span>操作</span>
+            <span>展开</span>
           </div>
 
           <div class="agenda-period__entries">
-            <article v-for="(entry, entryIndex) in period.entries" :key="entry.key" class="agenda-entry-editor">
-              <div class="agenda-entry-editor__time-range">
-                <el-time-select
-                  v-model="entry.startTime"
-                  start="06:00"
-                  step="00:10"
-                  end="23:50"
-                  placeholder="开始"
-                  :aria-label="`第 ${entryIndex + 1} 个环节开始时间`"
+            <template v-for="(entry, entryIndex) in period.entries" :key="entry.key">
+              <button
+                type="button"
+                class="agenda-entry-row"
+                :class="{ 'is-expanded': isEntryExpanded(entry.key) }"
+                @click="toggleEntryExpand(entry.key)"
+              >
+                <time>{{ entry.startTime || '--:--' }}{{ entry.endTime ? `–${entry.endTime}` : '' }}</time>
+                <strong>{{ entry.title || '未命名环节' }}</strong>
+                <span>{{ entry.location || '未填地点' }}</span>
+                <em>{{ isEntryExpanded(entry.key) ? '收起' : '展开' }}</em>
+              </button>
+              <article v-if="isEntryExpanded(entry.key)" class="agenda-entry-editor">
+                <div class="agenda-entry-editor__time-range">
+                  <el-time-select
+                    v-model="entry.startTime"
+                    start="06:00"
+                    step="00:10"
+                    end="23:50"
+                    placeholder="开始"
+                    :aria-label="`第 ${entryIndex + 1} 个环节开始时间`"
+                  />
+                  <span>至</span>
+                  <el-time-select
+                    v-model="entry.endTime"
+                    start="06:00"
+                    step="00:10"
+                    end="23:50"
+                    placeholder="结束"
+                    :aria-label="`第 ${entryIndex + 1} 个环节结束时间`"
+                  />
+                </div>
+                <el-input v-model="entry.title" placeholder="主题演讲" :aria-label="`第 ${entryIndex + 1} 个环节名称`" />
+                <AgendaRichTextEditor
+                  v-model="entry.content"
+                  :label="`第 ${entryIndex + 1} 个环节内容`"
                 />
-                <span>至</span>
-                <el-time-select
-                  v-model="entry.endTime"
-                  start="06:00"
-                  step="00:10"
-                  end="23:50"
-                  placeholder="结束"
-                  :aria-label="`第 ${entryIndex + 1} 个环节结束时间`"
-                />
-              </div>
-              <el-input v-model="entry.title" placeholder="主题演讲" :aria-label="`第 ${entryIndex + 1} 个环节名称`" />
-              <AgendaRichTextEditor
-                v-model="entry.content"
-                :label="`第 ${entryIndex + 1} 个环节内容`"
-              />
-              <el-input v-model="entry.location" placeholder="主会场" :aria-label="`第 ${entryIndex + 1} 个环节地点`" />
-              <div class="agenda-entry-editor__actions">
-                <el-button text :icon="CopyDocument" aria-label="复制环节" @click="duplicateEntry(periodIndex, entryIndex)" />
-                <el-button text type="danger" :icon="Delete" aria-label="删除环节" @click="removeEntry(periodIndex, entryIndex)" />
-              </div>
-            </article>
+                <el-input v-model="entry.location" placeholder="主会场" :aria-label="`第 ${entryIndex + 1} 个环节地点`" />
+                <div class="agenda-entry-editor__actions">
+                  <el-button text :icon="CopyDocument" aria-label="复制环节" @click="duplicateEntry(periodIndex, entryIndex)" />
+                  <el-button text type="danger" :icon="Delete" aria-label="删除环节" @click="removeEntry(periodIndex, entryIndex)" />
+                </div>
+              </article>
+            </template>
           </div>
 
           <el-button class="agenda-period__add-entry" plain :icon="Plus" @click="addEntry(periodIndex)">新增环节</el-button>
@@ -112,12 +127,67 @@
 
       <el-button class="agenda-editor__add-period" plain type="primary" :icon="Plus" @click="addPeriod">新增时段</el-button>
     </div>
+
+    <!-- 粘贴整段日程：批量解析后预览，再覆盖或追加写入编辑器。 -->
+    <el-dialog
+      v-model="bulkDialogVisible"
+      title="粘贴整段日程"
+      width="min(760px, calc(100% - 32px))"
+      class="agenda-bulk-dialog"
+      @closed="resetBulkImport"
+    >
+      <p class="agenda-bulk-tip">
+        从 Word、表格或会议通知中整段复制：每行一个环节，「时间、标题、内容」之间用 Tab 或竖线分隔；不以时间开头的行会自动接续到上一环节的内容。
+      </p>
+      <el-input
+        v-model="bulkImportText"
+        type="textarea"
+        :rows="10"
+        placeholder="示例：&#10;09:00–09:50	开幕致辞	卫新（苏州中学书记）&#10;09:50–10:20	主题演讲	葛军 教授（南京师范大学）&#10;10:40–11:00	茶歇	—"
+      />
+      <div class="agenda-bulk-actions">
+        <el-button :icon="MagicStick" @click="previewBulkImport">解析预览</el-button>
+        <el-radio-group v-model="bulkTarget">
+          <el-radio value="replace">覆盖现有日程</el-radio>
+          <el-radio value="append">追加到现有日程末尾</el-radio>
+        </el-radio-group>
+      </div>
+      <div v-if="bulkPreviewReady" class="agenda-bulk-result">
+        <p class="agenda-bulk-summary">识别 {{ bulkParsedDays.length }} 个日期，共 {{ bulkEntryCount }} 条环节</p>
+        <el-alert
+          v-if="bulkUnmatchedLines.length"
+          type="warning"
+          :closable="false"
+          title="以下内容未能识别，将在预览中保留原样供你检查："
+        />
+        <div v-if="bulkUnmatchedLines.length" class="agenda-bulk-unmatched">
+          <div v-for="(line, index) in bulkUnmatchedLines" :key="index">{{ line }}</div>
+        </div>
+        <div class="agenda-bulk-preview">
+          <div v-for="day in bulkParsedDays" :key="day.key" class="agenda-bulk-day">
+            <strong>{{ formatEditorDayLabel(day.date) }}</strong>
+            <div v-for="period in day.periods" :key="period.key" class="agenda-bulk-period">
+              <span class="agenda-bulk-period__label">{{ period.period }}</span>
+              <div v-for="entry in period.entries" :key="entry.key" class="agenda-bulk-entry">
+                <time>{{ entry.startTime || '--:--' }}{{ entry.endTime ? `–${entry.endTime}` : '' }}</time>
+                <span>{{ entry.title || '未命名环节' }}</span>
+                <small>{{ plainAgendaPreview(entry.content) || entry.location }}</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="bulkDialogVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!bulkParsedDays.length" @click="applyBulkImport">写入日程</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowDown, ArrowUp, CopyDocument, Delete, Plus } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowUp, CopyDocument, Delete, DocumentAdd, MagicStick, Plus } from '@element-plus/icons-vue'
 import AgendaRichTextEditor from './AgendaRichTextEditor.vue'
 import {
   agendaPlainTextToHtml,
@@ -169,6 +239,20 @@ let editorKeySequence = 0
 const days = ref<AgendaEditorDay[]>(parseAgendaContent(props.modelValue))
 const activeDayKey = ref(days.value[0]?.key ?? '')
 const selectedDay = computed(getSelectedDay)
+// 批量粘贴弹窗状态：输入文本、写入方式、解析结果与未识别行。
+const bulkDialogVisible = ref(false)
+const bulkImportText = ref('')
+const bulkTarget = ref<'replace' | 'append'>('replace')
+const bulkParsedDays = ref<AgendaEditorDay[]>([])
+const bulkUnmatchedLines = ref<string[]>([])
+const bulkPreviewReady = ref(false)
+// 记录用户手动展开的环节，默认收起以保持列表紧凑。
+const expandedEntryKeys = ref<string[]>([])
+const bulkEntryCount = computed(() =>
+  bulkParsedDays.value.reduce((count, day) => (
+    count + day.periods.reduce((periodCount, period) => periodCount + period.entries.length, 0)
+  ), 0),
+)
 
 watch(getModelValue, synchronizeFromModel)
 watch(days, emitSerializedContent, { deep: true })
@@ -419,6 +503,319 @@ function parseAgendaEntryLine(line: string): AgendaEditorEntry {
 }
 
 /**
+ * 把全角冒号与波浪号归一化为半角，便于统一匹配时间格式。
+ *
+ * 入参：value 为必填的原始文本。
+ * 返回值：string：全角冒号替换为半角冒号、全角波浪号替换为半角波浪号的文本。
+ * 异常：当前函数不主动抛出异常。
+ */
+function normalizeBulkTimeText(value: string): string {
+  return value.replaceAll('：', ':').replaceAll('～', '~')
+}
+
+/**
+ * 按开始时间自动判断环节归属时段，便于整段文本没有时段行时仍能分组展示。
+ *
+ * 入参：startTime 为必填的开始时间字符串，格式形如 `09:00`，可为空。
+ * 返回值：string：返回上午、中午、下午、晚上或全天中的一个时段名称。
+ * 异常：当前函数不主动抛出异常；时间无法解析时返回全天。
+ */
+function autoPeriodForTime(startTime: string): string {
+  const match = startTime.match(/^(\d{1,2}):(\d{2})$/)
+  if (!match) {
+    return '全天'
+  }
+  const hour = Number(match[1])
+  if (hour >= 18) {
+    return '晚上'
+  }
+  if (hour >= 14) {
+    return '下午'
+  }
+  if (hour >= 12) {
+    return '中午'
+  }
+  if (hour >= 6) {
+    return '上午'
+  }
+  return '全天'
+}
+
+/**
+ * 解析批量文本中的单行环节，兼容 Tab 与竖线分隔、全角冒号和多种时间连接符。
+ *
+ * 入参：line 为必填的单个环节行，形如 `09:00–09:50\t开幕致辞\t卫新（苏州中学书记）`。
+ * 返回值：Partial<AgendaEditorEntry> | null：识别成功返回时间、标题、内容与地点字段；不以时间开头时返回 null。
+ * 异常：当前函数不主动抛出异常。
+ */
+function parseBulkEntryLine(line: string): Partial<AgendaEditorEntry> | null {
+  const normalized = normalizeBulkTimeText(line)
+  const match = normalized.match(/^(\d{1,2}:\d{2})(?:\s*[-–—~至]\s*(\d{1,2}:\d{2}))?\s*(.*)$/)
+  if (!match) {
+    return null
+  }
+  const rest = match[3].trim()
+  let fields: string[]
+  if (rest.includes('\t')) {
+    // Tab 分隔：标题在前，其余字段（可能多段）合并为内容，避免内容里的分隔符丢失。
+    const tabParts = rest.split('\t').map((part) => part.trim())
+    fields = [tabParts[0], tabParts.slice(1).join('\n')]
+  } else {
+    fields = rest.split(/\s*[|｜]\s*/).map((part) => part.trim())
+  }
+  const title = fields[0] ?? ''
+  let content = fields[1] ?? ''
+  const location = fields[2] ?? ''
+  // 占位符统一视为无内容，避免生成空白条目。
+  if (content === '—' || content === '-' || content === '') {
+    content = ''
+  }
+  return {
+    startTime: match[1],
+    endTime: match[2] ?? '',
+    title,
+    content: agendaPlainTextToHtml(content),
+    location,
+  }
+}
+
+/**
+ * 获取批量解析的当前日期，不存在时按会议开始日期或今天创建并加入结果。
+ *
+ * 入参：parsedDays 为必填的批量解析结果日期数组；currentDay 为当前日期，可为空。
+ * 返回值：AgendaEditorDay：当前批量解析日期，保证后续环节可归属。
+ * 异常：当前函数不主动抛出异常。
+ */
+function ensureBulkDay(
+  parsedDays: AgendaEditorDay[],
+  currentDay: AgendaEditorDay | undefined,
+): AgendaEditorDay {
+  if (currentDay) {
+    return currentDay
+  }
+  const fallbackDate = props.meetingStartTime?.slice(0, 10) || formatDateKey(new Date())
+  const created = createEmptyDay(fallbackDate)
+  parsedDays.push(created)
+  return created
+}
+
+/**
+ * 把整段日程文本按规则解析为结构化日期数组，并收集无法识别的行。
+ *
+ * 入参：text 为必填的整段日程文本，支持日期行、时段行、Tab / 竖线分隔环节行与跨行内容续行。
+ * 返回值：{ days: AgendaEditorDay[]; unmatchedLines: string[] }：解析结果与未识别行列表。
+ * 异常：当前函数不主动抛出异常；空文本返回空结果。
+ * 使用示例：粘贴 `09:00–09:50\t开幕致辞\t卫新（苏州中学书记）` 会生成上午时段的单条环节。
+ */
+function parseBulkAgendaText(text: string): { days: AgendaEditorDay[]; unmatchedLines: string[] } {
+  const parsedDays: AgendaEditorDay[] = []
+  const unmatchedLines: string[] = []
+  let currentDay: AgendaEditorDay | undefined
+  let currentPeriod: AgendaEditorPeriod | undefined
+  let currentEntry: AgendaEditorEntry | undefined
+
+  text.split('\n').map((line) => line.trim()).forEach((line) => {
+    if (!line) {
+      return
+    }
+    const dateParts = parseAgendaDateLine(line)
+    if (dateParts) {
+      const month = String(dateParts.month).padStart(2, '0')
+      const day = String(dateParts.day).padStart(2, '0')
+      currentDay = {
+        key: createEditorKey('day'),
+        date: `${dateParts.year}-${month}-${day}`,
+        periods: [],
+      }
+      parsedDays.push(currentDay)
+      currentPeriod = undefined
+      currentEntry = undefined
+      if (dateParts.period) {
+        currentPeriod = createEmptyPeriod({ period: dateParts.period, entries: [] })
+        currentDay.periods.push(currentPeriod)
+      }
+      return
+    }
+    const periodMatch = line.match(/^(上午|中午|下午|晚上|全天)(?:\s*[|｜]\s*(.+))?$/)
+    if (periodMatch) {
+      currentDay = ensureBulkDay(parsedDays, currentDay)
+      currentPeriod = createEmptyPeriod({
+        period: periodMatch[1],
+        title: periodMatch[2]?.trim() ?? '',
+        entries: [],
+      })
+      currentDay.periods.push(currentPeriod)
+      currentEntry = undefined
+      return
+    }
+    const entryLine = parseBulkEntryLine(line)
+    if (entryLine) {
+      currentDay = ensureBulkDay(parsedDays, currentDay)
+      if (!currentPeriod) {
+        currentPeriod = createEmptyPeriod({
+          period: autoPeriodForTime(entryLine.startTime ?? ''),
+          entries: [],
+        })
+        currentDay.periods.push(currentPeriod)
+      }
+      currentEntry = createEmptyEntry(entryLine)
+      currentPeriod.entries.push(currentEntry)
+      return
+    }
+    if (currentEntry) {
+      // 不以时间开头的行视为上一环节的内容续行，保留换行结构。
+      if (line !== '—' && line !== '-') {
+        currentEntry.content += agendaPlainTextToHtml(line)
+      }
+      return
+    }
+    unmatchedLines.push(line)
+  })
+
+  // 去掉解析过程中产生的空时段，保持结果整洁。
+  parsedDays.forEach((day) => {
+    day.periods = day.periods.filter((period) => period.entries.length > 0)
+  })
+  return { days: parsedDays, unmatchedLines }
+}
+
+/**
+ * 把批量解析结果按日期与时段合并到现有编辑器日程末尾。
+ *
+ * 入参：parsedDays 为必填的批量解析结果日期数组。
+ * 返回值：string：追加目标日期的稳定键，供调用方切换选中状态。
+ * 异常：当前函数不主动抛出异常。
+ */
+function mergeParsedDays(parsedDays: AgendaEditorDay[]): string {
+  let targetKey = ''
+  parsedDays.forEach((parsedDay) => {
+    const existing = days.value.find((day) => day.date === parsedDay.date)
+    if (!existing) {
+      days.value.push(parsedDay)
+      targetKey = targetKey || parsedDay.key
+      return
+    }
+    targetKey = targetKey || existing.key
+    parsedDay.periods.forEach((parsedPeriod) => {
+      const samePeriod = existing.periods.find((period) => period.period === parsedPeriod.period)
+      if (samePeriod) {
+        samePeriod.entries.push(...parsedPeriod.entries)
+      } else {
+        existing.periods.push(parsedPeriod)
+      }
+    })
+  })
+  return targetKey
+}
+
+/**
+ * 打开批量粘贴弹窗并清空上一次的解析状态。
+ *
+ * 入参：无。
+ * 返回值：void；仅更新弹窗与解析状态。
+ * 异常：当前函数不主动抛出异常。
+ */
+function openBulkImportDialog(): void {
+  bulkDialogVisible.value = true
+  bulkImportText.value = ''
+  bulkParsedDays.value = []
+  bulkUnmatchedLines.value = []
+  bulkPreviewReady.value = false
+}
+
+/**
+ * 关闭批量粘贴弹窗后重置所有临时状态。
+ *
+ * 入参：无。
+ * 返回值：void；仅清理弹窗临时数据，不影响已写入日程。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resetBulkImport(): void {
+  bulkImportText.value = ''
+  bulkTarget.value = 'replace'
+  bulkParsedDays.value = []
+  bulkUnmatchedLines.value = []
+  bulkPreviewReady.value = false
+}
+
+/**
+ * 解析批量粘贴文本并展示预览结果。
+ *
+ * 入参：无；函数读取批量输入文本。
+ * 返回值：void；更新解析结果与未识别行列表。
+ * 异常：当前函数不主动抛出异常。
+ */
+function previewBulkImport(): void {
+  const result = parseBulkAgendaText(bulkImportText.value)
+  bulkParsedDays.value = result.days
+  bulkUnmatchedLines.value = result.unmatchedLines
+  bulkPreviewReady.value = true
+}
+
+/**
+ * 把批量解析结果按所选方式写入编辑器。
+ *
+ * 入参：无；函数读取解析结果与写入方式。
+ * 返回值：void；覆盖或追加后切换选中日期并关闭弹窗。
+ * 异常：解析结果为空时不执行；追加时目标日期键缺失回退到第一天。
+ */
+function applyBulkImport(): void {
+  if (!bulkParsedDays.value.length) {
+    return
+  }
+  if (bulkTarget.value === 'replace') {
+    days.value = bulkParsedDays.value
+    activeDayKey.value = days.value[0]?.key ?? ''
+  } else {
+    const targetKey = mergeParsedDays(bulkParsedDays.value)
+    activeDayKey.value = targetKey || (days.value[0]?.key ?? '')
+  }
+  expandedEntryKeys.value = []
+  bulkDialogVisible.value = false
+}
+
+/**
+ * 判断某条环节的编辑表单是否处于展开状态。
+ *
+ * 入参：key 为必填的环节稳定键。
+ * 返回值：boolean：环节在展开集合中时返回 true，默认收起。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isEntryExpanded(key: string): boolean {
+  return expandedEntryKeys.value.includes(key)
+}
+
+/**
+ * 切换某条环节编辑表单的展开 / 收起状态。
+ *
+ * 入参：key 为必填的环节稳定键。
+ * 返回值：void；仅更新展开集合。
+ * 异常：当前函数不主动抛出异常。
+ */
+function toggleEntryExpand(key: string): void {
+  const index = expandedEntryKeys.value.indexOf(key)
+  if (index >= 0) {
+    expandedEntryKeys.value.splice(index, 1)
+  } else {
+    expandedEntryKeys.value.push(key)
+  }
+}
+
+/**
+ * 把富文本内容压缩为单行纯文本预览。
+ *
+ * 入参：html 为必填的日程富文本 HTML，可为空。
+ * 返回值：string：去掉标签并合并空白后的预览文字。
+ * 异常：当前函数不主动抛出异常。
+ */
+function plainAgendaPreview(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
  * 将后台结构化对象序列化为现有 API 接受的兼容纯文本。
  *
  * 入参：agendaDays 为必填日期数组，可以包含尚未填写完整的表单项。
@@ -633,7 +1030,10 @@ function removePeriod(index: number): void {
  * 异常：时段不存在时不执行，不主动抛出异常。
  */
 function addEntry(periodIndex: number): void {
-  selectedDay.value?.periods[periodIndex]?.entries.push(createEmptyEntry())
+  const entry = createEmptyEntry()
+  selectedDay.value?.periods[periodIndex]?.entries.push(entry)
+  // 新增环节默认展开编辑表单，方便直接填写内容。
+  expandedEntryKeys.value.push(entry.key)
 }
 
 /**
@@ -714,6 +1114,8 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
   display: grid;
   align-content: start;
   gap: 6px;
+  max-height: 460px;
+  overflow-y: auto;
   padding: 0 10px;
 }
 
@@ -768,6 +1170,12 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
   padding: 16px 18px;
 }
 
+.agenda-editor__day-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .agenda-editor__day-toolbar label {
   display: grid;
   gap: 7px;
@@ -779,6 +1187,8 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
 .agenda-editor__periods {
   display: grid;
   gap: 14px;
+  max-height: min(620px, 62vh);
+  overflow-y: auto;
   padding: 16px 18px;
 }
 
@@ -812,6 +1222,13 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
 }
 
 .agenda-period__entry-head,
+.agenda-entry-row {
+  display: grid;
+  grid-template-columns: 250px minmax(220px, 1fr) 120px 64px;
+  align-items: center;
+  gap: 10px;
+}
+
 .agenda-entry-editor {
   display: grid;
   grid-template-columns: 250px 140px minmax(260px, 1fr) 120px 64px;
@@ -829,6 +1246,56 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
 
 .agenda-period__entries {
   display: grid;
+}
+
+.agenda-entry-row {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #edf1ef;
+  background: #ffffff;
+  color: #32483d;
+  cursor: pointer;
+  font: inherit;
+  padding: 11px 12px;
+  text-align: left;
+}
+
+.agenda-entry-row:hover {
+  background: #f6faf8;
+}
+
+.agenda-entry-row.is-expanded {
+  border-bottom-color: #dce9e2;
+  background: #f2f8f5;
+}
+
+.agenda-entry-row time {
+  color: #07563f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.agenda-entry-row strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-entry-row > span {
+  overflow: hidden;
+  color: #71837a;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-entry-row em {
+  color: #08724e;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+  text-align: right;
 }
 
 .agenda-entry-editor {
@@ -871,6 +1338,117 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
   margin-left: 18px;
 }
 
+.agenda-bulk-tip {
+  margin: 0 0 10px;
+  border-radius: 6px;
+  background: #f2f8f5;
+  color: #4d6459;
+  line-height: 1.6;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.agenda-bulk-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.agenda-bulk-result {
+  margin-top: 14px;
+}
+
+.agenda-bulk-summary {
+  margin: 0 0 8px;
+  color: #32483d;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.agenda-bulk-unmatched {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 12px;
+  border-radius: 6px;
+  background: #fff8e8;
+  color: #8a6420;
+  font-size: 12px;
+  padding: 10px 12px;
+}
+
+.agenda-bulk-preview {
+  display: grid;
+  gap: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid #e2e9e5;
+  border-radius: 6px;
+  background: #fbfdfc;
+  padding: 12px;
+}
+
+.agenda-bulk-day > strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #243a2f;
+  font-size: 14px;
+}
+
+.agenda-bulk-period {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.agenda-bulk-period__label {
+  display: inline-block;
+  border-radius: 999px;
+  background: #eaf5ee;
+  color: #07563f;
+  font-size: 12px;
+  font-weight: 700;
+  justify-self: start;
+  padding: 2px 9px;
+}
+
+.agenda-bulk-entry {
+  display: grid;
+  grid-template-columns: 120px 150px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  border-bottom: 1px dashed #e6ece8;
+  padding: 7px 4px;
+}
+
+.agenda-bulk-entry:last-child {
+  border-bottom: 0;
+}
+
+.agenda-bulk-entry time {
+  color: #07563f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.agenda-bulk-entry span {
+  overflow: hidden;
+  color: #32483d;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-bulk-entry small {
+  overflow: hidden;
+  color: #71837a;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 900px) {
   .agenda-editor {
     grid-template-columns: 1fr;
@@ -899,6 +1477,7 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
   }
 
   .agenda-period__entry-head,
+  .agenda-entry-row,
   .agenda-entry-editor {
     min-width: 880px;
   }
