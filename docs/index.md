@@ -10,6 +10,7 @@
 - `decisions/`：技术和工程决策记录，说明为什么这样选择。
 - `exec-plans/`：复杂任务的执行计划。进行中的计划放在 `active/`，完成后移到 `completed/`。
 - `development/`：本地启动、联调和开发环境操作说明。
+
 ## 推荐阅读顺序
 
 开发者或 AI 开始任务前，建议先读：
@@ -28,9 +29,10 @@
 12. `architecture/overview.md`
 13. 与任务相关的具体架构文档
 14. `development/local-startup.md`：手动启动前后端和手机访问
-15. `development/server-sync-postgresql.md`：无 Git 服务器同步部署（PostgreSQL）
-16. `development/test-deployment.md`：旧测试环境部署（Nginx + systemd，SQLite）
-17. `development/tencent-cloud-deployment.md`：腾讯云 OpenCloudOS + Docker 部署（SQLite 演示环境）
+15. `development/new-server-domain-deployment.md`：新服务器与新域名部署（Docker + PostgreSQL + Nginx）
+16. `development/server-sync-postgresql.md`：无 Git 服务器同步部署（PostgreSQL）
+17. `development/test-deployment.md`：旧测试环境部署（Nginx + systemd，SQLite）
+18. `development/tencent-cloud-deployment.md`：腾讯云 OpenCloudOS + Docker 部署（SQLite 演示环境）
 
 如果任务涉及数据库结构，请同步阅读并更新 `architecture/database.md`。
 
