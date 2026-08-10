@@ -32,7 +32,7 @@ class ManualCheckInRequest(BaseModel):
 
 
 class CheckInResponse(BaseModel):
-    """签到记录响应数据。"""
+    """签到记录响应数据，携带嘉宾身份与同行绑定信息。"""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -41,6 +41,12 @@ class CheckInResponse(BaseModel):
     session_id: int
     session_title: str
     guest_id: int
+    guest_name: str
+    guest_phone: str
+    is_companion: bool
+    companion_of_id: int | None
+    companion_of_name: str | None
+    companion_note: str | None
     staff_id: int | None
     method: str
     checked_in_at: datetime

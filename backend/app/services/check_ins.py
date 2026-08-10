@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.access import StaffMeeting
 from app.models.guest import CheckIn, Guest
@@ -117,6 +117,11 @@ def list_check_ins(db: Session, meeting: Meeting) -> list[CheckIn]:
         .join(Guest, Guest.id == CheckIn.guest_id)
         .where(CheckIn.session_id == session.id)
         .where(Guest.is_active.is_(True))
+        .options(
+            # 预加载签到嘉宾及其主嘉宾，避免列表逐条触发额外查询。
+            selectinload(CheckIn.guest).selectinload(Guest.companion_of),
+            selectinload(CheckIn.session),
+        )
         .order_by(CheckIn.checked_in_at.desc(), CheckIn.id.desc())
     )
     return list(db.scalars(statement))

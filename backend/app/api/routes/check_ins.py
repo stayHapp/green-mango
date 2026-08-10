@@ -42,18 +42,27 @@ def normalize_utc_datetime(value: datetime) -> datetime:
 
 
 def build_check_in_response(check_in) -> CheckInResponse:
-    """把签到 ORM 对象转换为时区明确的接口响应。
+    """把签到 ORM 对象转换为时区明确且携带嘉宾绑定信息的接口响应。
 
     入参：check_in 为已持久化签到记录，必填。
-    返回值：CheckInResponse：字段完整且签到时间按 UTC 表达的响应。
+    返回值：CheckInResponse：字段完整且签到时间按 UTC 表达的响应，包含嘉宾姓名、电话与同行绑定信息。
     异常：签到记录字段缺失时由属性访问抛出异常。
     """
+    guest = check_in.guest
+    # 同行嘉宾通过自关联取主嘉宾姓名；普通嘉宾无主嘉宾时保持为空。
+    companion_of_name = guest.companion_of.name if guest.companion_of is not None else None
     return CheckInResponse(
         id=check_in.id,
         meeting_id=check_in.meeting_id,
         session_id=check_in.session_id,
         session_title=check_in.session.title,
         guest_id=check_in.guest_id,
+        guest_name=guest.name,
+        guest_phone=guest.phone,
+        is_companion=guest.companion_of_id is not None,
+        companion_of_id=guest.companion_of_id,
+        companion_of_name=companion_of_name,
+        companion_note=guest.companion_note,
         staff_id=check_in.staff_id,
         method=check_in.method,
         checked_in_at=normalize_utc_datetime(check_in.checked_in_at),

@@ -532,8 +532,15 @@ def test_staff_can_list_check_in_records(
     )
     assert response.status_code == 200
     assert len(response.json()) == 1
-    assert response.json()[0]["guest_id"] == guest.id
-    assert response.json()[0]["method"] == "scan"
+    record = response.json()[0]
+    assert record["guest_id"] == guest.id
+    assert record["guest_name"] == "记录嘉宾"
+    assert record["guest_phone"] == "13900000039"
+    assert record["method"] == "scan"
+    assert record["is_companion"] is False
+    assert record["companion_of_id"] is None
+    assert record["companion_of_name"] is None
+    assert record["companion_note"] is None
 
 
 def test_check_in_list_hides_deactivated_guest_records(

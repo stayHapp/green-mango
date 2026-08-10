@@ -3351,6 +3351,113 @@
   font-weight: 650;
 }
 
+.staff-record-row.has-companions {
+  cursor: pointer;
+}
+
+.staff-record-row__head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.staff-record-row__head strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-record-row__badge {
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: var(--staff-soft);
+  color: var(--staff-primary);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+
+.staff-record-row__companion-tag {
+  flex: 0 0 auto;
+  border: 1px solid rgba(0, 81, 59, 0.3);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--staff-primary);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+
+.staff-record-expand {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 0 28px;
+  border: 1px solid var(--staff-border);
+  border-radius: 14px;
+  background: #f4faf7;
+  padding: 12px;
+}
+
+.staff-record-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 13px 12px;
+}
+
+.staff-record-child__avatar {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 11px;
+  background: #e8f3ee;
+  color: var(--staff-primary);
+  font-size: 14px;
+  font-weight: 720;
+}
+
+.staff-record-child > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.staff-record-child strong {
+  overflow: hidden;
+  color: var(--staff-ink);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-record-child p {
+  margin: 3px 0 0;
+  color: var(--staff-text);
+  font-size: 13px;
+}
+
+.staff-record-child small {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--staff-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-record-child > em {
+  flex: 0 0 auto;
+  color: var(--staff-primary);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 650;
+}
+
 .staff-workspace-nav {
   position: fixed;
   z-index: 20;

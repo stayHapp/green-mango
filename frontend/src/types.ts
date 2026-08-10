@@ -176,6 +176,12 @@ export interface CheckInRecord {
   sessionId: string
   sessionTitle: string
   guestId: string
+  guestName: string
+  guestPhone: string
+  isCompanion: boolean
+  companionOfId: string
+  companionOfName: string
+  companionNote: string
   staffId: string
   checkedInAt: string
   method: 'scan' | 'manual'

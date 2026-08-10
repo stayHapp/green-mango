@@ -12,6 +12,7 @@ from app.models.access import MeetingAdmin, StaffMeeting
 from app.models.guest import CheckIn, Guest
 from app.models.meeting import Meeting
 from app.models.user import User
+from app.services.check_in_sessions import get_default_check_in_session
 
 
 def prepare_staff_meeting(
@@ -110,6 +111,70 @@ def test_staff_registers_companion_successfully(
     )
     assert search_response.status_code == 200
     assert search_response.json()[0]["checked_in"] is True
+
+
+def test_check_in_records_include_companion_binding(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证同行登记后签到记录列表返回完整绑定字段。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示签到记录携带同行绑定信息。
+    异常：断言失败表示签到记录绑定字段异常。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-record-binding")
+    staff = create_user(db, "staff-record-binding", role="staff")
+    meeting = prepare_staff_meeting(db, admin, staff, "签到记录绑定会议")
+    primary = Guest(meeting_id=meeting.id, name="李明", phone="13800001234", qr_token="binding-primary-token")
+    db.add(primary)
+    db.flush()
+    default_session = get_default_check_in_session(db, meeting)
+    # 主嘉宾先行手动签到，确保签到记录列表中同时存在主嘉宾与同行两条记录。
+    db.add(
+        CheckIn(
+            meeting_id=meeting.id,
+            session_id=default_session.id,
+            guest_id=primary.id,
+            staff_id=staff.id,
+            method="scan",
+        )
+    )
+    db.commit()
+
+    register_response = register_companion(
+        client,
+        meeting.id,
+        auth_headers(db, staff),
+        {
+            "companion_of_id": primary.id,
+            "name": "王秀兰",
+            "phone": "13900005678",
+            "companion_note": "家属",
+        },
+    )
+    assert register_response.status_code == 201
+
+    records_response = client.get(
+        f"/api/staff/meetings/{meeting.id}/check-ins",
+        headers=auth_headers(db, staff),
+    )
+    assert records_response.status_code == 200
+    records = records_response.json()
+    assert len(records) == 2
+    primary_record = next(record for record in records if not record["is_companion"])
+    companion_record = next(record for record in records if record["is_companion"])
+    assert primary_record["guest_name"] == "李明"
+    assert primary_record["guest_phone"] == "13800001234"
+    assert primary_record["companion_of_id"] is None
+    assert companion_record["guest_name"] == "王秀兰"
+    assert companion_record["guest_phone"] == "13900005678"
+    assert companion_record["companion_of_id"] == primary.id
+    assert companion_record["companion_of_name"] == "李明"
+    assert companion_record["companion_note"] == "家属"
+    assert companion_record["method"] == "manual"
 
 
 def test_companion_rejects_invalid_or_other_meeting_primary(

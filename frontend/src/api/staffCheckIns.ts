@@ -54,6 +54,12 @@ interface CheckInApiResponse {
   session_id: number
   session_title: string
   guest_id: number
+  guest_name: string
+  guest_phone: string
+  is_companion: boolean
+  companion_of_id: number | null
+  companion_of_name: string | null
+  companion_note: string | null
   staff_id: number | null
   method: 'scan' | 'manual'
   checked_in_at: string
@@ -180,6 +186,12 @@ function mapCheckIn(record: CheckInApiResponse): CheckInRecord {
     sessionId: String(record.session_id),
     sessionTitle: record.session_title,
     guestId: String(record.guest_id),
+    guestName: record.guest_name,
+    guestPhone: record.guest_phone,
+    isCompanion: record.is_companion,
+    companionOfId: record.companion_of_id === null ? '' : String(record.companion_of_id),
+    companionOfName: record.companion_of_name || '',
+    companionNote: record.companion_note || '',
     staffId: record.staff_id ? String(record.staff_id) : '',
     checkedInAt: normalizeUtcDateTime(record.checked_in_at),
     method: record.method,

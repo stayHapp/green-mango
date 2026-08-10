@@ -248,15 +248,54 @@
             <div><strong>{{ uncheckedCount }}</strong><span>未签到</span></div>
           </div>
           <el-empty v-if="!checkInRows.length" description="暂无签到记录" :image-size="72" />
-          <article v-for="row in checkInRows" :key="row.id" class="staff-record-row">
-            <span>{{ row.guestName.slice(0, 1) }}</span>
-            <div>
-              <strong>{{ row.guestName }}</strong>
-              <p>{{ row.phone }}</p>
-              <small>{{ row.sessionTitle }}｜{{ formatDate(row.checkedInAt) }}</small>
+          <!-- 主嘉宾行默认收起，点击可展开查看同行人员；同行记录归入子列表，避免在平铺列表中重复展示。 -->
+          <template v-for="row in checkInRows" :key="row.id">
+            <article
+              class="staff-record-row"
+              :class="{
+                'is-expanded': row.companions.length > 0 && isGuestExpanded(row.guestId),
+                'has-companions': row.companions.length > 0,
+              }"
+              @click="toggleGuestExpand(row.guestId)"
+            >
+              <span>{{ row.guestName.slice(0, 1) }}</span>
+              <div>
+                <div class="staff-record-row__head">
+                  <strong>{{ row.guestName }}</strong>
+                  <span v-if="row.companions.length > 0" class="staff-record-row__badge">
+                    已带 {{ row.companions.length }} 人{{ isGuestExpanded(row.guestId) ? ' ▾' : ' ▸' }}
+                  </span>
+                  <span v-else-if="row.isCompanion" class="staff-record-row__companion-tag">
+                    同行 · 随{{ row.companionOfName }}
+                  </span>
+                </div>
+                <p>{{ row.guestPhone }}</p>
+                <small>
+                  {{ row.isCompanion && row.companionNote ? `随行备注：${row.companionNote}｜` : '' }}{{ row.sessionTitle }}｜{{ formatDate(row.checkedInAt) }}
+                </small>
+              </div>
+              <em>{{ methodText(row.method) }}</em>
+            </article>
+            <div
+              v-if="row.companions.length > 0 && isGuestExpanded(row.guestId)"
+              class="staff-record-expand"
+            >
+              <article v-for="companion in row.companions" :key="companion.id" class="staff-record-child">
+                <span class="staff-record-child__avatar">{{ companion.guestName.slice(0, 1) }}</span>
+                <div>
+                  <div class="staff-record-row__head">
+                    <strong>{{ companion.guestName }}</strong>
+                    <span class="staff-record-row__companion-tag">同行 · 随{{ row.guestName }}</span>
+                  </div>
+                  <p>{{ companion.guestPhone }}</p>
+                  <small>
+                    {{ companion.companionNote ? `随行备注：${companion.companionNote}｜` : '' }}{{ companion.sessionTitle }}｜{{ formatDate(companion.checkedInAt) }}
+                  </small>
+                </div>
+                <em>{{ methodText(companion.method) }}</em>
+              </article>
             </div>
-            <em>{{ methodText(row.method) }}</em>
-          </article>
+          </template>
         </section>
       </template>
     </main>
@@ -355,8 +394,7 @@ import { useSessionStore } from '../../stores/session'
 import type { CheckInRecord, Meeting, ScanResult, StaffCheckInSession } from '../../types'
 
 interface CheckInRow extends CheckInRecord {
-  guestName: string
-  phone: string
+  companions: CheckInRecord[]
 }
 
 type StaffWorkspaceMode = 'scan' | 'manual' | 'companions' | 'records'
@@ -423,14 +461,68 @@ const companionCheckedRows = computed(() =>
 )
 const companionUncheckedRows = computed(() => displayedGuests.value.filter((item) => !item.checkedIn))
 const currentCheckInSessionTitle = computed(resolveCurrentCheckInSessionTitle)
-const checkInRows = computed<CheckInRow[]>(() => checkIns.value.map((record) => {
-  const guest = guests.value.find((item) => item.id === record.guestId)
-  return {
-    ...record,
-    guestName: guest?.name ?? '未知嘉宾',
-    phone: guest?.phone ?? '-',
+/**
+ * 记录用户手动展开的带同行主嘉宾，默认全部收起以保持列表简洁。
+ */
+const expandedGuestIds = ref<string[]>([])
+
+/**
+ * 判断某位主嘉宾的同行子列表是否处于展开状态。
+ *
+ * 入参：guestId 为主嘉宾 ID，必填。
+ * 返回值：boolean：主嘉宾在展开集合中时返回 true，默认收起。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isGuestExpanded(guestId: string): boolean {
+  return expandedGuestIds.value.includes(guestId)
+}
+
+/**
+ * 切换某位主嘉宾同行子列表的展开 / 收起状态。
+ *
+ * 入参：guestId 为主嘉宾 ID，必填；无同行记录时点击不产生效果。
+ * 返回值：void：仅更新展开集合。
+ * 异常：当前函数不主动抛出异常。
+ */
+function toggleGuestExpand(guestId: string): void {
+  const index = expandedGuestIds.value.indexOf(guestId)
+  if (index >= 0) {
+    expandedGuestIds.value.splice(index, 1)
+  } else {
+    expandedGuestIds.value.push(guestId)
   }
-}))
+}
+
+/**
+ * 组装签到记录列表：平铺非同行记录，并把同行记录归入主嘉宾的展开子列表。
+ *
+ * 入参：无；函数读取签到记录与用户收起状态。
+ * 返回值：CheckInRow[]：按签到时间倒序排列的记录行，主嘉宾行携带其同行记录子列表；主嘉宾未签到但同行已签到时，该同行记录作为独立行保留。
+ * 异常：当前函数不主动抛出异常。
+ */
+const checkInRows = computed<CheckInRow[]>(() => {
+  const primaryGuestIds = new Set<string>()
+  checkIns.value.forEach((record) => {
+    if (!record.isCompanion) {
+      primaryGuestIds.add(record.guestId)
+    }
+  })
+  const companionsByPrimary = new Map<string, CheckInRecord[]>()
+  const rows: CheckInRow[] = []
+  checkIns.value.forEach((record) => {
+    if (record.isCompanion && primaryGuestIds.has(record.companionOfId)) {
+      const companions = companionsByPrimary.get(record.companionOfId) ?? []
+      companions.push(record)
+      companionsByPrimary.set(record.companionOfId, companions)
+      return
+    }
+    rows.push({ ...record, companions: [] })
+  })
+  return rows.map((row) => ({
+    ...row,
+    companions: companionsByPrimary.get(row.guestId) ?? [],
+  }))
+})
 const workspaceModes: StaffWorkspaceModeItem[] = [
   { key: 'scan', label: '扫码签到', icon: Camera },
   { key: 'manual', label: '手动签到', icon: Postcard },
