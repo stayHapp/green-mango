@@ -427,7 +427,7 @@
           v-model="assistantEditDialogVisible"
           :title="`编辑${selectedAssistantFeature?.title ?? '会议助手'}`"
           :width="selectedAssistantFeature?.key === 'agenda' ? 'min(1180px, calc(100% - 32px))' : selectedAssistantFeature?.key === 'manual' ? 'min(780px, calc(100% - 32px))' : 'min(620px, calc(100% - 32px))'"
-          class="assistant-edit-dialog"
+          :class="selectedAssistantFeature?.key === 'agenda' ? 'assistant-edit-dialog is-agenda' : 'assistant-edit-dialog'"
         >
           <el-form label-position="top" @submit.prevent>
             <el-form-item label="发布状态"><el-switch v-model="assistantEditForm.isPublished" active-text="已发布" inactive-text="未发布" /></el-form-item>

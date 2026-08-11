@@ -41,13 +41,31 @@
         </div>
       </header>
 
+      <el-scrollbar class="agenda-editor__scroll" always>
       <div class="agenda-editor__periods">
-        <section v-for="(period, periodIndex) in selectedDay.periods" :key="period.key" class="agenda-period">
+        <section
+          v-for="(period, periodIndex) in selectedDay.periods"
+          :key="period.key"
+          class="agenda-period"
+          :class="{ 'is-drag-over': periodDragOverIndex === periodIndex }"
+          @dragover.prevent="handlePeriodDragOver(periodIndex)"
+          @drop.prevent="handlePeriodDrop(periodIndex)"
+          @dragend="resetPeriodDrag"
+        >
           <header class="agenda-period__header">
             <el-select v-model="period.period" class="agenda-period__type" aria-label="时段">
               <el-option v-for="option in periodOptions" :key="option" :label="option" :value="option" />
             </el-select>
             <el-input v-model="period.title" class="agenda-period__title" placeholder="填写本时段主题，例如：开幕致辞与主旨演讲" />
+            <span
+              class="agenda-period__drag-handle"
+              title="拖动调整时段顺序"
+              draggable="true"
+              @dragstart="handlePeriodDragStart(periodIndex, $event)"
+              @dragover.prevent
+            >
+              <el-icon><Rank /></el-icon>
+            </span>
             <div class="agenda-period__actions">
               <el-button
                 text
@@ -74,12 +92,24 @@
             <span>展开</span>
           </div>
 
-          <div class="agenda-period__entries">
+          <div
+            class="agenda-period__entries"
+            @dragover.prevent.stop
+            @drop.prevent.stop="handleEntryDrop(periodIndex, period.entries.length)"
+          >
             <template v-for="(entry, entryIndex) in period.entries" :key="entry.key">
               <button
                 type="button"
                 class="agenda-entry-row"
-                :class="{ 'is-expanded': isEntryExpanded(entry.key) }"
+                :class="{
+                  'is-expanded': isEntryExpanded(entry.key),
+                  'is-drag-over': isEntryDragOverTarget(periodIndex, entryIndex),
+                }"
+                draggable="true"
+                @dragstart="handleEntryDragStart(periodIndex, entryIndex, $event)"
+                @dragover.prevent.stop="handleEntryDragOver(periodIndex, entryIndex)"
+                @drop.prevent.stop="handleEntryDrop(periodIndex, entryIndex)"
+                @dragend="resetEntryDrag"
                 @click="toggleEntryExpand(entry.key)"
               >
                 <time>{{ entry.startTime || '--:--' }}{{ entry.endTime ? `–${entry.endTime}` : '' }}</time>
@@ -87,6 +117,10 @@
                 <span>{{ entry.location || '未填地点' }}</span>
                 <em>{{ isEntryExpanded(entry.key) ? '收起' : '展开' }}</em>
               </button>
+              <p v-if="entryTimeIssue(period, entryIndex)" class="agenda-entry-warning">
+                <el-icon><WarningFilled /></el-icon>
+                {{ entryTimeIssue(period, entryIndex) }}
+              </p>
               <article v-if="isEntryExpanded(entry.key)" class="agenda-entry-editor">
                 <div class="agenda-entry-editor__time-range">
                   <el-time-select
@@ -124,6 +158,7 @@
           <el-button class="agenda-period__add-entry" plain :icon="Plus" @click="addEntry(periodIndex)">新增环节</el-button>
         </section>
       </div>
+      </el-scrollbar>
 
       <el-button class="agenda-editor__add-period" plain type="primary" :icon="Plus" @click="addPeriod">新增时段</el-button>
     </div>
@@ -168,10 +203,15 @@
             <strong>{{ formatEditorDayLabel(day.date) }}</strong>
             <div v-for="period in day.periods" :key="period.key" class="agenda-bulk-period">
               <span class="agenda-bulk-period__label">{{ period.period }}</span>
-              <div v-for="entry in period.entries" :key="entry.key" class="agenda-bulk-entry">
+              <div v-for="(entry, entryIndex) in period.entries" :key="entry.key" class="agenda-bulk-entry">
                 <time>{{ entry.startTime || '--:--' }}{{ entry.endTime ? `–${entry.endTime}` : '' }}</time>
                 <span>{{ entry.title || '未命名环节' }}</span>
-                <small>{{ plainAgendaPreview(entry.content) || entry.location }}</small>
+                <small>
+                  {{ plainAgendaPreview(entry.content) || entry.location }}
+                  <em v-if="entryTimeIssue(period, entryIndex)" class="agenda-bulk-entry__warning">
+                    {{ entryTimeIssue(period, entryIndex) }}
+                  </em>
+                </small>
               </div>
             </div>
           </div>
@@ -187,7 +227,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowDown, ArrowUp, CopyDocument, Delete, DocumentAdd, MagicStick, Plus } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowUp, CopyDocument, Delete, DocumentAdd, MagicStick, Plus, Rank, WarningFilled } from '@element-plus/icons-vue'
 import AgendaRichTextEditor from './AgendaRichTextEditor.vue'
 import {
   agendaPlainTextToHtml,
@@ -801,6 +841,199 @@ function toggleEntryExpand(key: string): void {
   }
 }
 
+/** 当前正在拖拽的环节来源（时段索引与环节索引），用于跨时段移动。 */
+const entryDragSource = ref<{ periodIndex: number; entryIndex: number } | null>(null)
+/** 当前拖拽悬停的目标环节（时段索引与环节索引），用于高亮提示。 */
+const entryDragOverTarget = ref<{ periodIndex: number; entryIndex: number } | null>(null)
+
+/**
+ * 开始拖拽环节，记录来源时段与环节索引。
+ *
+ * 入参：periodIndex 为来源时段索引；entryIndex 为来源环节索引；event 为拖拽事件，均必填。
+ * 返回值：void；更新拖拽来源状态并设置拖拽效果。
+ * 异常：当前函数不主动抛出异常。
+ */
+function handleEntryDragStart(periodIndex: number, entryIndex: number, event: DragEvent): void {
+  entryDragSource.value = { periodIndex, entryIndex }
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', '')
+  }
+}
+
+/**
+ * 更新环节拖拽悬停目标，供高亮显示放置位置。
+ *
+ * 入参：periodIndex 为目标时段索引；entryIndex 为目标环节索引，均必填。
+ * 返回值：void；仅更新拖拽悬停状态。
+ * 异常：当前函数不主动抛出异常。
+ */
+function handleEntryDragOver(periodIndex: number, entryIndex: number): void {
+  entryDragOverTarget.value = { periodIndex, entryIndex }
+}
+
+/**
+ * 判断某环节是否为当前拖拽悬停目标。
+ *
+ * 入参：periodIndex 为时段索引；entryIndex 为环节索引，均必填。
+ * 返回值：boolean：与拖拽悬停目标一致时返回 true。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isEntryDragOverTarget(periodIndex: number, entryIndex: number): boolean {
+  const target = entryDragOverTarget.value
+  return Boolean(target && target.periodIndex === periodIndex && target.entryIndex === entryIndex)
+}
+
+/**
+ * 在目标位置放置拖拽的环节，支持同时段与跨时段移动。
+ *
+ * 入参：periodIndex 为目标时段索引；entryIndex 为目标环节索引（可为时段末尾），均必填。
+ * 返回值：void；移动成功后更新编辑器内容。
+ * 异常：当前函数不主动抛出异常；来源缺失时直接返回。
+ */
+function handleEntryDrop(periodIndex: number, entryIndex: number): void {
+  const source = entryDragSource.value
+  if (!source) {
+    return
+  }
+  const periods = selectedDay.value?.periods
+  if (!periods) {
+    resetEntryDrag()
+    return
+  }
+  const sourceEntries = periods[source.periodIndex]?.entries
+  const targetEntries = periods[periodIndex]?.entries
+  if (!sourceEntries || !targetEntries) {
+    resetEntryDrag()
+    return
+  }
+  const [moved] = sourceEntries.splice(source.entryIndex, 1)
+  if (!moved) {
+    resetEntryDrag()
+    return
+  }
+  // 同时段内向后移动时，原位置移除后目标索引需要前移一位。
+  let insertIndex = entryIndex
+  if (source.periodIndex === periodIndex && source.entryIndex < entryIndex) {
+    insertIndex -= 1
+  }
+  targetEntries.splice(insertIndex, 0, moved)
+  resetEntryDrag()
+}
+
+/**
+ * 重置环节拖拽状态。
+ *
+ * 入参：无。
+ * 返回值：void；清空来源与悬停目标。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resetEntryDrag(): void {
+  entryDragSource.value = null
+  entryDragOverTarget.value = null
+}
+
+/** 当前正在拖拽的时段索引，用于时段排序。 */
+const periodDragSource = ref<number | null>(null)
+/** 当前拖拽悬停的时段索引，用于高亮提示。 */
+const periodDragOverIndex = ref<number | null>(null)
+
+/**
+ * 开始拖拽时段，记录来源时段索引。
+ *
+ * 入参：periodIndex 为来源时段索引；event 为拖拽事件，均必填。
+ * 返回值：void；更新时段拖拽来源状态并设置拖拽效果。
+ * 异常：当前函数不主动抛出异常。
+ */
+function handlePeriodDragStart(periodIndex: number, event: DragEvent): void {
+  periodDragSource.value = periodIndex
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', '')
+  }
+}
+
+/**
+ * 更新时段拖拽悬停目标。
+ *
+ * 入参：periodIndex 为悬停时段索引，必填。
+ * 返回值：void；仅更新悬停状态。
+ * 异常：当前函数不主动抛出异常。
+ */
+function handlePeriodDragOver(periodIndex: number): void {
+  periodDragOverIndex.value = periodIndex
+}
+
+/**
+ * 在目标位置放置拖拽的时段。
+ *
+ * 入参：periodIndex 为目标时段索引，必填。
+ * 返回值：void；调整时段顺序。
+ * 异常：当前函数不主动抛出异常；来源缺失或与目标相同时直接返回。
+ */
+function handlePeriodDrop(periodIndex: number): void {
+  const sourceIndex = periodDragSource.value
+  if (sourceIndex === null || sourceIndex === periodIndex) {
+    resetPeriodDrag()
+    return
+  }
+  movePeriodTo(sourceIndex, periodIndex)
+  resetPeriodDrag()
+}
+
+/**
+ * 重置时段拖拽状态。
+ *
+ * 入参：无。
+ * 返回值：void；清空来源与悬停目标。
+ * 异常：当前函数不主动抛出异常。
+ */
+function resetPeriodDrag(): void {
+  periodDragSource.value = null
+  periodDragOverIndex.value = null
+}
+
+/**
+ * 把时段移动到指定位置，供拖拽排序使用。
+ *
+ * 入参：sourceIndex 为来源时段索引；targetIndex 为目标时段索引，均必填。
+ * 返回值：void；原地移动时段数组。
+ * 异常：当前函数不主动抛出异常；索引越界或相同时不执行。
+ */
+function movePeriodTo(sourceIndex: number, targetIndex: number): void {
+  const periods = selectedDay.value?.periods
+  if (!periods || sourceIndex === targetIndex || sourceIndex < 0 || targetIndex < 0) {
+    return
+  }
+  const [moved] = periods.splice(sourceIndex, 1)
+  if (!moved) {
+    return
+  }
+  periods.splice(targetIndex, 0, moved)
+}
+
+/**
+ * 校验时段内相邻环节的时间顺序，返回中文提示文本。
+ *
+ * 入参：period 为必填时段对象；entryIndex 为必填的环节索引。
+ * 返回值：string：开始时间早于上一条开始时间返回乱序提示；与上一条时间重叠返回重叠提示；无问题返回空字符串。
+ * 异常：当前函数不主动抛出异常。
+ */
+function entryTimeIssue(period: AgendaEditorPeriod, entryIndex: number): string {
+  const entry = period.entries[entryIndex]
+  const previous = period.entries[entryIndex - 1]
+  if (!entry?.startTime || !previous?.startTime) {
+    return ''
+  }
+  if (entry.startTime < previous.startTime) {
+    return `时间顺序异常：早于上一条环节（${previous.startTime}）`
+  }
+  if (previous.endTime && entry.startTime < previous.endTime) {
+    return `时间重叠：与上一条环节（${previous.startTime}-${previous.endTime}）重叠`
+  }
+  return ''
+}
+
 /**
  * 把富文本内容压缩为单行纯文本预览。
  *
@@ -1080,7 +1313,10 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
 .agenda-editor {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  min-height: 520px;
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 280px;
   border: 1px solid #dfe7e2;
   border-radius: 8px;
   overflow: hidden;
@@ -1115,7 +1351,7 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
   align-content: start;
   gap: 6px;
   max-height: 460px;
-  overflow-y: auto;
+  overflow-y: scroll;
   padding: 0 10px;
 }
 
@@ -1157,8 +1393,13 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
 }
 
 .agenda-editor__main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   min-width: 0;
-  padding-bottom: 20px;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 12px;
 }
 
 .agenda-editor__day-toolbar {
@@ -1184,12 +1425,54 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
   font-weight: 700;
 }
 
+.agenda-editor__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 日程列表由 el-scrollbar 管理滚动，滑块始终可见且可拖动。 */
+.agenda-editor__scroll :deep(.el-scrollbar__thumb) {
+  border-radius: 999px;
+  background: #9fb3aa;
+}
+
+.agenda-editor__scroll :deep(.el-scrollbar__bar.is-vertical) {
+  width: 10px;
+}
+
+.agenda-editor__scroll :deep(.el-scrollbar__view) {
+  display: block;
+  height: 100%;
+}
+
 .agenda-editor__periods {
   display: grid;
   gap: 14px;
-  max-height: min(620px, 62vh);
-  overflow-y: auto;
+  width: 100%;
   padding: 16px 18px;
+}
+
+.agenda-editor__day-list {
+  scrollbar-color: #9fb3aa #f1f5f2;
+  scrollbar-width: thin;
+}
+
+.agenda-editor__day-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.agenda-editor__day-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #9fb3aa;
+}
+
+.agenda-editor__day-list::-webkit-scrollbar-thumb:hover {
+  background: #08724e;
+}
+
+.agenda-editor__day-list::-webkit-scrollbar-track {
+  background: #f1f5f2;
+  border-radius: 999px;
 }
 
 .agenda-period {
@@ -1200,12 +1483,29 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
 
 .agenda-period__header {
   display: grid;
-  grid-template-columns: 110px minmax(220px, 1fr) auto;
+  grid-template-columns: 110px minmax(220px, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   border-bottom: 1px solid #e6ece8;
   background: #f7faf8;
   padding: 12px;
+}
+
+.agenda-period.is-drag-over {
+  border-color: #08724e;
+  box-shadow: 0 0 0 2px rgba(8, 114, 78, 0.16);
+}
+
+.agenda-period__drag-handle {
+  display: grid;
+  place-items: center;
+  color: #9aa8a0;
+  cursor: grab;
+  padding: 4px;
+}
+
+.agenda-period__drag-handle:active {
+  cursor: grabbing;
 }
 
 .agenda-period__actions,
@@ -1264,6 +1564,12 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
   background: #f6faf8;
 }
 
+.agenda-entry-row.is-drag-over {
+  outline: 2px dashed rgba(8, 114, 78, 0.5);
+  outline-offset: -2px;
+  background: #eef8f3;
+}
+
 .agenda-entry-row.is-expanded {
   border-bottom-color: #dce9e2;
   background: #f2f8f5;
@@ -1296,6 +1602,18 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
   font-style: normal;
   font-weight: 700;
   text-align: right;
+}
+
+.agenda-entry-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  border-bottom: 1px solid #f3e6d7;
+  background: #fff8ec;
+  color: #b45309;
+  font-size: 12px;
+  padding: 7px 12px;
 }
 
 .agenda-entry-editor {
@@ -1445,6 +1763,16 @@ function removeEntry(periodIndex: number, entryIndex: number): void {
   overflow: hidden;
   color: #71837a;
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-bulk-entry__warning {
+  display: block;
+  overflow: hidden;
+  color: #b45309;
+  font-size: 11px;
+  font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

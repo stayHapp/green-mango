@@ -969,6 +969,33 @@
   color: #97700b;
 }
 
+/* 会议助手编辑弹窗固定在视口内：页面滚动时弹窗保持可见，内容超高时在弹窗内部滚动。 */
+.el-dialog.assistant-edit-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 64px);
+  margin: 32px auto;
+}
+
+.assistant-edit-dialog .el-dialog__body {
+  min-height: 0;
+}
+
+/* 日程编辑弹窗整体不滚动：弹窗内容纵向排布，编辑器占满剩余空间，滚动条只保留在日程列表内部。 */
+.assistant-edit-dialog.is-agenda .el-dialog__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.assistant-edit-dialog.is-agenda .el-form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .admin-detail-page .heading-actions {
   flex-wrap: wrap;
   justify-content: flex-end;
