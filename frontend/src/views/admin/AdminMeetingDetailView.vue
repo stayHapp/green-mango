@@ -867,6 +867,7 @@ import {
 } from '../../api/meetingAssistant'
 import { createAdminStaff, listAdminStaff, removeAdminStaffAssignment, updateAdminStaff } from '../../api/adminStaff'
 import { getApiErrorMessage } from '../../api/client'
+import { formatMeetingRange } from '../../utils/meetingTime'
 import AdminAgendaEditor from '../../components/AdminAgendaEditor.vue'
 import AdminMeetingMaterialsEditor from '../../components/AdminMeetingMaterialsEditor.vue'
 import MeetingMaterialRichTextEditor from '../../components/MeetingMaterialRichTextEditor.vue'
@@ -1469,6 +1470,8 @@ async function loadDetail(): Promise<void> {
   }
   if (meeting.value) {
     await Promise.all([loadAssistantFeatures(meetingId), loadCheckInState(meetingId), loadGuestApplications(meetingId)])
+    // 会议加载完成后恢复或生成入口二维码，域名未变动时直接复用本地缓存。
+    await restoreOrGenerateMeetingEntryQrCode()
   }
 }
 
@@ -3358,7 +3361,7 @@ function openMeetingQrDialog(): void {
  * 下载当前会议入口二维码图片。
  *
  * 入参：无；函数读取已生成的二维码数据地址和会议 ID。
- * 返回值：Promise<void>：生成包含会议标题、二维码和时间的 PNG 后触发下载。
+ * 返回值：Promise<void>：生成包含会议标题、二维码和时间的 PNG 后触发下载；标题自动换行完整呈现。
  * 异常：二维码尚未生成、图片加载或画布创建失败时展示提示。
  */
 async function downloadMeetingQrCode(): Promise<void> {
@@ -3369,20 +3372,29 @@ async function downloadMeetingQrCode(): Promise<void> {
   const currentMeeting = meeting.value
   const canvas = document.createElement('canvas')
   const width = 600
-  const height = 780
   canvas.width = width
-  canvas.height = height
   const context = canvas.getContext('2d')
   if (!context) {
     ElMessage.error('二维码下载失败，请稍后重试。')
     return
   }
+  // 先按标题字体测量行宽，标题过长时按字符自动换行，保证文字全部呈现。
+  context.font = '600 30px "Microsoft YaHei"'
+  const titleLines = splitQrTitleSegments(currentMeeting.title).flatMap((segment) =>
+    wrapQrTitleText(context, segment, width - 80),
+  )
+  const lineHeight = 42
+  const qrTop = 96 + titleLines.length * lineHeight
+  const height = qrTop + 380 + 84
+  canvas.height = height
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, width, height)
   context.fillStyle = '#111827'
   context.textAlign = 'center'
   context.font = '600 30px "Microsoft YaHei"'
-  context.fillText(currentMeeting.title, width / 2, 64)
+  titleLines.forEach((line, index) => {
+    context.fillText(line, width / 2, 64 + index * lineHeight)
+  })
   let image: HTMLImageElement
   try {
     image = await loadQrImage(meetingQrCode.value)
@@ -3390,14 +3402,67 @@ async function downloadMeetingQrCode(): Promise<void> {
     ElMessage.error('二维码下载失败，请稍后重试。')
     return
   }
-  context.drawImage(image, 110, 110, 380, 380)
+  context.drawImage(image, 110, qrTop, 380, 380)
   context.fillStyle = '#4b5563'
   context.font = '24px "Microsoft YaHei"'
-  context.fillText(`${formatDate(currentMeeting.startTime)} - ${formatDate(currentMeeting.endTime)}`, width / 2, 560)
+  // 时间显示与会议设置一致：设置为上下午时显示上午/下午，设置为具体时间时显示时分。
+  context.fillText(
+    formatMeetingRange(currentMeeting.startTime, currentMeeting.endTime, currentMeeting.timeDisplayMode),
+    width / 2,
+    qrTop + 380 + 56,
+  )
   const link = document.createElement('a')
   link.href = canvas.toDataURL('image/png')
   link.download = `${currentMeeting.title.replace(/[\\/:*?"<>|]/g, '_')}-会议入口二维码.png`
   link.click()
+}
+
+/**
+ * 按画布字体宽度把标题拆分为多行，保证下载图片中的文字全部呈现。
+ *
+ * 入参：context 为必填的画布上下文；text 为必填的标题文本；maxWidth 为单行最大宽度，必填。
+ * 返回值：string[]：按字符切分且每行不超过最大宽度的行数组，至少返回一行。
+ * 异常：当前函数不主动抛出异常。
+ */
+function wrapQrTitleText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = []
+  let currentLine = ''
+  for (const char of text) {
+    const candidate = currentLine + char
+    if (currentLine && context.measureText(candidate).width > maxWidth) {
+      lines.push(currentLine)
+      currentLine = char
+    } else {
+      currentLine = candidate
+    }
+  }
+  if (currentLine) {
+    lines.push(currentLine)
+  }
+  return lines.length ? lines : [text]
+}
+
+/**
+ * 优先按括号位置拆分标题，让括号内容整体进入第二行。
+ *
+ * 入参：text 为必填的标题文本。
+ * 返回值：string[]：含换行符时按行拆分；含括号且括号前有内容时按括号前断行；否则原样返回。
+ * 异常：当前函数不主动抛出异常。
+ */
+function splitQrTitleSegments(text: string): string[] {
+  const manualLines = text.split('\n').map((line) => line.trim()).filter(Boolean)
+  if (manualLines.length > 1) {
+    return manualLines
+  }
+  const match = text.match(/[（(]/)
+  if (match && match.index !== undefined && match.index > 0) {
+    const firstPart = text.slice(0, match.index).trim()
+    const restPart = text.slice(match.index).trim()
+    if (firstPart && restPart) {
+      return [firstPart, restPart]
+    }
+  }
+  return [text]
 }
 
 /**
@@ -3420,7 +3485,7 @@ function loadQrImage(source: string): Promise<HTMLImageElement> {
  * 根据已发布会议入口链接生成可扫码的二维码图片。
  *
  * 入参：entryUrl 为会议入口 URL，必填；为空或会议未发布时清空二维码。
- * 返回值：Promise<void>：完成后更新页面二维码数据地址。
+ * 返回值：Promise<void>：完成后更新页面二维码数据地址，并把生成结果写入本地缓存供刷新复用。
  * 异常：二维码生成失败时清空图片并提示管理员。
  */
 async function generateMeetingEntryQrCode(entryUrl: string): Promise<void> {
@@ -3429,11 +3494,88 @@ async function generateMeetingEntryQrCode(entryUrl: string): Promise<void> {
     return
   }
   try {
-    meetingQrCode.value = await QRCode.toDataURL(entryUrl, { width: 220, margin: 1 })
+    const dataUrl = await QRCode.toDataURL(entryUrl, { width: 220, margin: 1 })
+    meetingQrCode.value = dataUrl
+    writeMeetingQrCache(String(meeting.value.id), entryUrl, dataUrl)
   } catch {
     meetingQrCode.value = ''
     ElMessage.error('会议二维码生成失败，请稍后重试。')
   }
+}
+
+/**
+ * 拼接会议入口二维码的本地缓存键。
+ *
+ * 入参：meetingId 为必填的会议 ID。
+ * 返回值：string：以会议 ID 区分的缓存键，避免多会议互相覆盖。
+ * 异常：当前函数不主动抛出异常。
+ */
+function meetingQrCacheKey(meetingId: string): string {
+  return `meetingEntryQr:${meetingId}`
+}
+
+/**
+ * 读取会议入口二维码本地缓存。
+ *
+ * 入参：meetingId 为必填的会议 ID。
+ * 返回值：{ entryUrl: string; dataUrl: string } | null：缓存存在且结构完整时返回，否则返回 null。
+ * 异常：本地存储不可用或数据损坏时静默返回 null，不阻塞页面。
+ */
+function readMeetingQrCache(meetingId: string): { entryUrl: string; dataUrl: string } | null {
+  try {
+    const raw = localStorage.getItem(meetingQrCacheKey(meetingId))
+    if (!raw) {
+      return null
+    }
+    const parsed = JSON.parse(raw) as { entryUrl?: unknown; dataUrl?: unknown }
+    if (typeof parsed.entryUrl !== 'string' || typeof parsed.dataUrl !== 'string') {
+      return null
+    }
+    return { entryUrl: parsed.entryUrl, dataUrl: parsed.dataUrl }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 把会议入口二维码写入本地缓存，供域名未变动时刷新直接复用。
+ *
+ * 入参：meetingId 为必填的会议 ID；entryUrl 为入口 URL；dataUrl 为二维码图片数据，均必填。
+ * 返回值：void；本地存储不可用时静默忽略，不影响二维码展示。
+ * 异常：当前函数不主动抛出异常。
+ */
+function writeMeetingQrCache(meetingId: string, entryUrl: string, dataUrl: string): void {
+  try {
+    localStorage.setItem(meetingQrCacheKey(meetingId), JSON.stringify({ entryUrl, dataUrl }))
+  } catch {
+    // 本地缓存不可用时忽略，仅影响刷新复用，不阻塞二维码生成。
+  }
+}
+
+/**
+ * 页面加载后恢复或生成会议入口二维码。
+ *
+ * 入参：无；函数读取当前会议、入口链接与本地缓存。
+ * 返回值：Promise<void>：入口 URL 未变化时直接复用缓存，变化或缺失时自动重新生成。
+ * 异常：二维码生成失败时由生成函数提示，本函数不额外抛出。
+ */
+async function restoreOrGenerateMeetingEntryQrCode(): Promise<void> {
+  if (!meeting.value || meeting.value.status !== 'published') {
+    meetingQrCode.value = ''
+    return
+  }
+  const entryUrl = meetingEntryUrl.value
+  if (!entryUrl) {
+    meetingQrCode.value = ''
+    return
+  }
+  const cached = readMeetingQrCache(String(meeting.value.id))
+  // 域名地址未变动时直接复用缓存二维码，避免刷新后重新生成。
+  if (cached && cached.entryUrl === entryUrl) {
+    meetingQrCode.value = cached.dataUrl
+    return
+  }
+  await generateMeetingEntryQrCode(entryUrl)
 }
 
 /**
