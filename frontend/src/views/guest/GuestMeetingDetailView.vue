@@ -590,6 +590,24 @@ function handleVisibilityRefresh(): void {
   box-shadow: 0 24px 64px -32px rgba(20, 50, 35, 0.22);
 }
 
+/* 页面底部水墨底纹：图案宽度随页面宽度自动缩放（高度按比例），
+   低透明度弱化，作为背景衬托，不遮挡任何文字与功能按钮。 */
+.guest-home-shell::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  aspect-ratio: 998 / 284;
+  background-image: url("../../assets/guest-ink-landscape-cropped.png");
+  background-size: 100% 100%;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+  opacity: 0.16;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .guest-home-content {
   width: 100%;
   flex: 1;
@@ -598,6 +616,8 @@ function handleVisibilityRefresh(): void {
   padding: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  position: relative;
+  z-index: 1;
 }
 
 .guest-home-loading,

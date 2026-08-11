@@ -235,3 +235,34 @@ async function openServiceItem(featureKey: MeetingAssistantFeatureKey): Promise<
 
 onMounted(loadMeeting)
 </script>
+
+<style>
+/* 会议首页背景改为纯色：去掉顶部装饰椭圆，保持原有米白绿色调。 */
+.guest-entry-page::before {
+  display: none;
+}
+
+/* 页面顶部水墨背景：图案从页面顶部开始向下延伸，
+   低透明度弱化，作为背景衬托，不遮挡任何文字与功能按钮。 */
+.guest-entry-page .guest-home-shell::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 10pt;
+  aspect-ratio: 998 / 284;
+  background-image: url("../../assets/guest-ink-landscape-cropped.png");
+  background-size: 100% 100%;
+  background-position: center top;
+  background-repeat: no-repeat;
+  opacity: 0.16;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 内容层置于水墨背景之上，保证文字与按钮清晰可读。 */
+.guest-entry-page .guest-home-shell .guest-entry-content {
+  position: relative;
+  z-index: 1;
+}
+</style>
