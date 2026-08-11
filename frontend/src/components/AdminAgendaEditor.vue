@@ -183,8 +183,8 @@
       <div class="agenda-bulk-actions">
         <el-button :icon="MagicStick" @click="previewBulkImport">解析预览</el-button>
         <el-radio-group v-model="bulkTarget">
-          <el-radio value="replace">覆盖现有日程</el-radio>
-          <el-radio value="append">追加到现有日程末尾</el-radio>
+          <el-radio value="replace">{{ bulkParsedDays.length > 1 ? '覆盖现有全部日程' : '替换当前选中日期内容' }}</el-radio>
+          <el-radio value="append">{{ bulkParsedDays.length > 1 ? '追加到现有日程末尾' : '追加到当前选中日期末尾' }}</el-radio>
         </el-radio-group>
       </div>
       <div v-if="bulkPreviewReady" class="agenda-bulk-result">
@@ -620,7 +620,7 @@ function parseBulkEntryLine(line: string): Partial<AgendaEditorEntry> | null {
 }
 
 /**
- * 获取批量解析的当前日期，不存在时按会议开始日期或今天创建并加入结果。
+ * 获取批量解析的当前日期，不存在时优先按当前选中日期创建，其次会议开始日期，最后回退今天。
  *
  * 入参：parsedDays 为必填的批量解析结果日期数组；currentDay 为当前日期，可为空。
  * 返回值：AgendaEditorDay：当前批量解析日期，保证后续环节可归属。
@@ -633,7 +633,8 @@ function ensureBulkDay(
   if (currentDay) {
     return currentDay
   }
-  const fallbackDate = props.meetingStartTime?.slice(0, 10) || formatDateKey(new Date())
+  // 文本没有日期行时，优先归属当前选中的日期，其次会议开始日期，最后回退到今天。
+  const fallbackDate = selectedDay.value?.date || props.meetingStartTime?.slice(0, 10) || formatDateKey(new Date())
   const created = createEmptyDay(fallbackDate)
   parsedDays.push(created)
   return created
@@ -804,8 +805,22 @@ function applyBulkImport(): void {
     return
   }
   if (bulkTarget.value === 'replace') {
-    days.value = bulkParsedDays.value
-    activeDayKey.value = days.value[0]?.key ?? ''
+    if (bulkParsedDays.value.length === 1) {
+      // 解析结果只对应一个日期时，只替换该日期内容，保留其他日期，避免新增日程覆盖已有日期。
+      const parsedDay = bulkParsedDays.value[0]
+      const existing = days.value.find((day) => day.date === parsedDay.date)
+      if (existing) {
+        existing.periods = parsedDay.periods
+        activeDayKey.value = existing.key
+      } else {
+        days.value.push(parsedDay)
+        activeDayKey.value = parsedDay.key
+      }
+    } else {
+      // 解析文本含多个日期行时，按覆盖全部日程处理。
+      days.value = bulkParsedDays.value
+      activeDayKey.value = days.value[0]?.key ?? ''
+    }
   } else {
     const targetKey = mergeParsedDays(bulkParsedDays.value)
     activeDayKey.value = targetKey || (days.value[0]?.key ?? '')
