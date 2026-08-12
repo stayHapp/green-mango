@@ -8,7 +8,7 @@ User=root
 Group=root
 WorkingDirectory=/opt/zhihui-demo/app/backend
 EnvironmentFile=/opt/zhihui-demo/shared/backend.env
-ExecStart=/opt/zhihui-demo/app/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010
+ExecStart=/opt/zhihui-demo/app/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010 --workers 2
 Restart=always
 RestartSec=3
 

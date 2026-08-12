@@ -91,6 +91,7 @@ IP 变化后，应同步修改 `frontend/.env.local` 中的：
 
 ```text
 VITE_PUBLIC_APP_URL=http://当前局域网IP:5173
+VITE_PUBLIC_DEFAULT_MEETING_ID=1
 ```
 
 修改 `.env.local` 或 `vite.config.ts` 后必须重启前端服务。

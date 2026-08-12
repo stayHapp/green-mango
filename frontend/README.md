@@ -28,9 +28,12 @@ npm run dev -- --host 0.0.0.0
 ```text
 VITE_API_BASE_URL=/api
 VITE_PUBLIC_APP_URL=http://192.168.1.100:5173
+VITE_PUBLIC_DEFAULT_MEETING_ID=1
 ```
 
 `VITE_PUBLIC_APP_URL` 用于管理员端生成会议入口链接和二维码。本地联调应填写本机局域网 IP，正式环境应填写嘉宾能够访问的域名，不能填写 `localhost`。
+
+`VITE_PUBLIC_DEFAULT_MEETING_ID` 用于配置域名根路径默认进入的会议公开首页。留空时根路径回退到管理员登录页；正式环境在 `.env.production` 中填写当前对外会议 ID，管理员登录仍通过 `/login` 或 `/admin/login` 访问。
 
 完整的双终端启动和手机访问方式见 [`docs/development/local-startup.md`](../docs/development/local-startup.md)。
 

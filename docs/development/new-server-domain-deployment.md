@@ -358,7 +358,7 @@ docker run -d --name zhihui-api --restart unless-stopped \
   --network host \
   --env-file /opt/green-mango/shared/backend.env \
   zhihui-backend:latest \
-  uvicorn app.main:app --host 127.0.0.1 --port 8010
+  uvicorn app.main:app --host 127.0.0.1 --port 8010 --workers 2
 ```
 
 验证：
@@ -386,10 +386,11 @@ host
 cat >/opt/green-mango/app/frontend/.env.production <<'EOF'
 VITE_API_BASE_URL=/api
 VITE_PUBLIC_APP_URL=https://meeting.cssat.cn
+VITE_PUBLIC_DEFAULT_MEETING_ID=1
 EOF
 ```
 
-`VITE_PUBLIC_APP_URL` 会影响管理员端生成会议入口链接和二维码。域名最终变更时，必须重新构建前端。
+`VITE_PUBLIC_APP_URL` 会影响管理员端生成会议入口链接和二维码。`VITE_PUBLIC_DEFAULT_MEETING_ID` 决定域名根路径默认进入的会议公开首页，需填写当前对外会议的 ID；两者变更时，必须重新构建前端。根路径未配置该变量时回退到管理员登录页。
 
 使用 Docker Node 镜像构建：
 
@@ -434,8 +435,15 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # 带版本号的构建产物可永久缓存，文件更新时 URL 会自动变化
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
+        # 首页始终回源校验，保证新版本发布后立即生效
+        add_header Cache-Control "no-cache";
     }
 }
 EOF
@@ -473,7 +481,7 @@ systemctl list-timers | grep certbot
 curl -sS https://meeting.cssat.cn/api/health
 ```
 
-如果最终域名不是 `meeting.cssat.cn`，需要把 Nginx 配置、Certbot 域名、后端 `CORS_ORIGINS` 和前端 `VITE_PUBLIC_APP_URL` 全部替换成最终域名。
+如果最终域名不是 `meeting.cssat.cn`，需要把 Nginx 配置、Certbot 域名、后端 `CORS_ORIGINS` 和前端 `VITE_PUBLIC_APP_URL` 全部替换成最终域名，并按当前对外会议核对 `VITE_PUBLIC_DEFAULT_MEETING_ID`。
 
 ## 13. 切换前最终核对
 
@@ -565,7 +573,7 @@ docker run -d --name zhihui-api --restart unless-stopped \
   --network host \
   --env-file /opt/green-mango/shared/backend.env \
   zhihui-backend:latest \
-  uvicorn app.main:app --host 127.0.0.1 --port 8010
+  uvicorn app.main:app --host 127.0.0.1 --port 8010 --workers 2
 
 cd /opt/green-mango/app/frontend
 docker run --rm -v "$PWD":/app -w /app node:20-bookworm \
@@ -583,6 +591,7 @@ Nginx 配置未变化时不需要 reload。
 | `/api/health` 返回 502 | 检查 `docker ps`、`docker logs zhihui-api --tail 100` |
 | 数据库连接失败 | 检查 PostgreSQL 是否监听 `5432`、`pg_hba.conf` 是否允许密码认证、容器是否使用 `--network host` |
 | 页面二维码还是旧域名 | 修改 `frontend/.env.production` 的 `VITE_PUBLIC_APP_URL` 后重新构建前端 |
+| 根路径未进入目标会议首页 | 核对 `frontend/.env.production` 的 `VITE_PUBLIC_DEFAULT_MEETING_ID` 后重新构建前端 |
 | 附件下载失败 | 检查 `MATERIAL_STORAGE_DIR=/opt/green-mango/shared/materials`，确认旧附件已同步且权限正确 |
 | 刷新子页面 404 | 检查 Nginx `location /` 是否包含 `try_files $uri $uri/ /index.html;` |
 | 部署后其他网站异常 | 立即回滚本次公网入口变更，并恢复旧服务的原端口或原入口配置 |

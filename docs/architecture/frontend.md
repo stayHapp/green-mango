@@ -46,6 +46,7 @@
 
 当前主要路由：
 
+- `/`（域名根路径）
 - `/login`
 - `/admin/meetings`
 - `/admin/meetings/:id`
@@ -56,6 +57,8 @@
 - `/guest/meetings/:id`
 - `/staff/meetings`
 - `/staff/meetings/:id/check-in`
+
+域名根路径 `/` 默认进入 `VITE_PUBLIC_DEFAULT_MEETING_ID` 指定会议的公开首页（`/meetings/:id`），让访客打开域名即可看到会议入口；该环境变量留空时根路径回退到 `/login`，保证未配置部署不受影响。管理员登录仍通过 `/login` 或 `/admin/login` 访问。后续版本可优化为后台配置「默认入口会议」（方案 C），由管理员在系统中指定根路径对应的会议，本次 MVP 不实现。
 
 管理员与工作人员共用 `/login`，嘉宾必须从独立会议入口进入。
 

@@ -32,8 +32,8 @@
               :class="{ 'is-active': activeAgendaGroup?.id === group.id }"
               @click="activeAgendaDateId = group.id"
             >
-              <strong>{{ group.day || group.title }}</strong>
-              <span v-if="group.day">{{ group.monthLabel }} {{ group.weekday }}</span>
+              <strong>{{ agendaDateLabel(group) }}</strong>
+              <span v-if="group.weekday">{{ group.weekday }}</span>
             </button>
           </nav>
 
@@ -735,6 +735,17 @@ function buildAgendaGroups(): AgendaDateGroup[] {
   })
 
   return groups
+}
+
+/**
+ * 生成日程日期切换按钮的完整日期文案。
+ *
+ * 入参：group 为日程日期分组，必填；分组可能没有具体日期（如“全部日程”回退分组）。
+ * 返回值：string：有具体日期时返回“8月18日”格式的完整日期，否则返回分组标题。
+ * 异常：当前函数不主动抛出异常。
+ */
+function agendaDateLabel(group: AgendaDateGroup): string {
+  return group.day ? `${group.monthLabel}${group.day}日` : group.title
 }
 
 /**

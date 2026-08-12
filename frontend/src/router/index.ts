@@ -1,7 +1,9 @@
 /**
  * 前端路由配置。
  *
- * 正式入口默认进入管理员登录页；嘉宾和工作人员仍通过会议专属链接进入。
+ * 域名根路径默认进入公开会议首页，会议 ID 由构建环境变量
+ * `VITE_PUBLIC_DEFAULT_MEETING_ID` 配置；未配置时回退到管理员登录页。
+ * 嘉宾和工作人员仍通过会议专属链接进入。
  */
 import { createRouter, createWebHistory } from 'vue-router'
 
@@ -17,10 +19,13 @@ import StaffCheckInView from '../views/staff/StaffCheckInView.vue'
 import GuestEntryView from '../views/guest/GuestEntryView.vue'
 import GuestRegisterView from '../views/guest/GuestRegisterView.vue'
 
+/** 根路径默认进入的公开会议 ID，留空时保持管理员登录页入口，保证未配置部署不受影响。 */
+const defaultMeetingId = import.meta.env.VITE_PUBLIC_DEFAULT_MEETING_ID
+
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', redirect: '/login' },
+    { path: '/', redirect: defaultMeetingId ? `/meetings/${defaultMeetingId}` : '/login' },
     { path: '/login', name: 'login', component: LoginView },
     { path: '/meetings/:id', name: 'meeting-entry', component: GuestEntryView },
     { path: '/meetings/:id/register', name: 'guest-register', component: GuestRegisterView },

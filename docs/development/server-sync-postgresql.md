@@ -248,7 +248,7 @@ COPY alembic.ini ./
 RUN pip install --no-deps --no-build-isolation .
 
 EXPOSE 8010
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8010"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8010", "--workers", "2"]
 ```
 
 依赖安装层只受 `pyproject.toml` 和 `requirements.txt` 影响。日常只修改业务代码或迁移文件时，Docker 会复用已安装依赖，不需要重新下载 Python 包。
@@ -313,7 +313,7 @@ docker run -d --name zhihui-api --restart unless-stopped \
   --network host \
   --env-file /opt/zhihui-demo/shared/backend.env \
   zhihui-backend:latest \
-  uvicorn app.main:app --host 127.0.0.1 --port 8010
+  uvicorn app.main:app --host 127.0.0.1 --port 8010 --workers 2
 ```
 
 重建后确认容器网络模式为 `host`：
@@ -401,7 +401,7 @@ docker run -d --name zhihui-api --restart unless-stopped \
   --network host \
   --env-file /opt/zhihui-demo/shared/backend.env \
   zhihui-backend:rollback-替换为具体时间戳 \
-  uvicorn app.main:app --host 127.0.0.1 --port 8010
+  uvicorn app.main:app --host 127.0.0.1 --port 8010 --workers 2
 ```
 
 如果需要代码目录一起回滚：
