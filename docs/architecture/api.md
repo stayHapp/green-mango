@@ -19,6 +19,7 @@
 | GET | `/api/health` | 公开 | 健康检查 |
 | GET | `/api/meetings/{meeting_id}` | 公开 | 嘉宾入口登录前读取已发布会议基础信息 |
 | GET | `/api/meetings/{meeting_id}/assistant-features/{feature_key}` | 公开 | 读取配置为公开可见的单项会议服务 |
+| GET | `/api/meetings/{meeting_id}/assistant-features/guest-messages` | 公开 | 读取五项会议服务的“仅嘉宾可见提示”，用于未登录时展示自定义弹窗文案 |
 | GET | `/api/meetings/{meeting_id}/assistant-features/contact/qr` | 公开 | 读取公开且已发布的联系会务二维码图片 |
 | GET | `/api/meetings/{meeting_id}/weather` | 公开 | 读取公开且已发布天气服务的实时天气 |
 | POST | `/api/admin/sessions` | 公开 | 管理员账号密码登录 |
@@ -97,7 +98,7 @@
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | GET | `/api/admin/meetings/{meeting_id}/assistant-features` | 获取会议固定五项会议助手配置 |
-| PATCH | `/api/admin/meetings/{meeting_id}/assistant-features/{feature_key}` | 修改单项正文、未发布提醒、发布状态和访问级别 |
+| PATCH | `/api/admin/meetings/{meeting_id}/assistant-features/{feature_key}` | 修改单项正文、未发布提醒、仅嘉宾可见提示、发布状态和访问级别 |
 | GET / POST / DELETE | `/api/admin/meetings/{meeting_id}/assistant-features/contact/qr` | 预览、上传或删除联系会务二维码图片 |
 | GET | `/api/admin/meetings/{meeting_id}/materials` | 获取会议全部资料 |
 | POST | `/api/admin/meetings/{meeting_id}/materials` | 以多部分表单新增标题、正文和可选附件 |

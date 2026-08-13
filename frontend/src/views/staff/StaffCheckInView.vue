@@ -147,14 +147,18 @@
 
           <template v-else>
             <el-input
-              v-model="guestQuery"
+              v-model="manualQuery"
               clearable
               class="staff-guest-search"
               :placeholder="staffGuestSearchPlaceholder"
               :prefix-icon="Search"
             />
             <div class="staff-manual-results">
-              <el-empty v-if="!filteredGuestRows.length" description="未找到匹配嘉宾" :image-size="72" />
+              <el-empty
+                v-if="!filteredGuestRows.length"
+                :description="manualQuery ? '未找到匹配嘉宾' : '暂无未签到嘉宾'"
+                :image-size="72"
+              />
               <article v-for="row in filteredGuestRows" :key="row.id" class="staff-guest-row">
                 <span class="staff-guest-row__avatar">{{ row.name.slice(0, 1) }}</span>
                 <div class="staff-guest-row__copy">
@@ -162,15 +166,9 @@
                   <p>{{ row.phone }}</p>
                   <small>{{ buildStaffGuestSummary(row) }}</small>
                 </div>
-                <el-button
-                  v-if="!row.checkedIn"
-                  type="primary"
-                  plain
-                  @click="selectManualGuest(row)"
-                >
+                <el-button type="primary" plain @click="selectManualGuest(row)">
                   核对签到
                 </el-button>
-                <el-tag v-else type="success">已签到</el-tag>
               </article>
             </div>
           </template>
@@ -178,30 +176,28 @@
 
         <section v-else-if="activeMode === 'companions'" class="staff-companions-view">
           <el-input
-            v-model="guestQuery"
+            v-model="companionQuery"
             clearable
             class="staff-guest-search"
             :placeholder="staffGuestSearchPlaceholder"
             :prefix-icon="Search"
           />
-          <el-empty v-if="!displayedGuests.length" description="未找到匹配嘉宾" :image-size="72" />
-
-          <template v-if="companionCheckedRows.length">
-            <div class="staff-companions-group">
-              <strong>已签到</strong>
-              <small>按签到时间倒序 · {{ companionCheckedRows.length }} 位</small>
-            </div>
+          <div class="staff-companions-group">
+            <strong>已签到主嘉宾</strong>
+            <small>仅已签到主嘉宾可登记同行 · {{ companionCheckedRows.length }} 位</small>
+          </div>
+          <template v-for="row in companionCheckedRows" :key="row.id">
             <article
-              v-for="row in companionCheckedRows"
-              :key="row.id"
               class="staff-companion-card"
+              :class="{ 'is-expanded': isCompanionExpanded(row.id) }"
+              @click="toggleCompanionExpand(row.id)"
             >
               <span class="staff-companion-card__avatar">{{ row.name.slice(0, 1) }}</span>
               <div class="staff-companion-card__copy">
                 <div class="staff-companion-card__head">
                   <strong>{{ row.name }}</strong>
                   <span v-if="row.companionCount > 0" class="staff-companion-card__badge">
-                    已带 {{ row.companionCount }} 人
+                    已带 {{ row.companionCount }} 人{{ isCompanionExpanded(row.id) ? ' ▾' : ' ▸' }}
                   </span>
                 </div>
                 <p>{{ row.phone }}</p>
@@ -209,92 +205,166 @@
               </div>
               <div class="staff-companion-card__right">
                 <span class="staff-companion-card__time">{{ formatCheckInTime(row.checkedInAt) }}</span>
-                <el-button type="primary" plain @click="openCompanionDialog(row)">添加同行</el-button>
+                <el-button type="primary" plain @click.stop="openCompanionDialog(row)">添加同行</el-button>
               </div>
             </article>
+            <div v-if="isCompanionExpanded(row.id)" class="staff-companion-expand">
+              <template v-if="companionRowsByPrimary.get(row.id)?.length">
+                <article
+                  v-for="companion in companionRowsByPrimary.get(row.id)"
+                  :key="companion.id"
+                  class="staff-companion-child"
+                >
+                  <span class="staff-companion-child__avatar">{{ companion.guestName.slice(0, 1) }}</span>
+                  <div class="staff-companion-child__copy">
+                    <div class="staff-companion-child__head">
+                      <strong>{{ companion.guestName }}</strong>
+                      <span class="staff-record-row__companion-tag">同行 · 随{{ row.name }}</span>
+                    </div>
+                    <p>{{ companion.guestPhone }}</p>
+                    <small>
+                      {{ companion.companionNote ? `随行备注：${companion.companionNote}｜` : '' }}{{ companion.sessionTitle }}｜{{ formatDate(companion.checkedInAt) }}
+                    </small>
+                  </div>
+                  <em>{{ methodText(companion.method) }}</em>
+                </article>
+              </template>
+              <p v-else class="staff-companion-expand__empty">暂无同行人员</p>
+            </div>
           </template>
-
-          <div class="staff-companions-group">
-            <strong>未签到</strong>
-            <small>{{ companionUncheckedRows.length }} 位</small>
-          </div>
-          <article
-            v-for="row in companionUncheckedRows"
-            :key="row.id"
-            class="staff-companion-card"
-          >
-            <span class="staff-companion-card__avatar is-pending">{{ row.name.slice(0, 1) }}</span>
-            <div class="staff-companion-card__copy">
-              <div class="staff-companion-card__head">
-                <strong>{{ row.name }}</strong>
-                <span v-if="row.companionCount > 0" class="staff-companion-card__badge">
-                  已带 {{ row.companionCount }} 人
-                </span>
-              </div>
-              <p>{{ row.phone }}</p>
-              <small>{{ buildStaffGuestSummary(row) }}</small>
-            </div>
-            <div class="staff-companion-card__right">
-              <span class="staff-companion-card__time is-pending">未签到</span>
-              <el-button type="primary" plain @click="openCompanionDialog(row)">添加同行</el-button>
-            </div>
-          </article>
+          <el-empty
+            v-if="!companionCheckedRows.length"
+            :description="companionQuery ? '未找到匹配嘉宾' : '暂无已签到主嘉宾'"
+            :image-size="72"
+          />
         </section>
 
         <section v-else class="staff-records-view">
           <div class="staff-workspace-stats" aria-label="签到统计">
-            <div><strong>{{ guests.length }}</strong><span>参会人员</span></div>
-            <div><strong>{{ checkedCount }}</strong><span>已签到</span></div>
-            <div><strong>{{ uncheckedCount }}</strong><span>未签到</span></div>
+            <button type="button" :class="{ 'is-active': recordsFilter === 'all' }" @click="setRecordsFilter('all')">
+              <strong>{{ primaryGuestCount }}</strong><span>参会人员</span>
+            </button>
+            <button type="button" :class="{ 'is-active': recordsFilter === 'companions' }" @click="setRecordsFilter('companions')">
+              <strong>{{ companionGuestCount }}</strong><span>同行人员</span>
+            </button>
+            <button type="button" :class="{ 'is-active': recordsFilter === 'checked' }" @click="setRecordsFilter('checked')">
+              <strong>{{ primaryCheckedCount }}</strong><span>已签到</span>
+            </button>
+            <button type="button" :class="{ 'is-active': recordsFilter === 'unchecked' }" @click="setRecordsFilter('unchecked')">
+              <strong>{{ primaryUncheckedCount }}</strong><span>未签到</span>
+            </button>
           </div>
-          <el-empty v-if="!checkInRows.length" description="暂无签到记录" :image-size="72" />
-          <!-- 主嘉宾行默认收起，点击可展开查看同行人员；同行记录归入子列表，避免在平铺列表中重复展示。 -->
-          <template v-for="row in checkInRows" :key="row.id">
-            <article
-              class="staff-record-row"
-              :class="{
-                'is-expanded': row.companions.length > 0 && isGuestExpanded(row.guestId),
-                'has-companions': row.companions.length > 0,
-              }"
-              @click="toggleGuestExpand(row.guestId)"
-            >
-              <span>{{ row.guestName.slice(0, 1) }}</span>
+          <el-input
+            v-model="recordsQuery"
+            clearable
+            class="staff-guest-search"
+            placeholder="搜索姓名、手机号"
+            :prefix-icon="Search"
+          />
+
+          <template v-if="recordsFilter === 'unchecked'">
+            <el-empty v-if="!uncheckedGuestRows.length" description="主嘉宾均已签到" :image-size="72" />
+            <article v-for="guest in uncheckedGuestRows" :key="guest.id" class="staff-record-row">
+              <span>{{ guest.name.slice(0, 1) }}</span>
               <div>
                 <div class="staff-record-row__head">
-                  <strong>{{ row.guestName }}</strong>
-                  <span v-if="row.companions.length > 0" class="staff-record-row__badge">
-                    已带 {{ row.companions.length }} 人{{ isGuestExpanded(row.guestId) ? ' ▾' : ' ▸' }}
-                  </span>
-                  <span v-else-if="row.isCompanion" class="staff-record-row__companion-tag">
-                    同行 · 随{{ row.companionOfName }}
-                  </span>
+                  <strong>{{ guest.name }}</strong>
                 </div>
-                <p>{{ row.guestPhone }}</p>
+                <p>{{ guest.phone }}</p>
+                <small>{{ buildStaffGuestSummary(guest) }}</small>
+              </div>
+              <em>未签到</em>
+            </article>
+          </template>
+
+          <template v-else-if="recordsFilter === 'companions'">
+            <el-empty v-if="!companionRecordRows.length" description="暂无同行人员" :image-size="72" />
+            <article v-for="record in companionRecordRows" :key="record.id" class="staff-record-row">
+              <span>{{ record.guestName.slice(0, 1) }}</span>
+              <div>
+                <div class="staff-record-row__head">
+                  <strong>{{ record.guestName }}</strong>
+                  <span class="staff-record-row__companion-tag">同行 · 随{{ record.companionOfName }}</span>
+                </div>
+                <p>{{ record.guestPhone }}</p>
                 <small>
-                  {{ row.isCompanion && row.companionNote ? `随行备注：${row.companionNote}｜` : '' }}{{ row.sessionTitle }}｜{{ formatDate(row.checkedInAt) }}
+                  {{ record.companionNote ? `随行备注：${record.companionNote}｜` : '' }}{{ record.sessionTitle }}｜{{ formatDate(record.checkedInAt) }}
                 </small>
               </div>
-              <em>{{ methodText(row.method) }}</em>
+              <em>{{ methodText(record.method) }}</em>
             </article>
-            <div
-              v-if="row.companions.length > 0 && isGuestExpanded(row.guestId)"
-              class="staff-record-expand"
-            >
-              <article v-for="companion in row.companions" :key="companion.id" class="staff-record-child">
-                <span class="staff-record-child__avatar">{{ companion.guestName.slice(0, 1) }}</span>
+          </template>
+
+          <template v-else>
+            <div class="staff-records-group">
+              <strong>已签到</strong>
+              <small>{{ checkedPrimaryRows.length }} 位</small>
+            </div>
+            <el-empty v-if="!checkedPrimaryRows.length" description="暂无已签到主嘉宾" :image-size="72" />
+            <!-- 主嘉宾行默认收起，点击可展开查看同行人员；同行记录归入子列表，避免在平铺列表中重复展示。 -->
+            <template v-for="row in checkedPrimaryRows" :key="row.id">
+              <article
+                class="staff-record-row"
+                :class="{
+                  'is-expanded': row.companions.length > 0 && isGuestExpanded(row.guestId),
+                  'has-companions': row.companions.length > 0,
+                }"
+                @click="toggleGuestExpand(row.guestId)"
+              >
+                <span>{{ row.guestName.slice(0, 1) }}</span>
                 <div>
                   <div class="staff-record-row__head">
-                    <strong>{{ companion.guestName }}</strong>
-                    <span class="staff-record-row__companion-tag">同行 · 随{{ row.guestName }}</span>
+                    <strong>{{ row.guestName }}</strong>
+                    <span v-if="row.companions.length > 0" class="staff-record-row__badge">
+                      已带 {{ row.companions.length }} 人{{ isGuestExpanded(row.guestId) ? ' ▾' : ' ▸' }}
+                    </span>
                   </div>
-                  <p>{{ companion.guestPhone }}</p>
+                  <p>{{ row.guestPhone }}</p>
                   <small>
-                    {{ companion.companionNote ? `随行备注：${companion.companionNote}｜` : '' }}{{ companion.sessionTitle }}｜{{ formatDate(companion.checkedInAt) }}
+                    {{ row.companionNote ? `随行备注：${row.companionNote}｜` : '' }}{{ row.sessionTitle }}｜{{ formatDate(row.checkedInAt) }}
                   </small>
                 </div>
-                <em>{{ methodText(companion.method) }}</em>
+                <em>{{ methodText(row.method) }}</em>
               </article>
-            </div>
+              <div
+                v-if="row.companions.length > 0 && isGuestExpanded(row.guestId)"
+                class="staff-record-expand"
+              >
+                <article v-for="companion in row.companions" :key="companion.id" class="staff-record-child">
+                  <span class="staff-record-child__avatar">{{ companion.guestName.slice(0, 1) }}</span>
+                  <div>
+                    <div class="staff-record-row__head">
+                      <strong>{{ companion.guestName }}</strong>
+                      <span class="staff-record-row__companion-tag">同行 · 随{{ row.guestName }}</span>
+                    </div>
+                    <p>{{ companion.guestPhone }}</p>
+                    <small>
+                      {{ companion.companionNote ? `随行备注：${companion.companionNote}｜` : '' }}{{ companion.sessionTitle }}｜{{ formatDate(companion.checkedInAt) }}
+                    </small>
+                  </div>
+                  <em>{{ methodText(companion.method) }}</em>
+                </article>
+              </div>
+            </template>
+
+            <template v-if="recordsFilter === 'all'">
+              <div class="staff-records-group">
+                <strong>未签到</strong>
+                <small>{{ uncheckedGuestRows.length }} 位</small>
+              </div>
+              <el-empty v-if="!uncheckedGuestRows.length" description="主嘉宾均已签到" :image-size="72" />
+              <article v-for="guest in uncheckedGuestRows" :key="guest.id" class="staff-record-row">
+                <span>{{ guest.name.slice(0, 1) }}</span>
+                <div>
+                  <div class="staff-record-row__head">
+                    <strong>{{ guest.name }}</strong>
+                  </div>
+                  <p>{{ guest.phone }}</p>
+                  <small>{{ buildStaffGuestSummary(guest) }}</small>
+                </div>
+                <em>未签到</em>
+              </article>
+            </template>
           </template>
         </section>
       </template>
@@ -411,10 +481,12 @@ const session = useSessionStore()
 const meeting = ref<Meeting>()
 const currentCheckInSession = ref<StaffCheckInSession>()
 const guests = ref<StaffGuest[]>([])
-const displayedGuests = ref<StaffGuest[]>([])
+const manualGuests = ref<StaffGuest[]>([])
+const companionGuests = ref<StaffGuest[]>([])
 const checkIns = ref<CheckInRecord[]>([])
 const qrToken = ref('')
-const guestQuery = ref('')
+const manualQuery = ref('')
+const companionQuery = ref('')
 const loading = ref(false)
 const manualLoadingId = ref('')
 const isOnline = ref(navigator.onLine)
@@ -437,7 +509,8 @@ const companionForm = ref<CompanionCreatePayload>({
   seat: '',
   companionNote: '',
 })
-let guestSearchTimer: number | undefined
+let manualSearchTimer: number | undefined
+let companionSearchTimer: number | undefined
 let cameraScanGeneration = 0
 let scanStream: MediaStream | null = null
 let scanAnimationId: number | null = null
@@ -451,20 +524,71 @@ const latestScannedGuestResult = ref<ScanResult>()
 const resultAlertType = computed(alertType)
 const activeModeTitle = computed(currentModeTitle)
 const staffGuestSearchPlaceholder = computed(buildStaffGuestSearchPlaceholder)
-const checkedCount = computed(() => checkIns.value.length)
-const uncheckedCount = computed(() => Math.max(guests.value.length - checkedCount.value, 0))
-const filteredGuestRows = computed(() => displayedGuests.value)
+// 手动签到只处理未签到嘉宾，搜索结果独立于同行登记模块。
+const filteredGuestRows = computed(() => manualGuests.value.filter((item) => !item.checkedIn))
+// 同行登记只针对已签到主嘉宾：同行嘉宾不能再带同行，未签到主嘉宾不展示，避免产生“同行已签、主嘉宾未签”的状态。
 const companionCheckedRows = computed(() =>
-  displayedGuests.value
-    .filter((item) => item.checkedIn)
+  companionGuests.value
+    .filter((item) => !item.isCompanion && item.checkedIn)
     .sort((a, b) => b.checkedInAt.localeCompare(a.checkedInAt)),
 )
-const companionUncheckedRows = computed(() => displayedGuests.value.filter((item) => !item.checkedIn))
+// 按主嘉宾归组同行签到记录，供同行登记与签到记录两个视图展示展开明细。
+const companionRowsByPrimary = computed(() => {
+  const map = new Map<string, CheckInRecord[]>()
+  checkIns.value.forEach((record) => {
+    if (record.isCompanion && record.companionOfId) {
+      const list = map.get(record.companionOfId) ?? []
+      list.push(record)
+      map.set(record.companionOfId, list)
+    }
+  })
+  return map
+})
+// 签到记录统计区分主嘉宾与同行口径：同行嘉宾不再混入参会人数与已签到人数。
+const primaryGuestCount = computed(() => guests.value.filter((item) => !item.isCompanion).length)
+// 同行人员统计与下钻列表统一按当前场次同行签到记录计算，避免跨场次数据造成数字与列表不一致。
+const companionGuestCount = computed(() => checkIns.value.filter((record) => record.isCompanion).length)
+const primaryCheckedCount = computed(() => guests.value.filter((item) => !item.isCompanion && item.checkedIn).length)
+const primaryUncheckedCount = computed(() => guests.value.filter((item) => !item.isCompanion && !item.checkedIn).length)
+const recordsFilter = ref<'all' | 'checked' | 'unchecked' | 'companions'>('all')
+/** 签到记录视图的本地搜索关键词，独立于手动签到与同行登记模块。 */
+const recordsQuery = ref('')
+const normalizedRecordsQuery = computed(() => recordsQuery.value.trim().toLowerCase())
+
+/**
+ * 判断嘉宾姓名或手机号是否匹配签到记录视图的搜索关键词。
+ *
+ * 入参：name 为嘉宾姓名；phone 为嘉宾手机号，均必填；关键词为空时视为全匹配。
+ * 返回值：boolean：关键词为空或姓名、手机号任一包含关键词时返回 true。
+ * 异常：当前函数不主动抛出异常。
+ */
+function matchesRecordsQuery(name: string, phone: string): boolean {
+  const keyword = normalizedRecordsQuery.value
+  return !keyword || name.toLowerCase().includes(keyword) || phone.toLowerCase().includes(keyword)
+}
+
+const uncheckedGuestRows = computed(() =>
+  guests.value.filter(
+    (item) => !item.isCompanion && !item.checkedIn && matchesRecordsQuery(item.name, item.phone),
+  ),
+)
+const companionRecordRows = computed(() =>
+  checkIns.value.filter(
+    (record) => record.isCompanion && matchesRecordsQuery(record.guestName, record.guestPhone),
+  ),
+)
+const checkedPrimaryRows = computed(() =>
+  checkInRows.value.filter(
+    (row) => !row.isCompanion && matchesRecordsQuery(row.guestName, row.guestPhone),
+  ),
+)
 const currentCheckInSessionTitle = computed(resolveCurrentCheckInSessionTitle)
 /**
  * 记录用户手动展开的带同行主嘉宾，默认全部收起以保持列表简洁。
  */
 const expandedGuestIds = ref<string[]>([])
+/** 同行登记模块中手动展开的主嘉宾，独立于签到记录模块的展开状态。 */
+const companionExpandedGuestIds = ref<string[]>([])
 
 /**
  * 判断某位主嘉宾的同行子列表是否处于展开状态。
@@ -490,6 +614,46 @@ function toggleGuestExpand(guestId: string): void {
     expandedGuestIds.value.splice(index, 1)
   } else {
     expandedGuestIds.value.push(guestId)
+  }
+}
+
+/**
+ * 判断同行登记列表中某位主嘉宾的同行明细是否展开。
+ *
+ * 入参：guestId 为主嘉宾 ID，必填。
+ * 返回值：boolean：主嘉宾在展开集合中时返回 true。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isCompanionExpanded(guestId: string): boolean {
+  return companionExpandedGuestIds.value.includes(guestId)
+}
+
+/**
+ * 切换同行登记列表中主嘉宾同行明细的展开 / 收起状态。
+ *
+ * 入参：guestId 为主嘉宾 ID，必填。
+ * 返回值：void：仅更新同行登记模块的展开集合。
+ * 异常：当前函数不主动抛出异常。
+ */
+function toggleCompanionExpand(guestId: string): void {
+  const index = companionExpandedGuestIds.value.indexOf(guestId)
+  if (index >= 0) {
+    companionExpandedGuestIds.value.splice(index, 1)
+  } else {
+    companionExpandedGuestIds.value.push(guestId)
+  }
+}
+
+/**
+ * 登记同行成功后展开目标主嘉宾的同行明细。
+ *
+ * 入参：guestId 为主嘉宾 ID，必填。
+ * 返回值：void：目标主嘉宾不在展开集合时加入集合。
+ * 异常：当前函数不主动抛出异常。
+ */
+function expandCompanionGuest(guestId: string): void {
+  if (!companionExpandedGuestIds.value.includes(guestId)) {
+    companionExpandedGuestIds.value.push(guestId)
   }
 }
 
@@ -560,7 +724,7 @@ function isStaffGuestFieldVisible(guest: { visibleFields?: string[] } | undefine
  * 异常：当前函数不主动抛出异常。
  */
 function isStaffSearchFieldVisible(fieldKey: string): boolean {
-  const sourceGuest = guests.value[0] ?? displayedGuests.value[0]
+  const sourceGuest = guests.value[0] ?? manualGuests.value[0] ?? companionGuests.value[0]
   return isStaffGuestFieldVisible(sourceGuest, fieldKey)
 }
 
@@ -632,9 +796,22 @@ async function switchWorkspaceMode(mode: StaffWorkspaceMode): Promise<void> {
     await stopCameraScan()
   }
   activeMode.value = mode
+  recordsFilter.value = 'all'
+  recordsQuery.value = ''
   if (mode !== 'manual') {
     selectedManualGuest.value = undefined
   }
+}
+
+/**
+ * 切换签到记录视图的统计过滤维度。
+ *
+ * 入参：filter 为目标过滤维度，取 all、checked、unchecked 或 companions，必填。
+ * 返回值：void：更新列表展示范围并高亮对应统计项。
+ * 异常：当前函数不主动抛出异常。
+ */
+function setRecordsFilter(filter: 'all' | 'checked' | 'unchecked' | 'companions'): void {
+  recordsFilter.value = filter
 }
 
 /**
@@ -735,6 +912,7 @@ async function submitCompanion(): Promise<void> {
     companionDialogVisible.value = false
     ElMessage.success(`已登记 ${submittedName}，陪同 ${target.name}，并已标记签到。`)
     await loadDetail()
+    expandCompanionGuest(target.id)
   } catch (error) {
     ElMessage.error(getApiErrorMessage(error, '同行登记失败。'))
   } finally {
@@ -800,17 +978,31 @@ async function handleLogout(): Promise<void> {
 }
 
 /**
- * 延迟触发服务端嘉宾搜索，避免连续输入产生过多请求。
+ * 延迟触发手动签到嘉宾搜索，避免连续输入产生过多请求。
  *
- * 入参：无；函数读取当前搜索关键词。
+ * 入参：无；函数读取手动签到搜索关键词。
  * 返回值：void：重置 300 毫秒搜索计时器。
- * 异常：搜索接口异常由 loadGuests 转换为页面消息。
+ * 异常：搜索接口异常由 loadManualGuests 转换为页面消息。
  */
-function scheduleGuestSearch(): void {
-  if (guestSearchTimer !== undefined) {
-    window.clearTimeout(guestSearchTimer)
+function scheduleManualSearch(): void {
+  if (manualSearchTimer !== undefined) {
+    window.clearTimeout(manualSearchTimer)
   }
-  guestSearchTimer = window.setTimeout(() => { void loadGuests(guestQuery.value) }, 300)
+  manualSearchTimer = window.setTimeout(() => { void loadManualGuests(manualQuery.value) }, 300)
+}
+
+/**
+ * 延迟触发同行登记嘉宾搜索，避免连续输入产生过多请求。
+ *
+ * 入参：无；函数读取同行登记搜索关键词。
+ * 返回值：void：重置 300 毫秒搜索计时器。
+ * 异常：搜索接口异常由 loadCompanionGuests 转换为页面消息。
+ */
+function scheduleCompanionSearch(): void {
+  if (companionSearchTimer !== undefined) {
+    window.clearTimeout(companionSearchTimer)
+  }
+  companionSearchTimer = window.setTimeout(() => { void loadCompanionGuests(companionQuery.value) }, 300)
 }
 
 /**
@@ -1052,7 +1244,8 @@ async function loadDetail(): Promise<void> {
       throw new Error('会议不存在或无签到权限。')
     }
     guests.value = guestData
-    displayedGuests.value = guestData
+    manualGuests.value = guestData
+    companionGuests.value = guestData
     checkIns.value = checkInData
     currentCheckInSession.value = checkInSessionData
   } catch (error) {
@@ -1065,15 +1258,30 @@ async function loadDetail(): Promise<void> {
 }
 
 /**
- * 调用服务端按关键词查询嘉宾。
+ * 按关键词刷新手动签到的嘉宾列表。
  *
  * 入参：query 为姓名、手机号、单位或座位关键词，可为空。
- * 返回值：Promise<void>：成功后更新当前展示结果。
+ * 返回值：Promise<void>：成功后更新手动签到搜索结果。
  * 异常：接口异常时保留原列表并展示消息提示。
  */
-async function loadGuests(query: string): Promise<void> {
+async function loadManualGuests(query: string): Promise<void> {
   try {
-    displayedGuests.value = await searchStaffGuests(String(route.params.id), query.trim())
+    manualGuests.value = await searchStaffGuests(String(route.params.id), query.trim())
+  } catch (error) {
+    ElMessage.error(getApiErrorMessage(error, '嘉宾搜索失败。'))
+  }
+}
+
+/**
+ * 按关键词刷新同行登记的嘉宾列表。
+ *
+ * 入参：query 为姓名、手机号、单位或座位关键词，可为空。
+ * 返回值：Promise<void>：成功后更新同行登记搜索结果。
+ * 异常：接口异常时保留原列表并展示消息提示。
+ */
+async function loadCompanionGuests(query: string): Promise<void> {
+  try {
+    companionGuests.value = await searchStaffGuests(String(route.params.id), query.trim())
   } catch (error) {
     ElMessage.error(getApiErrorMessage(error, '嘉宾搜索失败。'))
   }
@@ -1093,14 +1301,16 @@ async function loadGuests(query: string): Promise<void> {
  */
 async function refreshCheckIns(): Promise<void> {
   const meetingId = String(route.params.id)
-  const [guestData, displayedGuestData, checkInData, checkInSessionData] = await Promise.all([
+  const [guestData, manualGuestData, companionGuestData, checkInData, checkInSessionData] = await Promise.all([
     searchStaffGuests(meetingId, ''),
-    searchStaffGuests(meetingId, guestQuery.value.trim()),
+    searchStaffGuests(meetingId, manualQuery.value.trim()),
+    searchStaffGuests(meetingId, companionQuery.value.trim()),
     listStaffCheckIns(meetingId),
     getStaffCheckInSession(meetingId),
   ])
   guests.value = guestData
-  displayedGuests.value = displayedGuestData
+  manualGuests.value = manualGuestData
+  companionGuests.value = companionGuestData
   checkIns.value = checkInData
   currentCheckInSession.value = checkInSessionData
 }
@@ -1302,10 +1512,12 @@ function methodText(method: CheckInRecord['method']): string {
 
 onMounted(loadDetail)
 onMounted(startNetworkMonitoring)
-watch(guestQuery, scheduleGuestSearch)
+watch(manualQuery, scheduleManualSearch)
+watch(companionQuery, scheduleCompanionSearch)
 onUnmounted(stopNetworkMonitoring)
 onUnmounted(() => {
-  if (guestSearchTimer !== undefined) window.clearTimeout(guestSearchTimer)
+  if (manualSearchTimer !== undefined) window.clearTimeout(manualSearchTimer)
+  if (companionSearchTimer !== undefined) window.clearTimeout(companionSearchTimer)
   clearScanFeedbackTimer()
   void stopCameraScan()
 })

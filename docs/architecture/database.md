@@ -19,7 +19,7 @@
 - `meetings`、`meeting_settings`：会议基础信息、导航名称与高德坐标、首页时间显示方式、报名开关和会议级 JSON 配置。
 - `meeting_admins`：会议与管理员的多对多授权。
 - `staff_meetings`：会议与工作人员的多对多授权。
-- `meeting_assistant_features`：会议服务五项固定功能的正文、联系人、未发布提醒、发布状态和访问级别。
+- `meeting_assistant_features`：会议服务五项固定功能的正文、联系人、未发布提醒、仅嘉宾可见提示、发布状态和访问级别。
 - `meeting_materials`：会议资料中的多条标题、正文、附件元数据与排序。
 - `guest_fields`：会议级动态嘉宾字段，包含报名页可见、必填和启用状态。
 - `guests`：正式嘉宾（含同行嘉宾）、固定资料、来源、同行主嘉宾绑定、备注、启用状态和随机二维码凭证。
@@ -102,6 +102,7 @@ meetings --< meeting_materials
 | `content` | text | 管理员维护的纯文本草稿，默认空字符串 |
 | `contacts` | json / jsonb | 联系会务功能的联系人列表，默认空数组 |
 | `unpublished_message` | varchar(500) | 未发布时向嘉宾展示的提醒 |
+| `guest_only_message` | varchar(500) | 仅登录嘉宾可见服务的未登录提示，默认“此项服务仅对已登录参会人员开放” |
 | `is_published` | boolean | 当前功能是否向嘉宾发布，默认 `false` |
 | `access_level` | varchar(32) | `public` 表示公开可见，`guest` 表示仅登录嘉宾可见；默认 `guest` |
 | `contact_qr_title` | varchar(100) | 联系会务二维码上方文字，默认“会务二维码” |

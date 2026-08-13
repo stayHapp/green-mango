@@ -127,6 +127,7 @@ export interface MeetingAssistantFeature {
   description: string
   content: string
   unpublishedMessage: string
+  guestOnlyMessage: string
   isPublished: boolean
   accessLevel: MeetingAssistantAccessLevel
   contacts: MeetingContactPerson[]

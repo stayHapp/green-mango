@@ -57,6 +57,7 @@ def build_feature_response(
         feature_key=feature_key,
         content=feature.content if feature.is_published else None,
         unpublished_message=feature.unpublished_message,
+        guest_only_message=feature.guest_only_message,
         is_published=feature.is_published,
         access_level=feature.access_level,
         # 联系人同样属于草稿内容，未发布时不得返回。
@@ -258,6 +259,25 @@ def get_guest_contact_qr(meeting_id: int, db: DatabaseSession, guest: CurrentGue
     if not feature.is_published:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="联系会务尚未发布。")
     return build_contact_qr_response(feature)
+
+
+@public_router.get(
+    "/{meeting_id}/assistant-features/guest-messages",
+    response_model=dict[MeetingAssistantFeatureKey, str],
+)
+def get_public_guest_only_messages(
+    meeting_id: int,
+    db: DatabaseSession,
+) -> dict[MeetingAssistantFeatureKey, str]:
+    """读取五项会议服务的仅嘉宾可见提示，供未登录嘉宾展示自定义弹窗文案。
+
+    入参：meeting_id 为会议 ID；db 由 FastAPI 注入。
+    返回值：dict[MeetingAssistantFeatureKey, str]：功能标识到未登录提示的映射，不含任何草稿正文。
+    异常：会议不可公开时返回 404。
+    """
+    get_public_meeting_or_404(db, meeting_id)
+    features = list_meeting_assistant_features(db, meeting_id)
+    return {feature.feature_key: feature.guest_only_message for feature in features}
 
 
 @public_router.get(

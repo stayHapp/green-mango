@@ -115,6 +115,7 @@ def test_admin_can_publish_feature_and_guest_cannot_read_unpublished_draft(
         "feature_key": "weather",
         "content": None,
         "unpublished_message": "天气信息正在更新。",
+        "guest_only_message": "此项服务仅对已登录参会人员开放",
         "is_published": False,
         "access_level": "guest",
         "contacts": [],
@@ -368,3 +369,51 @@ def test_historical_meeting_missing_features_is_backfilled(
     assert len(response.json()) == 5
     weather_response = next(item for item in response.json() if item["feature_key"] == "weather")
     assert weather_response["content"] == "保留的历史天气正文"
+
+
+def test_admin_can_customize_guest_only_message_and_public_endpoint_returns_it(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证后台可自定义仅嘉宾可见提示，公开接口返回配置且旧客户端保存不覆盖。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示自定义提示进入配置并可公开读取。
+    异常：断言失败表示后台保存或公开读取接口异常。
+    """
+    client, db = client_and_session
+    meeting_id, admin_headers = create_meeting(client, db, create_user, auth_headers, "assistant-custom")
+    custom_message = "此项服务仅限已核验嘉宾使用，登录后即可查看。"
+
+    custom_response = client.patch(
+        f"/api/admin/meetings/{meeting_id}/assistant-features/weather",
+        headers=admin_headers,
+        json={
+            "content": "请携带雨具。",
+            "unpublished_message": "天气信息正在更新。",
+            "guest_only_message": custom_message,
+            "is_published": True,
+        },
+    )
+    assert custom_response.status_code == 200
+    assert custom_response.json()["guest_only_message"] == custom_message
+
+    messages_response = client.get(f"/api/meetings/{meeting_id}/assistant-features/guest-messages")
+    assert messages_response.status_code == 200
+    messages = messages_response.json()
+    assert messages["weather"] == custom_message
+    assert messages["agenda"] == "此项服务仅对已登录参会人员开放"
+
+    # 模拟旧客户端不传新字段，确认不会覆盖管理员已保存的自定义提示。
+    legacy_response = client.patch(
+        f"/api/admin/meetings/{meeting_id}/assistant-features/weather",
+        headers=admin_headers,
+        json={
+            "content": "请携带雨具。",
+            "unpublished_message": "天气信息正在更新。",
+            "is_published": True,
+        },
+    )
+    assert legacy_response.status_code == 200
+    assert legacy_response.json()["guest_only_message"] == custom_message

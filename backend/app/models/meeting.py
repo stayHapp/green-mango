@@ -19,6 +19,9 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
+MEETING_ASSISTANT_DEFAULT_GUEST_ONLY_MESSAGE = "此项服务仅对已登录参会人员开放"
+
+
 class Meeting(Base):
     """教育会议、研讨、培训、论坛或专家讲座。"""
 
@@ -152,6 +155,9 @@ class MeetingAssistantFeature(Base):
     feature_key: Mapped[str] = mapped_column(String(32), nullable=False)
     content: Mapped[str] = mapped_column(Text, default="", nullable=False)
     unpublished_message: Mapped[str] = mapped_column(String(500), nullable=False)
+    guest_only_message: Mapped[str] = mapped_column(
+        String(500), default=MEETING_ASSISTANT_DEFAULT_GUEST_ONLY_MESSAGE, nullable=False
+    )
     is_published: Mapped[bool] = mapped_column(default=False, nullable=False)
     access_level: Mapped[str] = mapped_column(String(32), default="guest", nullable=False)
     contacts: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list, nullable=False)

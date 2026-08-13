@@ -63,7 +63,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getApiErrorMessage, isUnauthorizedApiError } from '../../api/client'
-import { getPublicMeetingAssistantFeature } from '../../api/meetingAssistant'
+import { getPublicGuestOnlyMessages, getPublicMeetingAssistantFeature } from '../../api/meetingAssistant'
 import { getGuestProfile, getPublicMeeting } from '../../api/sessions'
 import GuestMeetingSummary from '../../components/GuestMeetingSummary.vue'
 import { useSessionStore } from '../../stores/session'
@@ -76,10 +76,14 @@ interface GuestEntryServiceItem {
   featureKey: MeetingAssistantFeatureKey
 }
 
+/** 仅嘉宾可见提示的兜底默认文案，后台未配置或读取失败时使用。 */
+const DEFAULT_GUEST_ONLY_MESSAGE = '此项服务仅对已登录参会人员开放'
+
 const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const meeting = ref<Meeting>()
+const guestOnlyMessages = ref<Partial<Record<MeetingAssistantFeatureKey, string>>>({})
 const loading = ref(false)
 const errorMessage = ref('')
 const meetingId = computed(readMeetingId)
@@ -131,12 +135,31 @@ async function loadMeeting(): Promise<void> {
   loading.value = true
   try {
     meeting.value = await getPublicMeeting(meetingId.value)
+    await loadGuestOnlyMessages()
     await validateCurrentGuestSession()
   } catch (error) {
     meeting.value = undefined
     errorMessage.value = getApiErrorMessage(error, '会议入口不存在或尚未发布。')
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * 加载五项会议服务的仅嘉宾可见提示，供受限服务弹窗展示。
+ *
+ * 入参：无；函数读取当前会议 ID。
+ * 返回值：Promise<void>：成功后更新提示映射；失败时保留空映射由弹窗使用默认文案。
+ * 异常：网络或服务端异常被内部捕获，不阻断会议公开首页展示。
+ */
+async function loadGuestOnlyMessages(): Promise<void> {
+  if (!meetingId.value) {
+    return
+  }
+  try {
+    guestOnlyMessages.value = await getPublicGuestOnlyMessages(meetingId.value)
+  } catch {
+    // 读取失败时使用默认文案，不打断用户浏览公开会议首页。
   }
 }
 
@@ -216,7 +239,7 @@ async function openServiceItem(featureKey: MeetingAssistantFeatureKey): Promise<
   }
   try {
     await ElMessageBox.confirm(
-      '该项会议服务仅向已核验嘉宾开放，完成登录后即可查看。',
+      guestOnlyMessages.value[featureKey] || DEFAULT_GUEST_ONLY_MESSAGE,
       '请先完成身份核验',
       {
         confirmButtonText: '立即登录',

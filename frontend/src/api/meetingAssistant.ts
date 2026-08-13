@@ -12,6 +12,7 @@ interface MeetingAssistantFeatureApiResponse {
   feature_key: MeetingAssistantFeatureKey
   content: string | null
   unpublished_message: string
+  guest_only_message: string
   is_published: boolean
   access_level: MeetingAssistantAccessLevel
   updated_at?: string
@@ -73,6 +74,7 @@ function mapMeetingAssistantFeature(response: MeetingAssistantFeatureApiResponse
     ...definition,
     content: response.content ?? '',
     unpublishedMessage: normalizeUnpublishedMessage(response.feature_key, response.unpublished_message),
+    guestOnlyMessage: response.guest_only_message || '此项服务仅对已登录参会人员开放',
     isPublished: response.is_published,
     accessLevel: response.access_level,
     contacts: (response.contacts ?? []).map((item) => ({
@@ -114,7 +116,7 @@ export async function updateAdminMeetingAssistantFeature(
   key: MeetingAssistantFeatureKey,
   input: Pick<
     MeetingAssistantFeature,
-    'content' | 'unpublishedMessage' | 'isPublished' | 'accessLevel' | 'contacts' | 'contactQrTitle'
+    'content' | 'unpublishedMessage' | 'guestOnlyMessage' | 'isPublished' | 'accessLevel' | 'contacts' | 'contactQrTitle'
   >,
 ): Promise<MeetingAssistantFeature> {
   const { data } = await apiClient.patch<MeetingAssistantFeatureApiResponse>(
@@ -122,6 +124,7 @@ export async function updateAdminMeetingAssistantFeature(
     {
       content: input.content,
       unpublished_message: input.unpublishedMessage,
+      guest_only_message: input.guestOnlyMessage,
       is_published: input.isPublished,
       access_level: input.accessLevel,
       contacts: input.contacts,
@@ -230,4 +233,20 @@ export async function getPublicMeetingAssistantFeature(
     `/meetings/${encodeURIComponent(meetingId)}/assistant-features/${key}`,
   )
   return mapMeetingAssistantFeature(data)
+}
+
+/**
+ * 获取五项会议服务的仅嘉宾可见提示映射，供未登录嘉宾展示自定义弹窗文案。
+ *
+ * 入参：meetingId 为会议 ID，必填。
+ * 返回值：Promise<Partial<Record<MeetingAssistantFeatureKey, string>>>：功能标识到提示文案的映射；失败时由调用方兜底默认文案。
+ * 异常：会议不可公开或网络失败时抛出异常。
+ */
+export async function getPublicGuestOnlyMessages(
+  meetingId: string,
+): Promise<Partial<Record<MeetingAssistantFeatureKey, string>>> {
+  const { data } = await apiClient.get<Partial<Record<MeetingAssistantFeatureKey, string>>>(
+    `/meetings/${encodeURIComponent(meetingId)}/assistant-features/guest-messages`,
+  )
+  return data
 }

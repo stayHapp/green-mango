@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.meeting import MeetingAssistantFeature
+from app.models.meeting import MEETING_ASSISTANT_DEFAULT_GUEST_ONLY_MESSAGE, MeetingAssistantFeature
 from app.schemas.meeting_assistant import MeetingAssistantFeatureKey, MeetingAssistantFeatureUpdate
 
 MEETING_ASSISTANT_DEFAULTS: tuple[tuple[MeetingAssistantFeatureKey, str], ...] = (
@@ -35,6 +35,7 @@ def ensure_meeting_assistant_features(db: Session, meeting_id: int) -> list[Meet
                 meeting_id=meeting_id,
                 feature_key=feature_key,
                 unpublished_message=unpublished_message,
+                guest_only_message=MEETING_ASSISTANT_DEFAULT_GUEST_ONLY_MESSAGE,
                 access_level="guest",
             )
             db.add(feature)
@@ -71,6 +72,9 @@ def update_meeting_assistant_feature(
     feature = next(item for item in features if item.feature_key == feature_key)
     feature.content = payload.content
     feature.unpublished_message = payload.unpublished_message
+    # 仅嘉宾可见提示允许旧客户端不传，避免普通内容更新意外覆盖管理员自定义文案。
+    if payload.guest_only_message is not None:
+        feature.guest_only_message = payload.guest_only_message
     feature.is_published = payload.is_published
     # 兼容尚未发送访问级别的旧客户端，避免普通内容更新意外覆盖既有权限。
     if payload.access_level is not None:

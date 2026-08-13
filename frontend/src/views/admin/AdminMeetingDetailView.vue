@@ -421,6 +421,7 @@
           <el-table-column label="访问权限" width="150"><template #default="{ row }"><el-tag :type="row.accessLevel === 'public' ? 'success' : 'info'">{{ row.accessLevel === 'public' ? '公开可见' : '仅登录嘉宾' }}</el-tag></template></el-table-column>
           <el-table-column label="发布状态" width="110"><template #default="{ row }"><el-tag :type="row.isPublished ? 'success' : 'info'">{{ row.isPublished ? '已发布' : '未发布' }}</el-tag></template></el-table-column>
           <el-table-column prop="unpublishedMessage" label="未发布提醒" min-width="260" show-overflow-tooltip />
+          <el-table-column prop="guestOnlyMessage" label="仅嘉宾可见提示" min-width="260" show-overflow-tooltip />
           <el-table-column label="操作" width="100"><template #default="{ row }"><el-button size="small" @click="openAssistantEditDialog(row)">编辑</el-button></template></el-table-column>
         </el-table>
         <el-dialog
@@ -523,7 +524,18 @@
               </div>
             </template>
             <el-form-item v-else label="功能内容"><el-input v-model="assistantEditForm.content" type="textarea" :rows="7" placeholder="请输入发布后向嘉宾展示的内容" /></el-form-item>
-            <el-form-item label="未发布提醒"><el-input v-model="assistantEditForm.unpublishedMessage" type="textarea" :rows="3" placeholder="请输入功能尚未发布时向嘉宾展示的提醒" /></el-form-item>
+            <div class="assistant-hint-grid">
+              <el-form-item label="未发布提醒"><el-input v-model="assistantEditForm.unpublishedMessage" type="textarea" :rows="2" placeholder="请输入功能尚未发布时向嘉宾展示的提醒" /></el-form-item>
+              <el-form-item label="仅嘉宾可见提示">
+                <el-input
+                  v-model="assistantEditForm.guestOnlyMessage"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="请输入未登录嘉宾点击此项服务时展示的提示"
+                />
+                <div class="el-form-item__help">仅当访问权限为「仅登录嘉宾可见」时使用；公开可见的服务不会展示该提示。</div>
+              </el-form-item>
+            </div>
             <div class="action-row"><el-button type="primary" :loading="savingAssistantFeature" @click="saveAssistantFeature">保存配置</el-button></div>
           </el-form>
         </el-dialog>
@@ -1009,6 +1021,7 @@ const deletingContactQr = ref(false)
 const assistantEditForm = ref({
   content: '',
   unpublishedMessage: '',
+  guestOnlyMessage: '',
   isPublished: false,
   accessLevel: 'guest' as MeetingAssistantAccessLevel,
   contactQrTitle: '会务二维码',
@@ -2393,6 +2406,7 @@ function openAssistantEditDialog(feature: MeetingAssistantFeature): void {
   assistantEditForm.value = {
     content: feature.key === 'route' ? decodeMaterialRichContent(feature.content) : feature.content,
     unpublishedMessage: feature.unpublishedMessage,
+    guestOnlyMessage: feature.guestOnlyMessage,
     isPublished: feature.isPublished,
     accessLevel: feature.accessLevel,
     contactQrTitle: feature.contactQrTitle || '会务二维码',
@@ -2552,6 +2566,7 @@ async function saveAssistantFeature(): Promise<void> {
     ? encodeMaterialRichContent(assistantEditForm.value.content)
     : assistantEditForm.value.content.trim()
   const unpublishedMessage = assistantEditForm.value.unpublishedMessage.trim()
+  const guestOnlyMessage = assistantEditForm.value.guestOnlyMessage.trim()
   const contacts = assistantEditForm.value.contacts
     .map((item) => ({
       name: item.name.trim(),
@@ -2561,6 +2576,10 @@ async function saveAssistantFeature(): Promise<void> {
     .filter((item) => item.name)
   if (!unpublishedMessage) {
     ElMessage.warning('请填写未发布时向嘉宾展示的提醒。')
+    return
+  }
+  if (!guestOnlyMessage) {
+    ElMessage.warning('请填写未登录嘉宾点击受限服务时的提示。')
     return
   }
   if (selectedAssistantFeature.value.key === 'contact') {
@@ -2594,6 +2613,7 @@ async function saveAssistantFeature(): Promise<void> {
             ? selectedAssistantFeature.value.content
             : content,
         unpublishedMessage,
+        guestOnlyMessage,
         isPublished: assistantEditForm.value.isPublished,
         accessLevel: assistantEditForm.value.accessLevel,
         contacts: selectedAssistantFeature.value.key === 'contact' ? contacts : [],

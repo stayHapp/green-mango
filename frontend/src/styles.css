@@ -981,12 +981,12 @@
   min-height: 0;
 }
 
-/* 日程编辑弹窗整体不滚动：弹窗内容纵向排布，编辑器占满剩余空间，滚动条只保留在日程列表内部。 */
+/* 日程编辑弹窗：编辑器占满剩余空间并在内部滚动；整体内容超高时允许弹窗滚动，避免提示框与保存按钮被挤出视口。 */
 .assistant-edit-dialog.is-agenda .el-dialog__body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .assistant-edit-dialog.is-agenda .el-form {
@@ -994,6 +994,23 @@
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
+}
+
+/* 两个短提示框在宽弹窗中并排，窄弹窗自动堆叠，减少纵向占用。 */
+.assistant-hint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0 16px;
+}
+
+/* 保存操作固定在弹窗可视底部，窗口缩小或内容超高时始终可见。 */
+.assistant-edit-dialog .action-row {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 4px;
+  background: #ffffff;
+  padding-top: 10px;
 }
 
 .admin-detail-page .heading-actions {
@@ -2683,7 +2700,7 @@
 
 .staff-workspace-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0 0 18px;
 }
 
@@ -2695,16 +2712,33 @@
   padding: 4px 0;
 }
 
-.staff-workspace-stats > div {
+.staff-workspace-stats > button {
+  position: relative;
   display: grid;
   justify-items: center;
   gap: 2px;
-  border-right: 1px solid var(--staff-border);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
   padding: 5px 4px;
 }
 
-.staff-workspace-stats > div:last-child {
-  border-right: 0;
+/* 用伪元素绘制按钮间竖线，激活项的圆角背景不会裁切分隔线。 */
+.staff-workspace-stats > button:not(:first-child)::before {
+  position: absolute;
+  top: 18%;
+  bottom: 18%;
+  left: 0;
+  width: 1px;
+  background: var(--staff-border);
+  content: '';
+}
+
+.staff-workspace-stats > button.is-active {
+  border-radius: 12px;
+  background: var(--staff-soft);
 }
 
 .staff-workspace-stats strong {
@@ -2717,6 +2751,23 @@
 .staff-workspace-stats span {
   color: var(--staff-muted);
   font-size: 12px;
+}
+
+.staff-records-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.staff-records-group strong {
+  color: var(--staff-ink);
+  font-size: 14px;
+}
+
+.staff-records-group small {
+  color: var(--staff-muted);
+  font-size: 11px;
 }
 
 .staff-scan-stage {
@@ -2938,6 +2989,87 @@
   align-items: baseline;
   gap: 8px;
   margin-top: 8px;
+}
+
+.staff-companion-expand {
+  display: grid;
+  gap: 8px;
+  border-radius: 14px;
+  background: #f6f8f7;
+  padding: 10px;
+}
+
+.staff-companion-expand__empty {
+  margin: 0;
+  color: var(--staff-muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.staff-companion-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.staff-companion-child__avatar {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border-radius: 11px;
+  background: #e8f3ee;
+  color: var(--staff-primary);
+  font-size: 14px;
+  font-weight: 720;
+}
+
+.staff-companion-child__copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.staff-companion-child__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.staff-companion-child__head strong {
+  overflow: hidden;
+  color: var(--staff-ink);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-companion-child__copy p {
+  margin: 3px 0 0;
+  color: var(--staff-text);
+  font-size: 13px;
+}
+
+.staff-companion-child__copy small {
+  display: block;
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--staff-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-companion-child > em {
+  flex: 0 0 auto;
+  color: var(--staff-muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
 }
 
 .staff-companions-group strong {

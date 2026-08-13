@@ -33,6 +33,8 @@ class MeetingAssistantFeatureUpdate(BaseModel):
 
     content: str = Field(max_length=20_000)
     unpublished_message: str = Field(min_length=1, max_length=500)
+    # 仅嘉宾可见提示允许为空值表示不修改，兼容未升级的旧客户端保存请求。
+    guest_only_message: str | None = Field(default=None, min_length=1, max_length=500)
     is_published: bool
     access_level: MeetingAssistantAccessLevel | None = None
     contacts: list[ContactPerson] | None = None
@@ -48,6 +50,7 @@ class MeetingAssistantFeatureResponse(BaseModel):
     feature_key: MeetingAssistantFeatureKey
     content: str
     unpublished_message: str
+    guest_only_message: str
     is_published: bool
     access_level: MeetingAssistantAccessLevel
     updated_at: datetime
@@ -65,6 +68,7 @@ class GuestMeetingAssistantFeatureResponse(BaseModel):
     feature_key: MeetingAssistantFeatureKey
     content: str | None
     unpublished_message: str
+    guest_only_message: str
     is_published: bool
     access_level: MeetingAssistantAccessLevel
     contacts: list[ContactPerson] = Field(default_factory=list)
