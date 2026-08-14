@@ -217,6 +217,21 @@ export async function deleteAdminGuest(meetingId: string, guestId: string): Prom
 }
 
 /**
+ * 批量软删除指定会议中的嘉宾并保留历史签到数据。
+ *
+ * 入参：meetingId 为会议 ID；guestIds 为嘉宾 ID 列表，均必填且至少一位。
+ * 返回值：Promise<void>：服务端确认批量停用后结束。
+ * 异常：任一嘉宾不存在、登录失效、会议无权限或网络失败时抛出异常，由页面展示。
+ */
+export async function batchDeactivateGuests(meetingId: string, guestIds: string[]): Promise<void> {
+  await apiClient.post(
+    `/admin/meetings/${encodeURIComponent(meetingId)}/guests/batch-deactivate`,
+    { guest_ids: guestIds.map((id) => Number(id)) },
+    authorizationConfig('admin'),
+  )
+}
+
+/**
  * 获取管理员有权限查看的嘉宾完整资料。
  *
  * 入参：meetingId 为会议 ID；guestId 为嘉宾 ID，均必填。

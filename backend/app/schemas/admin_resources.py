@@ -32,6 +32,12 @@ class OperationResponse(BaseModel):
     message: str
 
 
+class GuestBatchDeactivateRequest(BaseModel):
+    """批量软停用嘉宾的请求。"""
+
+    guest_ids: list[int] = Field(min_length=1)
+
+
 class GuestLoginFieldsResponse(BaseModel):
     """会议嘉宾登录字段配置响应。"""
 
@@ -73,4 +79,6 @@ class GuestImportResponse(BaseModel):
     """Excel 嘉宾导入结果摘要。"""
 
     imported_count: int
+    updated_count: int
+    default_phone_count: int
     errors: list[ImportRowError]

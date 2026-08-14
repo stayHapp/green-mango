@@ -316,7 +316,18 @@
         </section>
         <el-alert v-if="guestApplicationError" class="top-gap" type="error" :closable="false" :title="guestApplicationError" />
         <section class="admin-guest-list-panel">
-        <el-table :data="filteredGuestManagementRows" row-key="id">
+          <div class="admin-guest-list-toolbar">
+            <el-button type="danger" plain :disabled="!selectedGuestIds.length" @click="handleBatchDeleteGuests">
+              批量删除{{ selectedGuestIds.length ? `（${selectedGuestIds.length}）` : '' }}
+            </el-button>
+          </div>
+        <el-table
+          ref="guestTableRef"
+          :data="filteredGuestManagementRows"
+          row-key="id"
+          @selection-change="handleGuestSelectionChange"
+        >
+          <el-table-column type="selection" width="48" :selectable="isGuestRowSelectable" />
           <el-table-column prop="name" label="姓名" min-width="120" />
           <el-table-column prop="phone" label="手机号" min-width="135" />
           <el-table-column prop="organization" label="单位" min-width="160" show-overflow-tooltip />
@@ -341,10 +352,16 @@
           </template></el-table-column>
         </el-table>
         </section>
-        <el-dialog v-model="guestImportDialogVisible" title="导入 Excel 嘉宾名单" width="min(560px, calc(100% - 32px))" align-center>
+        <el-dialog
+          v-model="guestImportDialogVisible"
+          title="导入 Excel 嘉宾名单"
+          width="min(560px, calc(100% - 32px))"
+          align-center
+          :lock-scroll="false"
+        >
           <div class="admin-import-dialog__guide">
             <strong>按模板整理名单后上传</strong>
-            <p>文件首行必须包含“姓名”和“手机号”列，系统会保留合法行并反馈错误行。</p>
+            <p>文件首行只需包含“姓名”列（必填）；“手机号”列可省略或留空，省略/留空时自动使用默认手机号。表头顺序可任意，多余列会自动忽略，系统会保留合法行并反馈错误行。</p>
           </div>
           <div class="admin-import-dialog__actions">
             <el-button @click="downloadGuestImportTemplate">下载 Excel 模板</el-button>
@@ -845,6 +862,7 @@ import {
   updateAdminCheckInSession,
 } from '../../api/adminCheckIns'
 import {
+  batchDeactivateGuests,
   createAdminGuest,
   deleteAdminGuest,
   getAdminGuestDisplayFields,
@@ -944,6 +962,8 @@ const meeting = ref<Meeting>()
 const detailLoading = ref(true)
 const detailError = ref('')
 const guests = ref<Guest[]>([])
+const guestTableRef = ref<{ clearSelection: () => void }>()
+const selectedGuestIds = ref<string[]>([])
 const fields = ref<GuestField[]>([])
 const fixedGuestFieldDrafts = ref([
   { key: 'name', label: '姓名', loginRequired: true, required: true, registrationVisible: true, visibleToGuest: true, isEnabled: true },
@@ -3008,6 +3028,63 @@ async function handleDeleteGuest(guest: Guest): Promise<void> {
 }
 
 /**
+ * 判断嘉宾管理表格行是否允许勾选批量删除。
+ *
+ * 入参：row 为嘉宾管理表格行，必填。
+ * 返回值：boolean：仅正式嘉宾行可勾选，报名申请行不可选。
+ * 异常：当前函数不主动抛出异常。
+ */
+function isGuestRowSelectable(row: GuestManagementRow): boolean {
+  return row.recordType === 'guest'
+}
+
+/**
+ * 同步嘉宾表格勾选结果到批量删除状态。
+ *
+ * 入参：rows 为当前勾选的表格行，必填。
+ * 返回值：void：更新待删除嘉宾 ID 列表。
+ * 异常：当前函数不主动抛出异常。
+ */
+function handleGuestSelectionChange(rows: GuestManagementRow[]): void {
+  selectedGuestIds.value = rows
+    .filter((row) => row.recordType === 'guest' && row.guest)
+    .map((row) => row.guest!.id)
+}
+
+/**
+ * 经管理员确认后批量软删除勾选的嘉宾并刷新名单。
+ *
+ * 入参：无；函数读取当前会议与勾选嘉宾。
+ * 返回值：Promise<void>：确认并删除成功后清空勾选并刷新嘉宾与签到状态。
+ * 异常：管理员取消时静默结束；权限、资源或网络异常时展示错误提示。
+ */
+async function handleBatchDeleteGuests(): Promise<void> {
+  if (!meeting.value || !selectedGuestIds.value.length) {
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedGuestIds.value.length} 位嘉宾吗？删除后嘉宾将无法登录或签到，历史签到记录仍会保留。`,
+      '批量删除嘉宾',
+      {
+        confirmButtonText: '确认删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+    await batchDeactivateGuests(meeting.value.id, selectedGuestIds.value)
+    guestTableRef.value?.clearSelection()
+    selectedGuestIds.value = []
+    await refreshGuestAndCheckInState(meeting.value.id)
+    ElMessage.success('已删除选中的嘉宾。')
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(getApiErrorMessage(error, '批量删除嘉宾失败。'))
+    }
+  }
+}
+
+/**
  * 创建嘉宾并刷新当前会议嘉宾列表。
  *
  * 入参：无；读取当前会议和新增嘉宾表单。
@@ -3217,10 +3294,17 @@ async function handleGuestImportFileChange(event: Event): Promise<void> {
   try {
     const result = await importAdminGuests(meeting.value.id, file)
     await refreshGuestAndCheckInState(meeting.value.id)
+    const summaryParts = [`新增 ${result.importedCount} 名`]
+    if (result.updatedCount > 0) {
+      summaryParts.push(`更新 ${result.updatedCount} 名`)
+    }
+    if (result.defaultPhoneCount > 0) {
+      summaryParts.push(`默认手机号 ${result.defaultPhoneCount} 名`)
+    }
     importMessageType.value = result.errors.length ? 'warning' : 'success'
     importMessage.value = result.errors.length
-      ? `成功导入 ${result.importedCount} 名嘉宾；${result.errors.map((item) => `第 ${item.rowNumber} 行：${item.message}`).join('；')}`
-      : `成功导入 ${result.importedCount} 名嘉宾。`
+      ? `${summaryParts.join('，')}；${result.errors.map((item) => `第 ${item.rowNumber} 行：${item.message}`).join('；')}`
+      : `${summaryParts.join('，')}。`
   } catch (error) {
     importMessageType.value = 'error'
     importMessage.value = getApiErrorMessage(error, '导入失败，请检查 Excel 文件后重试。')

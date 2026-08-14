@@ -21,6 +21,7 @@ class Settings(BaseSettings):
         amap_web_service_key：高德 Web 服务 API Key，仅用于后端地点搜索。
         material_storage_dir：会议资料附件的本地存储目录。
         material_max_file_bytes：单个会议资料附件允许的最大字节数。
+        default_guest_phone：未提供手机号嘉宾导入时使用的默认手机号。
 
     异常：
         配置值类型不符合声明时，Pydantic 会在实例化配置时抛出校验异常。
@@ -37,6 +38,7 @@ class Settings(BaseSettings):
     amap_web_service_key: str = ""
     material_storage_dir: str = "./data/meeting-materials"
     material_max_file_bytes: int = 20 * 1024 * 1024
+    default_guest_phone: str = "13900010001"
 
     def get_cors_origins(self) -> list[str]:
         """解析允许跨域访问的前端来源列表。

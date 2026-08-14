@@ -4,6 +4,8 @@ import { apiClient, authorizationConfig } from './client'
 
 interface GuestImportResponse {
   imported_count: number
+  updated_count: number
+  default_phone_count: number
   errors: Array<{
     row_number: number
     message: string
@@ -17,6 +19,8 @@ export interface GuestImportError {
 
 export interface GuestImportSummary {
   importedCount: number
+  updatedCount: number
+  defaultPhoneCount: number
   errors: GuestImportError[]
 }
 
@@ -56,7 +60,7 @@ export async function downloadAdminGuestImportTemplate(meetingId: string, meetin
  * 上传当前会议的 XLSX 嘉宾名单并返回逐行导入结果。
  *
  * 入参：meetingId 为会议 ID，必填；file 为不超过 10MB 的 `.xlsx` 文件，必填。
- * 返回值：Promise<GuestImportSummary>：成功导入数量和错误行号、原因。
+ * 返回值：Promise<GuestImportSummary>：新增、覆盖、默认手机号数量与错误行号、原因。
  * 异常：文件格式、表头、字段值、权限或网络异常时抛出 Axios 异常。
  */
 export async function importAdminGuests(meetingId: string, file: File): Promise<GuestImportSummary> {
@@ -69,6 +73,8 @@ export async function importAdminGuests(meetingId: string, file: File): Promise<
   )
   return {
     importedCount: response.data.imported_count,
+    updatedCount: response.data.updated_count,
+    defaultPhoneCount: response.data.default_phone_count,
     errors: response.data.errors.map((error) => ({ rowNumber: error.row_number, message: error.message })),
   }
 }

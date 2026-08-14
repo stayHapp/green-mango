@@ -10,6 +10,7 @@ from app.models.user import User
 from app.schemas.admin_resources import (
     AdminAssignmentRequest,
     AdminResponse,
+    GuestBatchDeactivateRequest,
     GuestDisplayFieldsRequest,
     GuestDisplayFieldsResponse,
     GuestRegistrationFieldsRequest,
@@ -30,6 +31,7 @@ from app.services.admin_meetings import get_authorized_meeting
 from app.services.admin_resources import (
     add_meeting_admin,
     deactivate_guest,
+    deactivate_guests,
     get_guest_display_fields,
     get_login_fields,
     list_meeting_admins,
@@ -140,6 +142,28 @@ def delete_admin_guest(meeting_id: int, guest_id: int, db: DatabaseSession, admi
     meeting = load_meeting(db, admin, meeting_id)
     deactivate_guest(db, meeting, load_guest(db, meeting_id, guest_id))
     return OperationResponse(success=True, message="嘉宾已停用。")
+
+
+@router.post("/{meeting_id}/guests/batch-deactivate", response_model=OperationResponse)
+def post_admin_guests_batch_deactivate(
+    meeting_id: int,
+    payload: GuestBatchDeactivateRequest,
+    db: DatabaseSession,
+    admin: CurrentAdmin,
+) -> OperationResponse:
+    """批量软停用会议嘉宾并保留历史签到数据。
+
+    入参：meeting_id 为会议 ID；payload 为嘉宾 ID 列表；db 与 admin 由 FastAPI 注入。
+    返回值：OperationResponse：停用成功数量提示。
+    异常：会议无权限返回 404；任一嘉宾不存在或不属于会议时返回 422，不产生部分停用。
+    """
+    meeting = load_meeting(db, admin, meeting_id)
+    try:
+        count = deactivate_guests(db, meeting, payload.guest_ids)
+    except ValueError as error:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+    return OperationResponse(success=True, message=f"已停用 {count} 位嘉宾。")
 
 
 @router.get("/{meeting_id}/guest-login-fields", response_model=GuestLoginFieldsResponse)

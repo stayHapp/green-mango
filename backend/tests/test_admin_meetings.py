@@ -1102,3 +1102,59 @@ def test_guest_deactivation_identity_and_dynamic_values_are_consistent(
     )
     assert detail_response.status_code == 200
     assert detail_response.json()["values"] == {"diet_preference": "素食"}
+
+
+def test_admin_can_batch_deactivate_guests(
+    client_and_session: tuple[TestClient, Session],
+    create_user,
+    auth_headers,
+) -> None:
+    """验证批量停用接口可一次软停用多位嘉宾，并拒绝不存在的嘉宾。
+
+    入参：client_and_session 为测试客户端和数据库会话夹具；create_user 为创建用户辅助函数；auth_headers 为请求头辅助函数。
+    返回值：None：断言通过表示批量停用生效且不存在嘉宾时整批拒绝。
+    异常：当前函数不主动抛出业务异常；断言失败表示批量停用逻辑异常。
+    """
+    client, db = client_and_session
+    admin = create_user(db, "admin-batch-deactivate")
+    meeting = Meeting(title="批量停用会议", created_by_id=admin.id, status="published")
+    db.add(meeting)
+    db.flush()
+    db.add(MeetingAdmin(meeting_id=meeting.id, user_id=admin.id))
+    db.commit()
+    admin_headers = auth_headers(db, admin)
+
+    guest_ids: list[int] = []
+    for index in range(2):
+        response = client.post(
+            f"/api/admin/meetings/{meeting.id}/guests",
+            headers=admin_headers,
+            json={"name": f"批量嘉宾{index}", "phone": f"1390000000{index}"},
+        )
+        assert response.status_code == 201
+        guest_ids.append(response.json()["id"])
+
+    batch_response = client.post(
+        f"/api/admin/meetings/{meeting.id}/guests/batch-deactivate",
+        headers=admin_headers,
+        json={"guest_ids": guest_ids},
+    )
+    assert batch_response.status_code == 200
+    assert batch_response.json()["success"] is True
+
+    guests = list(
+        db.scalars(
+            select(Guest).where(Guest.id.in_(guest_ids))
+        )
+    )
+    assert len(guests) == 2
+    assert all(guest.is_active is False for guest in guests)
+
+    invalid_response = client.post(
+        f"/api/admin/meetings/{meeting.id}/guests/batch-deactivate",
+        headers=admin_headers,
+        json={"guest_ids": [guest_ids[0], 999_999]},
+    )
+    assert invalid_response.status_code == 422
+    first_guest = db.get(Guest, guest_ids[0])
+    assert first_guest.is_active is False

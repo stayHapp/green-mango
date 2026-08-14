@@ -137,6 +137,22 @@ def deactivate_guest(db: Session, meeting: Meeting, guest: Guest) -> None:
     db.commit()
 
 
+def deactivate_guests(db: Session, meeting: Meeting, guest_ids: list[int]) -> int:
+    """批量软停用会议嘉宾并保留历史签到数据。
+
+    入参：db 为数据库会话；meeting 为已授权会议；guest_ids 为待停用嘉宾 ID 列表，必填且至少一位。
+    返回值：int：实际停用嘉宾数量。
+    异常：任一嘉宾不存在或不属于当前会议时抛出 ValueError，不产生部分停用。
+    """
+    guests = list(db.scalars(select(Guest).where(Guest.id.in_(guest_ids), Guest.meeting_id == meeting.id)))
+    if len(guests) != len(set(guest_ids)):
+        raise ValueError("部分嘉宾不存在或不属于当前会议。")
+    for guest in guests:
+        guest.is_active = False
+    db.commit()
+    return len(guests)
+
+
 def get_login_fields(meeting: Meeting) -> list[str]:
     """读取会议嘉宾登录字段配置。
 
