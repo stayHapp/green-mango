@@ -10,7 +10,10 @@
 
     <main class="assistant-page__body" :class="{ 'is-agenda': isAgendaFeature }">
       <el-skeleton v-if="loading" :rows="6" animated />
-      <el-alert v-else-if="errorMessage" type="error" :closable="false" :title="errorMessage" />
+      <template v-else-if="errorMessage">
+        <el-alert type="error" :closable="false" :title="errorMessage" />
+        <el-button type="danger" plain class="assistant-page__logout" @click="handleGuestLogout">退出登录</el-button>
+      </template>
       <el-alert v-else-if="feature && !feature.isPublished" type="info" :closable="false" :title="feature.unpublishedMessage" />
 
       <template v-else-if="feature?.key === 'agenda'">
@@ -357,7 +360,7 @@ import appleMapsIconUrl from '../../assets/navigation-icons/apple-maps.jpg'
 import baiduIconUrl from '../../assets/navigation-icons/baidu.jpg'
 import tencentIconUrl from '../../assets/navigation-icons/tencent.jpg'
 import { getApiErrorMessage } from '../../api/client'
-import { getPublicMeeting } from '../../api/sessions'
+import { getPublicMeeting, logoutClientSession } from '../../api/sessions'
 import {
   fetchContactQrObjectUrl,
   getGuestMeetingAssistantFeature,
@@ -372,6 +375,7 @@ import {
   saveMeetingMaterialBlob,
 } from '../../api/meetingMaterials'
 import { getGuestMeetingWeather, getPublicMeetingWeather, type MeetingWeather } from '../../api/meetingWeather'
+import { useSessionStore } from '../../stores/session'
 import type { Meeting, MeetingAssistantFeature, MeetingMaterial } from '../../types'
 import { decodeMaterialRichContent } from '../../utils/materialRichText'
 import {
@@ -428,6 +432,7 @@ interface NavigationAppOption {
 
 const route = useRoute()
 const router = useRouter()
+const session = useSessionStore()
 const meeting = ref<Meeting>()
 const feature = ref<MeetingAssistantFeature>()
 const weather = ref<MeetingWeather>()
@@ -664,6 +669,24 @@ async function goBack(): Promise<void> {
     path: `/guest/meetings/${String(route.params.id)}`,
     query: { services: 'open' },
   })
+}
+
+/**
+ * 撤销嘉宾会话并返回当前会议身份核验页，供会话失效错误状态清理本地身份。
+ *
+ * 入参：无；函数读取当前路由会议 ID 与嘉宾会话。
+ * 返回值：Promise<void>：无论服务端撤销是否成功，最终都会清理本地会话并完成跳转。
+ * 异常：服务端撤销失败时静默处理，不影响本地清理。
+ */
+async function handleGuestLogout(): Promise<void> {
+  try {
+    await logoutClientSession('guest')
+  } catch {
+    // 停用或过期会话可能被服务端拒绝撤销，本地身份仍需清理。
+  } finally {
+    session.clearRole('guest')
+    await router.replace(`/guest/login?meetingId=${String(route.params.id)}`)
+  }
 }
 
 /**

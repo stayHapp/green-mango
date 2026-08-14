@@ -120,7 +120,7 @@
                 </div>
                 <div v-if="isStaffGuestFieldVisible(selectedManualGuest, 'tag')">
                   <dt>身份</dt>
-                  <dd>{{ selectedManualGuest.tag || '嘉宾' }}</dd>
+                  <dd>{{ selectedManualGuest.tag || '参会嘉宾' }}</dd>
                 </div>
                 <div v-if="isStaffGuestFieldVisible(selectedManualGuest, 'seat')">
                   <dt>座位</dt>

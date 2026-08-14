@@ -10,7 +10,10 @@
 
         <div v-else-if="errorMessage" class="guest-home-error">
           <el-alert type="error" :closable="false" :title="errorMessage" />
-          <el-button type="primary" plain @click="loadDetail">重新加载</el-button>
+          <div class="guest-home-error__actions">
+            <el-button type="primary" plain @click="loadDetail">重新加载</el-button>
+            <el-button type="danger" plain :disabled="loggingOut" @click="handleGuestLogout">退出登录</el-button>
+          </div>
         </div>
 
         <template v-else-if="meeting">
@@ -43,7 +46,7 @@
           <div class="who">
             <span class="who__name">{{ isGuestFieldVisible('name') ? session.guest.name : '参会嘉宾' }}</span>
             <span v-if="isGuestFieldVisible('tag') && session.guest.tag" class="badge-vip">
-              {{ session.guest.tag || '嘉宾' }}
+              {{ session.guest.tag || '参会嘉宾' }}
             </span>
           </div>
 

@@ -180,6 +180,11 @@
   justify-self: start;
 }
 
+.guest-home-error__actions {
+  display: flex;
+  gap: 10px;
+}
+
 .guest-home-summary {
   overflow: hidden;
   border-radius: 24px;
@@ -1730,6 +1735,12 @@
 
 .admin-guest-filter-search {
   width: 346px;
+}
+
+.admin-guest-list-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 8px 0;
 }
 
 .admin-guest-filter-panel .el-input__wrapper,
@@ -5207,6 +5218,10 @@ h1 {
   width: 100%;
   margin: 0 auto;
   padding: 18px 12px 36px;
+}
+
+.assistant-page__logout {
+  margin-top: 12px;
 }
 
 .assistant-date-badge {

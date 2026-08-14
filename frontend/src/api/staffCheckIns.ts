@@ -280,7 +280,7 @@ export async function searchStaffGuests(meetingId: string, query: string): Promi
     phone: guest.phone,
     organization: guest.visible_fields.includes('organization') ? guest.organization || '' : '',
     title: guest.visible_fields.includes('title') ? guest.title || '' : '',
-    tag: guest.visible_fields.includes('tag') ? guest.tag || '嘉宾' : '',
+    tag: guest.visible_fields.includes('tag') ? guest.tag || '参会嘉宾' : '',
     seat: guest.visible_fields.includes('seat') ? guest.seat || '' : '',
     isActive: guest.is_active,
     checkedIn: guest.checked_in,
