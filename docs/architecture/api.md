@@ -54,8 +54,9 @@
 | GET / PUT | `/api/admin/meetings/{meeting_id}/guest-login-fields` | 获取或确认登录字段，MVP 固定为 `name + phone` |
 | GET / POST | `/api/admin/meetings/{meeting_id}/guests` | 查询或录入单个嘉宾 |
 | GET / PATCH / DELETE | `/api/admin/meetings/{meeting_id}/guests/{guest_id}` | 查询完整资料、修改或软停用嘉宾 |
+| POST | `/api/admin/meetings/{meeting_id}/guests/batch-deactivate` | 按嘉宾 ID 列表批量软停用，任一嘉宾不存在或不属于会议时整批拒绝 |
 | GET | `/api/admin/meetings/{meeting_id}/guests/import-template` | 下载当前会议 XLSX 导入模板 |
-| POST | `/api/admin/meetings/{meeting_id}/guests/import` | 上传 XLSX 并返回成功数和逐行错误 |
+| POST | `/api/admin/meetings/{meeting_id}/guests/import` | 上传 XLSX；表头顺序可任意、多余列忽略、手机号列可省略；同会议同名同手机号启用嘉宾覆盖更新，返回新增、覆盖、默认手机号数量与逐行错误 |
 
 嘉宾固定字段为姓名、手机号、单位、职务、身份和座位号。动态值通过 `values` 对象传递，后台单个新增、编辑、详情和 Excel 导入导出均支持当前启用的动态字段。呈现字段接口使用有序字段 key 数组；固定 key 为 `name`、`phone`、`organization`、`title`、`tag`、`seat`，动态 key 必须属于当前会议。固定字段报名配置接口返回 `fields`、`required_fields` 和 `enabled_fields` 三个数组；姓名和手机号不可关闭。导入模板只包含当前启用的动态字段；姓名、手机号和启用的动态必填字段必须填写，文件最大 10MB、单次最多 10,000 行。合法行会导入，错误行不会阻断其他合法行。
 
