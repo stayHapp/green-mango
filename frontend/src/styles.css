@@ -2991,6 +2991,8 @@
 .staff-records-view,
 .staff-companions-view {
   display: grid;
+  /* 限制网格列为可收缩宽度，避免超长不可断文本把整行撑出移动端页面边界。 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   margin-top: 4px;
 }
@@ -3063,6 +3065,8 @@
   margin: 3px 0 0;
   color: var(--staff-text);
   font-size: 13px;
+  /* 同行子项的超长手机号允许换行，避免撑宽卡片。 */
+  overflow-wrap: break-word;
 }
 
 .staff-companion-child__copy small {
@@ -3134,8 +3138,12 @@
 }
 
 .staff-companion-card__head strong {
+  min-width: 0;
+  overflow: hidden;
   color: var(--staff-ink);
   font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .staff-companion-card__badge {
@@ -3152,6 +3160,8 @@
   margin: 3px 0 0;
   color: var(--staff-text);
   font-size: 13px;
+  /* 超长手机号允许换行，避免同行登记卡片横向溢出。 */
+  overflow-wrap: break-word;
 }
 
 .staff-companion-card__copy small {
@@ -3365,12 +3375,16 @@
 .staff-record-row > div {
   min-width: 0;
   flex: 1;
+  /* 双重保险：内容即使超出弹性盒也裁掉，避免横向溢出页面。 */
+  overflow: hidden;
 }
 
 .staff-guest-row__copy strong,
 .staff-record-row strong {
   color: var(--staff-ink);
   font-size: 15px;
+  /* 超长英文姓名或不可断文本允许在单词内换行，防止撑宽嘉宾卡片。 */
+  overflow-wrap: break-word;
 }
 
 .staff-guest-row__copy p,
@@ -3378,6 +3392,8 @@
   margin: 3px 0 0;
   color: var(--staff-text);
   font-size: 13px;
+  /* 超长手机号等连续数字同样允许换行，避免横向溢出。 */
+  overflow-wrap: break-word;
 }
 
 .staff-guest-row__copy small,
@@ -3426,16 +3442,25 @@
   font-weight: 720;
 }
 
+.staff-confirm-card__identity > div {
+  min-width: 0;
+  flex: 1;
+}
+
 .staff-confirm-card__identity h2 {
   margin: 0;
   color: var(--staff-ink);
   font-size: 20px;
+  /* 超长英文姓名允许在单词内换行，避免确认卡片撑出页面。 */
+  overflow-wrap: break-word;
 }
 
 .staff-confirm-card__identity p {
   margin: 5px 0 7px;
   color: var(--staff-text);
   font-size: 14px;
+  /* 超长手机号同样允许换行，保持确认卡片宽度稳定。 */
+  overflow-wrap: break-word;
 }
 
 .staff-confirm-card__details {
@@ -3608,6 +3633,8 @@
   margin: 3px 0 0;
   color: var(--staff-text);
   font-size: 13px;
+  /* 同行子项的超长手机号允许换行，避免签到记录卡片溢出。 */
+  overflow-wrap: break-word;
 }
 
 .staff-record-child small {
